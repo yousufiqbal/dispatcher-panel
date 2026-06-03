@@ -53,7 +53,9 @@
 
 		{#if !isCancelled}
 			<div class="flex items-center gap-2">
+				{#if !isFulfilled}
 				<a href="/dashboard/stores/{storeId}/orders/{$page.params.orderId}/edit" class="btn-secondary">Edit</a>
+			{/if}
 				{#if !isFulfilled}
 					<button class="btn-primary" onclick={() => showFulfillDialog = true}>Fulfill Order</button>
 				{/if}
@@ -138,72 +140,58 @@
 						{/each}
 					</tbody>
 				</table>
-				<!-- Totals -->
-				<div class="px-5 py-3 border-t border-border space-y-1.5 text-sm">
-					{#if order.discountCodes.length > 0}
-						<div class="flex justify-between text-muted-foreground">
-							<span>Discount codes</span>
-							<span class="flex gap-1">
-								{#each order.discountCodes as dc}
-									<span class="font-mono bg-muted px-1.5 py-0.5 rounded text-xs">{dc}</span>
-								{/each}
-							</span>
-						</div>
-					{/if}
-					{#if order.shippingLines.nodes.length > 0}
-						{#each order.shippingLines.nodes as line}
-							<div class="flex justify-between text-muted-foreground">
-								<span>Shipping · {line.title}</span>
-								<span>{formatCurrency(line.originalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}</span>
-							</div>
+				{#if order.discountCodes.length > 0}
+					<div class="px-5 py-3 border-t border-border text-sm flex items-center gap-2">
+						<span class="text-muted-foreground">Discount codes:</span>
+						{#each order.discountCodes as dc}
+							<span class="font-mono bg-muted px-1.5 py-0.5 rounded text-xs">{dc}</span>
 						{/each}
-					{/if}
-					<div class="flex justify-between font-bold text-base pt-1 border-t border-border">
+					</div>
+				{/if}
+			</div>
+
+			<!-- Payment summary -->
+			<div class="card overflow-hidden">
+				<div class="divide-y divide-border text-sm">
+					<div class="flex items-center justify-between px-5 py-3">
+						<span class="text-muted-foreground">Subtotal</span>
+						<span class="text-muted-foreground text-xs">{order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)} items</span>
+						<span>{formatCurrency(order.subtotalPriceSet?.shopMoney?.amount ?? '0', order.totalPriceSet.shopMoney.currencyCode)}</span>
+					</div>
+					{#each order.shippingLines.nodes as line}
+						<div class="flex items-center justify-between px-5 py-3">
+							<span class="text-muted-foreground">Shipping</span>
+							<span class="text-muted-foreground text-xs truncate max-w-[180px]">{line.title}</span>
+							<span>{formatCurrency(line.originalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}</span>
+						</div>
+					{/each}
+					<div class="flex items-center justify-between px-5 py-3 font-bold">
 						<span>Total</span>
+						<span></span>
 						<span>{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}</span>
+					</div>
+					<div class="flex items-center justify-between px-5 py-3 bg-muted/20">
+						<span class="text-muted-foreground">Paid</span>
+						<span></span>
+						<span>{formatCurrency(order.totalReceivedSet?.shopMoney?.amount ?? '0', order.totalPriceSet.shopMoney.currencyCode)}</span>
+					</div>
+					<div class="flex items-center justify-between px-5 py-3 bg-muted/20">
+						<span class="text-muted-foreground">Balance</span>
+						<span></span>
+						<span class="{(parseFloat(order.totalPriceSet.shopMoney.amount) - parseFloat(order.totalReceivedSet?.shopMoney?.amount ?? '0')) > 0 ? 'text-destructive font-semibold' : 'text-green-700 font-semibold'}">
+							{formatCurrency(Math.abs(parseFloat(order.totalPriceSet.shopMoney.amount) - parseFloat(order.totalReceivedSet?.shopMoney?.amount ?? '0')).toFixed(2), order.totalPriceSet.shopMoney.currencyCode)}
+						</span>
+					</div>
+					<div class="flex items-center justify-end gap-2 px-5 py-3">
+						<form method="POST" action="?/resendInvoice" use:enhance>
+							<button type="submit" class="btn-secondary btn-sm">Resend invoice</button>
+						</form>
+						<form method="POST" action="?/markAsPaid" use:enhance>
+							<button type="submit" class="btn-primary btn-sm">Mark as paid</button>
+						</form>
 					</div>
 				</div>
 			</div>
-
-			<!-- Refunds -->
-			{#if order.refunds.length > 0}
-				<div class="card">
-					<div class="px-5 py-4 border-b border-border">
-						<h2 class="font-semibold text-sm">Refunds</h2>
-					</div>
-					<div class="divide-y divide-border">
-						{#each order.refunds as r}
-							<div class="px-5 py-3 flex items-center justify-between text-sm">
-								<div>
-									<span class="font-mono text-xs text-muted-foreground">{shopifyIdToNumber(r.id)}</span>
-									<div class="text-xs text-muted-foreground">{formatDate(r.createdAt)}</div>
-								</div>
-								<span class="font-semibold">{formatCurrency(r.totalRefundedSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}</span>
-							</div>
-						{/each}
-					</div>
-				</div>
-			{/if}
-
-			<!-- Timeline -->
-			{#if order.events?.nodes?.length > 0}
-				<div class="card">
-					<div class="px-5 py-4 border-b border-border">
-						<h2 class="font-semibold text-sm">Timeline</h2>
-					</div>
-					<div class="px-5 py-4">
-						<ol class="relative border-l border-border space-y-5">
-							{#each order.events.nodes as event}
-								<li class="ml-4">
-									<div class="absolute -left-1.5 mt-1.5 size-3 rounded-full border border-card bg-border"></div>
-									<p class="text-sm text-foreground">{event.message}</p>
-									<time class="text-xs text-muted-foreground">{formatDate(event.createdAt)}</time>
-								</li>
-							{/each}
-						</ol>
-					</div>
-				</div>
-			{/if}
 
 			<!-- Note -->
 			{#if order.note}
@@ -328,30 +316,6 @@
 				</div>
 			</div>
 
-			<!-- Order summary -->
-			<div class="card">
-				<div class="px-5 py-4 border-b border-border">
-					<h2 class="font-semibold text-sm">Summary</h2>
-				</div>
-				<div class="px-5 py-4 space-y-2 text-sm">
-					<div class="flex justify-between">
-						<span class="text-muted-foreground">Order ID</span>
-						<span class="font-mono text-xs">{shopifyIdToNumber(order.id)}</span>
-					</div>
-					<div class="flex justify-between">
-						<span class="text-muted-foreground">Payment</span>
-						<span class="badge-partial text-xs">{order.displayFinancialStatus}</span>
-					</div>
-					<div class="flex justify-between">
-						<span class="text-muted-foreground">Fulfillment</span>
-						<span class="{statusClass(order.displayFinancialStatus, order.displayFulfillmentStatus)} text-xs">{order.displayFulfillmentStatus}</span>
-					</div>
-					<div class="flex justify-between font-semibold border-t border-border pt-2">
-						<span>Total</span>
-						<span>{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}</span>
-					</div>
-				</div>
-			</div>
 
 		</div>
 	</div>

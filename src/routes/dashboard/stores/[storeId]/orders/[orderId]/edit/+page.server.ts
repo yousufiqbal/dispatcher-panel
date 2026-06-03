@@ -1,4 +1,4 @@
-import { error, fail, redirect } from '@sveltejs/kit';
+import { error, fail, redirect, error as svelteError } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient } from '$lib/server/shopify/client';
 import { getOrder, updateOrderShipping } from '$lib/server/shopify/orders';
@@ -45,11 +45,13 @@ export const actions: Actions = {
 		const discountDesc = (fd.get('discountDesc') as string) || 'Discount';
 
 		try {
-			const calcId = await orderEditBegin(client, orderId);
+			const { calcOrderId: calcId, lineItems: calcLineItems } = await orderEditBegin(client, orderId);
 
+			// Calc line items are in same order as original — map by index
 			for (let i = 0; i < lineItemIds.length; i++) {
 				const qty = parseInt(quantities[i] ?? '0', 10);
-				await orderEditSetQuantity(client, calcId, lineItemIds[i], qty);
+				const calcLineItemId = calcLineItems[i]?.id ?? lineItemIds[i];
+				await orderEditSetQuantity(client, calcId, calcLineItemId, qty);
 			}
 
 			for (let i = 0; i < newVariantIds.length; i++) {
@@ -59,7 +61,9 @@ export const actions: Actions = {
 			}
 
 			if (discountLineItemId && discountValue > 0) {
-				await orderEditAddDiscount(client, calcId, discountLineItemId, {
+				const origIdx = lineItemIds.indexOf(discountLineItemId);
+				const calcDiscountLineItemId = origIdx >= 0 ? (calcLineItems[origIdx]?.id ?? discountLineItemId) : discountLineItemId;
+				await orderEditAddDiscount(client, calcId, calcDiscountLineItemId, {
 					value: discountValue,
 					valueType: discountType,
 					description: discountDesc

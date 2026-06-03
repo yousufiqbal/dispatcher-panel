@@ -9,6 +9,7 @@ export interface OrderNode {
 	displayFulfillmentStatus: string;
 	totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
 	customer: { id: string; displayName: string; phone: string | null; email: string | null } | null;
+	lineItems: { nodes: { quantity: number }[] };
 	shippingAddress: {
 		name: string;
 		address1: string;
@@ -33,6 +34,7 @@ const ORDER_FIELDS = `
   totalPriceSet { shopMoney { amount currencyCode } }
   customer { id displayName phone email }
   shippingAddress { name address1 city province country zip phone }
+  lineItems(first: 50) { nodes { quantity } }
   tags
 `;
 
@@ -79,10 +81,10 @@ export interface OrderDetail extends OrderNode {
 			nodes: { id: string; quantity: number; lineItem: { title: string } }[];
 		};
 	}[];
+	subtotalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+	totalShippingPriceSet: { shopMoney: { amount: string; currencyCode: string } };
 	totalReceivedSet: { shopMoney: { amount: string; currencyCode: string } };
-	currentTotalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
 	refunds: { id: string; createdAt: string; totalRefundedSet: { shopMoney: { amount: string } } }[];
-	events: { nodes: { id: string; createdAt: string; message: string }[] };
 	note: string | null;
 }
 
@@ -111,13 +113,11 @@ export async function getOrder(client: ShopifyClient, orderId: string): Promise<
             nodes { id quantity lineItem { title } }
           }
         }
+        subtotalPriceSet { shopMoney { amount currencyCode } }
+        totalShippingPriceSet { shopMoney { amount currencyCode } }
         totalReceivedSet { shopMoney { amount currencyCode } }
-        currentTotalPriceSet { shopMoney { amount currencyCode } }
         refunds(first: 10) {
           id createdAt totalRefundedSet { shopMoney { amount } }
-        }
-        events(first: 50, sortKey: CREATED_AT) {
-          nodes { id createdAt message }
         }
       }
     }

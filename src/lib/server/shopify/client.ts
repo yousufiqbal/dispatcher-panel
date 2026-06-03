@@ -45,9 +45,13 @@ export async function shopifyRequest<T>(
 ): Promise<T> {
 	const response = await client.request(query, { variables });
 	if (response.errors) {
-		// If partial data returned alongside errors, use it (e.g. ACCESS_DENIED on nullable fields)
-		if (response.data) {
-			console.warn('[Shopify partial error]', (response.errors as { message?: string }[])[0]?.message);
+		const isMutation = query.trimStart().startsWith('mutation');
+		// graphQLErrors is the array; response.errors may be a wrapper object
+		const gqlErrors = (response.errors as { graphQLErrors?: { message?: string; extensions?: { code?: string } }[] }).graphQLErrors
+			?? (Array.isArray(response.errors) ? response.errors as { message?: string; extensions?: { code?: string } }[] : []);
+		const allAccessDenied = gqlErrors.length > 0 && gqlErrors.every(e => e.extensions?.code === 'ACCESS_DENIED');
+		if (!isMutation && allAccessDenied && response.data) {
+			console.warn('[Shopify partial error]', gqlErrors[0]?.message);
 			return response.data as T;
 		}
 		console.error('[Shopify Error]', JSON.stringify(response.errors, null, 2));

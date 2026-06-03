@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import { page } from '$app/stores';
-	import { formatCurrency, formatDate } from '$lib/utils';
+	import { formatCurrency, formatDate, formatRelativeDate } from '$lib/utils';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -149,11 +149,14 @@
 				<table class="w-full text-sm">
 					<thead>
 						<tr class="border-b border-border bg-muted/30">
-							<th class="text-left px-4 py-3 font-medium text-muted-foreground">Order</th>
-							<th class="text-left px-4 py-3 font-medium text-muted-foreground">Customer</th>
-							<th class="text-left px-4 py-3 font-medium text-muted-foreground">Date</th>
-							<th class="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
-							<th class="text-right px-4 py-3 font-medium text-muted-foreground">Total</th>
+							<th class="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Order</th>
+							<th class="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Date</th>
+							<th class="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Customer</th>
+							<th class="text-right px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Total</th>
+							<th class="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Payment</th>
+							<th class="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Fulfillment</th>
+							<th class="text-center px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Items</th>
+							<th class="text-left px-4 py-3 font-medium text-muted-foreground whitespace-nowrap">Destination</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-border">
@@ -162,19 +165,44 @@
 								class="hover:bg-muted/30 transition-colors cursor-pointer"
 								onclick={() => goto(`/dashboard/stores/${storeId}/orders/${order.id.split('/').pop()}`)}
 							>
-								<td class="px-4 py-3 font-semibold text-foreground">{order.name}</td>
-								<td class="px-4 py-3 text-muted-foreground">
-									{order.customer?.displayName ?? 'Unknown'}
-									{#if order.customer?.phone}<div class="text-xs">{order.customer.phone}</div>{/if}
-								</td>
-								<td class="px-4 py-3 text-muted-foreground text-xs">{formatDate(order.createdAt)}</td>
+								<td class="px-4 py-3 font-semibold text-foreground whitespace-nowrap">{order.name}</td>
+								<td class="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">{formatRelativeDate(order.createdAt)}</td>
 								<td class="px-4 py-3">
-									<span class="{getStatusClass(order.displayFinancialStatus, order.displayFulfillmentStatus)}">
-										{getStatusLabel(order.displayFinancialStatus, order.displayFulfillmentStatus)}
+									<div class="font-medium text-foreground">{order.customer?.displayName ?? 'Guest'}</div>
+									{#if order.customer?.phone}<div class="text-xs text-muted-foreground">{order.customer.phone}</div>{/if}
+								</td>
+								<td class="px-4 py-3 text-right font-medium text-foreground whitespace-nowrap">
+									{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
+								</td>
+								<td class="px-4 py-3">
+									<span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full
+										{order.displayFinancialStatus === 'PAID' ? 'bg-green-100 text-green-800' :
+										 order.displayFinancialStatus === 'PENDING' ? 'bg-amber-100 text-amber-800' :
+										 order.displayFinancialStatus === 'REFUNDED' ? 'bg-red-100 text-red-700' :
+										 'bg-zinc-100 text-zinc-600'}">
+										<span class="size-1.5 rounded-full bg-current"></span>
+										{order.displayFinancialStatus.replace(/_/g,' ')}
 									</span>
 								</td>
-								<td class="px-4 py-3 text-right font-medium text-foreground">
-									{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
+								<td class="px-4 py-3">
+									<span class="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full
+										{order.displayFulfillmentStatus === 'FULFILLED' ? 'bg-green-100 text-green-800' :
+										 order.displayFulfillmentStatus === 'UNFULFILLED' ? 'bg-amber-100 text-amber-800' :
+										 'bg-zinc-100 text-zinc-600'}">
+										<span class="size-1.5 rounded-full bg-current"></span>
+										{order.displayFulfillmentStatus.replace(/_/g,' ')}
+									</span>
+								</td>
+								<td class="px-4 py-3 text-center text-muted-foreground text-xs">
+								{order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)} items
+							</td>
+								<td class="px-4 py-3 text-xs whitespace-nowrap">
+									{#if order.shippingAddress}
+										<div class="font-medium text-foreground">{order.shippingAddress.city}</div>
+										<div class="text-muted-foreground">{order.shippingAddress.country}</div>
+									{:else}
+										<span class="text-muted-foreground">—</span>
+									{/if}
 								</td>
 							</tr>
 						{/each}

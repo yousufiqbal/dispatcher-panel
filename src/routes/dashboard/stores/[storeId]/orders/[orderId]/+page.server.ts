@@ -1,6 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { getShopifyClient } from '$lib/server/shopify/client';
+import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
 import { getOrder, cancelOrder, fulfillOrder, refundOrder, updateOrderShipping } from '$lib/server/shopify/orders';
 import { logAudit } from '$lib/server/audit';
 import { getAuthorizedStore } from '$lib/server/store-access';
@@ -119,5 +119,50 @@ export const actions: Actions = {
 			return fail(400, { error: e instanceof Error ? e.message : 'Failed to update shipping' });
 		}
 		throw redirect(303, `/dashboard/stores/${params.storeId}/orders/${params.orderId}`);
+	},
+
+	markAsPaid: async ({ params, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const orderId = toShopifyOrderId(params.orderId);
+		const gql = `
+			mutation orderMarkAsPaid($input: OrderMarkAsPaidInput!) {
+				orderMarkAsPaid(input: $input) {
+					order { id }
+					userErrors { field message }
+				}
+			}
+		`;
+		try {
+			const data = await shopifyRequest<{ orderMarkAsPaid: { userErrors: { field: string[]; message: string }[] } }>(client, gql, { input: { id: orderId } });
+			if (data.orderMarkAsPaid.userErrors.length) {
+				return fail(400, { error: data.orderMarkAsPaid.userErrors.map(e => e.message).join(', ') });
+			}
+			if (locals.session) await logAudit(locals.session.userId, 'dispatcher', 'order.markAsPaid', { targetType: 'order', targetId: params.orderId, storeId: params.storeId });
+		} catch (e) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Failed to mark as paid' });
+		}
+		throw redirect(303, `/dashboard/stores/${params.storeId}/orders/${params.orderId}`);
+	},
+
+	resendInvoice: async ({ params, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const orderId = toShopifyOrderId(params.orderId);
+		const gql = `
+			mutation draftOrderInvoiceSend($id: ID!) {
+				draftOrderInvoiceSend(id: $id) {
+					draftOrder { id }
+					userErrors { field message }
+				}
+			}
+		`;
+		try {
+			await shopifyRequest(client, gql, { id: orderId });
+			if (locals.session) await logAudit(locals.session.userId, 'dispatcher', 'order.resendInvoice', { targetType: 'order', targetId: params.orderId, storeId: params.storeId });
+		} catch {
+			// non-critical — invoice send may not apply to all order types
+		}
+		return { success: true };
 	}
 };

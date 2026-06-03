@@ -21,30 +21,60 @@
 	let searching = $state(false);
 	let searchTimeout: ReturnType<typeof setTimeout>;
 
-	let discountLineItemId = $state(order.lineItems.nodes[0]?.id ?? '');
-	let discountValue = $state('');
-	let discountType = $state<'PERCENTAGE' | 'FIXED_AMOUNT'>('PERCENTAGE');
-	let discountDesc = $state('Discount');
-	let showDiscount = $state(false);
 	let notifyCustomer = $state(false);
 
+	// Per-item discount modal
+	interface DiscountModal {
+		lineItemId: string;
+		title: string;
+		unitPrice: string;
+	}
+	let discountModal = $state<DiscountModal | null>(null);
+	let discountValue = $state('');
+	let discountType = $state<'PERCENTAGE' | 'FIXED_AMOUNT'>('FIXED_AMOUNT');
+	let discountDesc = $state('');
+
+	// Track applied discounts per lineItemId
+	let appliedDiscounts = $state<Record<string, { value: string; type: 'PERCENTAGE' | 'FIXED_AMOUNT'; desc: string }>>({});
+
+	function openDiscount(item: { id: string; title: string; originalUnitPriceSet: { shopMoney: { amount: string; currencyCode: string } } }) {
+		discountModal = { lineItemId: item.id, title: item.title, unitPrice: item.originalUnitPriceSet.shopMoney.amount };
+		const existing = appliedDiscounts[item.id];
+		discountValue = existing?.value ?? '';
+		discountType = existing?.type ?? 'FIXED_AMOUNT';
+		discountDesc = existing?.desc ?? '';
+	}
+
+	function applyDiscount() {
+		if (!discountModal) return;
+		if (discountValue && parseFloat(discountValue) > 0) {
+			appliedDiscounts[discountModal.lineItemId] = { value: discountValue, type: discountType, desc: discountDesc };
+		} else {
+			delete appliedDiscounts[discountModal.lineItemId];
+			appliedDiscounts = { ...appliedDiscounts };
+		}
+		discountModal = null;
+	}
+
+	function discountedPrice(itemId: string, unitPrice: string, qty: number): number {
+		const base = parseFloat(unitPrice) * qty;
+		const d = appliedDiscounts[itemId];
+		if (!d || !d.value || parseFloat(d.value) === 0) return base;
+		if (d.type === 'PERCENTAGE') return base - base * (parseFloat(d.value) / 100);
+		return Math.max(0, base - parseFloat(d.value));
+	}
+
 	const currency = $derived(order.totalPriceSet.shopMoney.currencyCode);
-	const paid = $derived(parseFloat(order.totalReceivedSet?.shopMoney?.amount ?? '0'));
+	const paid = $derived(parseFloat(order.totalPriceSet.shopMoney.amount));
 
 	const updatedTotal = $derived(() => {
 		let total = 0;
 		for (const item of order.lineItems.nodes) {
 			const qty = quantities[item.id] ?? 0;
-			total += parseFloat(item.originalUnitPriceSet.shopMoney.amount) * qty;
+			total += discountedPrice(item.id, item.originalUnitPriceSet.shopMoney.amount, qty);
 		}
 		for (const item of newItems) {
 			total += parseFloat(item.price) * item.qty;
-		}
-		// apply discount if set
-		if (discountValue && parseFloat(discountValue) > 0) {
-			const dv = parseFloat(discountValue);
-			if (discountType === 'PERCENTAGE') total -= total * (dv / 100);
-			else total -= Math.min(dv, total);
 		}
 		return Math.max(0, total);
 	});
@@ -105,12 +135,13 @@
 	{/if}
 
 	<form method="POST" action="?/saveItems" use:enhance class="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-		<div class="lg:col-span-2 space-y-5">
+		<div class="lg:col-span-2 flex flex-col gap-5">
 
-		<!-- Existing items -->
+		<!-- Current items -->
 		<div class="card overflow-hidden">
 			<div class="px-5 py-3 border-b border-border bg-muted/30">
 				<h2 class="font-semibold text-sm">Current Items</h2>
+				<p class="text-xs text-muted-foreground mt-0.5">Set quantity to 0 to remove</p>
 			</div>
 			<div class="divide-y divide-border">
 				{#each order.lineItems.nodes as item}
@@ -140,14 +171,34 @@
 							</div>
 						</div>
 
-						<!-- Qty controls -->
-						<div class="flex items-center gap-2 shrink-0">
-							<button type="button" onclick={() => quantities[item.id] = Math.max(0, (quantities[item.id] ?? 1) - 1)}
-								class="size-8 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors text-lg font-light">−</button>
-							<input type="number" name="quantity" bind:value={quantities[item.id]} min="0" max="999"
-								class="input w-16 text-center h-8 text-sm font-medium" />
-							<button type="button" onclick={() => quantities[item.id] = (quantities[item.id] ?? 0) + 1}
-								class="size-8 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors text-lg font-light">+</button>
+						<!-- Price (clickable for discount) + qty -->
+						<div class="flex items-center gap-3 shrink-0">
+							<button
+								type="button"
+								onclick={() => openDiscount(item)}
+								class="text-sm font-medium text-primary hover:underline text-right min-w-[80px]"
+								title="Click to add discount"
+							>
+								{#if appliedDiscounts[item.id]}
+									<span class="line-through text-muted-foreground text-xs block">
+										{formatCurrency((parseFloat(item.originalUnitPriceSet.shopMoney.amount) * (quantities[item.id] ?? 0)).toFixed(2), item.originalUnitPriceSet.shopMoney.currencyCode)}
+									</span>
+									{formatCurrency(discountedPrice(item.id, item.originalUnitPriceSet.shopMoney.amount, quantities[item.id] ?? 0).toFixed(2), item.originalUnitPriceSet.shopMoney.currencyCode)}
+								{:else}
+									{formatCurrency((parseFloat(item.originalUnitPriceSet.shopMoney.amount) * (quantities[item.id] ?? 0)).toFixed(2), item.originalUnitPriceSet.shopMoney.currencyCode)}
+								{/if}
+							</button>
+							<div class="flex items-center gap-1">
+								<button type="button" onclick={() => quantities[item.id] = Math.max(0, (quantities[item.id] ?? 1) - 1)}
+									class="size-8 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors text-lg font-light">−</button>
+								<input type="number" name="quantity" bind:value={quantities[item.id]} min="0" max="999"
+									class="input w-14 text-center h-8 text-sm font-medium" />
+								<button type="button" onclick={() => quantities[item.id] = (quantities[item.id] ?? 0) + 1}
+									class="size-8 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors text-lg font-light">+</button>
+							</div>
+							<button type="button" onclick={() => quantities[item.id] = 0} class="text-muted-foreground hover:text-destructive transition-colors" title="Remove">
+								<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+							</button>
 						</div>
 					</div>
 				{/each}
@@ -155,7 +206,7 @@
 		</div>
 
 		<!-- Add products -->
-		<div class="card overflow-hidden">
+		<div class="card" style="order: -1">
 			<div class="px-5 py-3 border-b border-border bg-muted/30">
 				<h2 class="font-semibold text-sm">Add Products</h2>
 			</div>
@@ -174,7 +225,7 @@
 					{/if}
 
 					{#if productResults.length > 0}
-						<div class="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-lg z-10 max-h-64 overflow-y-auto">
+						<div class="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto">
 							{#each productResults as product}
 								<div class="border-b border-border last:border-0">
 									<div class="px-4 py-2 text-xs font-semibold text-muted-foreground bg-muted/30">{product.title}</div>
@@ -210,13 +261,18 @@
 									<div class="text-sm font-medium truncate">{item.title}</div>
 									<div class="text-xs text-muted-foreground">{formatCurrency(item.price, 'PKR')} each</div>
 								</div>
-								<div class="flex items-center gap-2 shrink-0">
-									<button type="button" onclick={() => item.qty > 1 ? item.qty-- : removeNewItem(i)}
-										class="size-7 rounded-lg border border-border text-muted-foreground hover:bg-muted text-sm">−</button>
-									<input type="number" name="newQty" bind:value={item.qty} min="1" class="input w-14 text-center h-8 text-sm" />
-									<button type="button" onclick={() => item.qty++}
-										class="size-7 rounded-lg border border-border text-muted-foreground hover:bg-muted text-sm">+</button>
-									<button type="button" onclick={() => removeNewItem(i)} class="text-muted-foreground hover:text-destructive transition-colors ml-1">
+								<div class="flex items-center gap-3 shrink-0">
+									<span class="text-sm font-medium text-foreground min-w-[70px] text-right">
+										{formatCurrency((parseFloat(item.price) * item.qty).toFixed(2), 'PKR')}
+									</span>
+									<div class="flex items-center gap-1">
+										<button type="button" onclick={() => item.qty > 1 ? item.qty-- : removeNewItem(i)}
+											class="size-7 rounded-lg border border-border text-muted-foreground hover:bg-muted text-sm">−</button>
+										<input type="number" name="newQty" bind:value={item.qty} min="1" class="input w-14 text-center h-8 text-sm" />
+										<button type="button" onclick={() => item.qty++}
+											class="size-7 rounded-lg border border-border text-muted-foreground hover:bg-muted text-sm">+</button>
+									</div>
+									<button type="button" onclick={() => removeNewItem(i)} class="text-muted-foreground hover:text-destructive transition-colors">
 										<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
 									</button>
 								</div>
@@ -227,45 +283,13 @@
 			</div>
 		</div>
 
-		<!-- Discount (collapsible) -->
-		<div class="card overflow-hidden">
-			<button type="button" onclick={() => showDiscount = !showDiscount}
-				class="w-full flex items-center justify-between px-5 py-4 hover:bg-muted/30 transition-colors">
-				<h2 class="font-semibold text-sm">Add Discount to Item</h2>
-				<svg class="size-4 text-muted-foreground transition-transform duration-150 {showDiscount ? 'rotate-180' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
-				</svg>
-			</button>
-			{#if showDiscount}
-				<div class="px-5 pb-5 space-y-3 border-t border-border pt-4">
-					<div class="space-y-1.5">
-						<label class="label text-xs">Apply to</label>
-						<select name="discountLineItemId" bind:value={discountLineItemId} class="input">
-							{#each order.lineItems.nodes as item}
-								<option value={item.id}>{item.title}</option>
-							{/each}
-						</select>
-					</div>
-					<div class="grid grid-cols-2 gap-3">
-						<div class="space-y-1.5">
-							<label class="label text-xs">Value</label>
-							<input name="discountValue" type="number" min="0" step="0.01" class="input" placeholder="10" bind:value={discountValue} />
-						</div>
-						<div class="space-y-1.5">
-							<label class="label text-xs">Type</label>
-							<select name="discountType" bind:value={discountType} class="input">
-								<option value="PERCENTAGE">Percentage (%)</option>
-								<option value="FIXED_AMOUNT">Fixed Amount</option>
-							</select>
-						</div>
-					</div>
-					<div class="space-y-1.5">
-						<label class="label text-xs">Description</label>
-						<input name="discountDesc" class="input" placeholder="e.g. Loyalty discount" bind:value={discountDesc} />
-					</div>
-				</div>
-			{/if}
-		</div>
+		<!-- Hidden discount inputs for form submission -->
+		{#each Object.entries(appliedDiscounts) as [lineItemId, d]}
+			<input type="hidden" name="discountLineItemId" value={lineItemId} />
+			<input type="hidden" name="discountValue" value={d.value} />
+			<input type="hidden" name="discountType" value={d.type} />
+			<input type="hidden" name="discountDesc" value={d.desc} />
+		{/each}
 
 		</div><!-- end left col -->
 
@@ -301,3 +325,66 @@
 
 	</form>
 </div>
+
+<!-- Discount modal -->
+{#if discountModal}
+	<div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+		<div class="card w-full max-w-sm shadow-xl">
+			<div class="card-header border-b border-border pb-4">
+				<h2 class="font-semibold">Discount</h2>
+				<p class="text-xs text-muted-foreground mt-0.5 truncate">{discountModal.title}</p>
+			</div>
+			<div class="card-content space-y-4">
+				<div class="space-y-1.5">
+					<label class="label text-xs">Discount type</label>
+					<select class="input" bind:value={discountType}>
+						<option value="FIXED_AMOUNT">Amount</option>
+						<option value="PERCENTAGE">Percentage</option>
+					</select>
+				</div>
+
+				<div class="space-y-1.5">
+					<label class="label text-xs">
+						Discount value {discountType === 'PERCENTAGE' ? '(%)' : `(per unit)`}
+					</label>
+					<div class="relative">
+						{#if discountType === 'FIXED_AMOUNT'}
+							<span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rs</span>
+						{/if}
+						<input
+							type="number"
+							min="0"
+							step="0.01"
+							class="input {discountType === 'FIXED_AMOUNT' ? 'pl-9 pr-16' : 'pr-10'}"
+							placeholder="0.00"
+							bind:value={discountValue}
+							autofocus
+						/>
+						<span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+							{discountType === 'PERCENTAGE' ? '%' : order.totalPriceSet.shopMoney.currencyCode}
+						</span>
+					</div>
+					<p class="text-xs text-muted-foreground">Visible to customer</p>
+				</div>
+
+				<div class="space-y-1.5">
+					<label class="label text-xs">Reason for discount</label>
+					<input type="text" class="input" placeholder="Optional" bind:value={discountDesc} />
+				</div>
+
+				<div class="flex gap-3">
+					<button
+						type="button"
+						class="btn-primary flex-1"
+						onclick={applyDiscount}
+					>Done</button>
+					<button
+						type="button"
+						class="btn-secondary"
+						onclick={() => discountModal = null}
+					>Cancel</button>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
