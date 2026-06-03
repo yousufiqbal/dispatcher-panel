@@ -1,0 +1,56 @@
+import { fail, redirect } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
+import { db } from '$lib/server/db';
+import { stores } from '$lib/server/db/schema';
+import { safeParse } from 'valibot';
+import { StoreSchema } from '$lib/schemas/store';
+import { encrypt } from '$lib/server/crypto';
+import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
+import { logAudit } from '$lib/server/audit';
+
+export const load: PageServerLoad = async () => ({ });
+
+export const actions: Actions = {
+	default: async ({ request, locals }) => {
+		const fd = await request.formData();
+		const raw = {
+			name: fd.get('name') as string,
+			nickname: fd.get('nickname') as string,
+			shopifyDomain: fd.get('shopifyDomain') as string,
+			apiAccessToken: fd.get('apiAccessToken') as string
+		};
+
+		const result = safeParse(StoreSchema, raw);
+		if (!result.success) {
+			return fail(400, { errors: result.issues.map((i) => i.message), values: raw });
+		}
+
+		// Test connection
+		try {
+			const testClient = getShopifyClient({
+				shopifyDomain: result.output.shopifyDomain,
+				apiAccessToken: result.output.apiAccessToken
+			});
+			await shopifyRequest(testClient, `query { shop { name } }`);
+		} catch {
+			return fail(400, { errors: ['Could not connect to Shopify — check domain and token'], values: raw });
+		}
+
+		const encryptedToken = encrypt(result.output.apiAccessToken);
+		await db.insert(stores).values({
+			name: result.output.name,
+			nickname: result.output.nickname,
+			shopifyDomain: result.output.shopifyDomain,
+			apiAccessToken: encryptedToken
+		});
+
+		if (locals.session) {
+			await logAudit(locals.session.userId, 'admin', 'store.create', {
+				targetType: 'store',
+				metadata: { nickname: result.output.nickname }
+			});
+		}
+
+		throw redirect(303, '/admin/stores');
+	}
+};

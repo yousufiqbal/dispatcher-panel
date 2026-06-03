@@ -1,0 +1,113 @@
+@import 'tailwindcss';
+
+@theme {
+	--font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+	--color-background: oklch(0.985 0 0);
+	--color-foreground: oklch(0.145 0 0);
+	--color-card: oklch(1 0 0);
+	--color-card-foreground: oklch(0.145 0 0);
+	--color-border: oklch(0.922 0 0);
+	--color-input: oklch(0.922 0 0);
+	--color-primary: oklch(0.21 0.034 264.665);
+	--color-primary-foreground: oklch(0.985 0 0);
+	--color-secondary: oklch(0.967 0 0);
+	--color-secondary-foreground: oklch(0.21 0.034 264.665);
+	--color-muted: oklch(0.967 0 0);
+	--color-muted-foreground: oklch(0.556 0 0);
+	--color-accent: oklch(0.967 0 0);
+	--color-accent-foreground: oklch(0.21 0.034 264.665);
+	--color-destructive: oklch(0.577 0.245 27.325);
+	--color-destructive-foreground: oklch(0.985 0 0);
+	--color-success: oklch(0.527 0.154 150.069);
+	--color-warning: oklch(0.769 0.188 70.08);
+	--color-ring: oklch(0.708 0 0);
+	--radius: 0.625rem;
+}
+
+@layer base {
+	* {
+		@apply border-border;
+		box-sizing: border-box;
+	}
+
+	body {
+		@apply bg-background text-foreground;
+		font-family: var(--font-sans);
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+	}
+
+	h1, h2, h3, h4, h5, h6 {
+		@apply font-semibold tracking-tight;
+	}
+}
+
+@layer components {
+	.btn-primary {
+		@apply inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 active:scale-[0.98] px-4 py-2;
+	}
+
+	.btn-secondary {
+		@apply inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 border border-border px-4 py-2;
+	}
+
+	.btn-destructive {
+		@apply inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 px-4 py-2;
+	}
+
+	.btn-ghost {
+		@apply inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer hover:bg-accent hover:text-accent-foreground px-4 py-2;
+	}
+
+	.btn-sm {
+		@apply px-3 py-1.5 text-xs;
+	}
+
+	.btn-icon {
+		@apply inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium transition-all duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 cursor-pointer size-9 p-0;
+	}
+
+	.input {
+		@apply flex h-10 w-full rounded-md border border-input bg-card px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 transition-colors duration-150;
+	}
+
+	.label {
+		@apply text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70;
+	}
+
+	.card {
+		@apply rounded-xl border border-border bg-card shadow-sm;
+	}
+
+	.card-header {
+		@apply flex flex-col gap-1.5 p-6;
+	}
+
+	.card-content {
+		@apply p-6 pt-0;
+	}
+
+	.badge-pending {
+		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-amber-100 text-amber-800;
+	}
+
+	.badge-fulfilled {
+		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-green-100 text-green-800;
+	}
+
+	.badge-cancelled {
+		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-zinc-100 text-zinc-600;
+	}
+
+	.badge-returned {
+		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-red-100 text-red-700;
+	}
+
+	.badge-partial {
+		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-blue-100 text-blue-800;
+	}
+
+	.sidebar {
+		@apply fixed inset-y-0 left-0 z-50 flex flex-col bg-card border-r border-border transition-all duration-200;
+	}
+}
