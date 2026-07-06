@@ -9,6 +9,7 @@
 	let searchTimeout: ReturnType<typeof setTimeout>;
 	const storeId = $derived($page.params.storeId);
 	let loadingMore = $state(false);
+	let compact = $state(false);
 
 	$effect(() => {
 		data;
@@ -50,12 +51,29 @@
 				oninput={onSearch}
 			/>
 		</div>
-		<a href="/dashboard/stores/{storeId}/customers/new" class="btn-primary shrink-0 size-9 p-0 sm:size-auto sm:px-4 sm:py-2">
-			<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-			</svg>
-			<span class="hidden sm:inline">New Customer</span>
-		</a>
+		<div class="flex items-center gap-2 shrink-0">
+			<a href="/dashboard/stores/{storeId}/customers/new" class="btn-primary shrink-0 size-9 p-0 sm:size-auto sm:px-4 sm:py-2">
+				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+				</svg>
+				<span class="hidden sm:inline">New Customer</span>
+			</a>
+			<button
+				onclick={() => compact = !compact}
+				class="hidden lg:inline-flex btn-icon btn-secondary"
+				title={compact ? 'Expand to full width' : 'Compact width'}
+			>
+				{#if compact}
+					<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 20.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+					</svg>
+				{:else}
+					<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M15 9h4.5M15 9V4.5M15 9l5.25-5.25M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+					</svg>
+				{/if}
+			</button>
+		</div>
 	</div>
 
 	{#if data.customers.length === 0}
@@ -69,7 +87,7 @@
 			{/if}
 		</div>
 	{:else}
-		<div class="card overflow-hidden">
+		<div class="card overflow-hidden {compact ? 'lg:max-w-[50%]' : ''}">
 			<div class="divide-y divide-border">
 				{#each data.customers as customer}
 					<a

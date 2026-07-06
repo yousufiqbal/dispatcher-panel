@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { addToast } from '$lib/toast.svelte';
 	import { openStoreSwitcher } from '$lib/storeSwitcher.svelte';
+	import { subscribeToPush } from '$lib/push-client';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
@@ -24,10 +25,10 @@
 		sectionLabels[currentSection] ?? (currentSection.charAt(0).toUpperCase() + currentSection.slice(1))
 	);
 
-	// Polling instead of realtime: Shopify has no order webhooks wired up here,
-	// so we just ask "anything new since X?" every 30s and fire a real OS/phone
-	// notification via the Notification API (works while this tab/PWA is open —
-	// true background push would need a service worker + push server).
+	// Real push (service worker + web-push, triggered by the Shopify orders/create
+	// webhook) delivers notifications even when the tab/app is closed — see
+	// subscribeToPush() below. This poll is just an in-tab fallback/toast for
+	// when push isn't set up (e.g. no public HTTPS URL configured in dev).
 	const POLL_MS = 30_000;
 	let lastCheckedAt = new Date().toISOString();
 
@@ -53,9 +54,7 @@
 	}
 
 	$effect(() => {
-		if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-			Notification.requestPermission();
-		}
+		subscribeToPush();
 		const interval = setInterval(pollNewOrders, POLL_MS);
 		return () => clearInterval(interval);
 	});

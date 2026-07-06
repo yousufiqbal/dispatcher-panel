@@ -6,8 +6,11 @@ import { eq } from 'drizzle-orm';
 import { safeParse } from 'valibot';
 import { StoreSchema } from '$lib/schemas/store';
 import { encrypt, decrypt } from '$lib/server/crypto';
+import { fileToDataUrl } from '$lib/server/image';
 import { getShopifyClient, shopifyRequest, invalidateClient } from '$lib/server/shopify/client';
+import { registerOrderCreateWebhook } from '$lib/server/shopify/webhooks';
 import { logAudit } from '$lib/server/audit';
+import { env } from '$env/dynamic/private';
 
 export const load: PageServerLoad = async ({ params }) => {
 	const store = await db.query.stores.findFirst({ where: eq(stores.id, params.id) });
@@ -44,8 +47,11 @@ export const actions: Actions = {
 
 		invalidateClient(existing.shopifyDomain);
 
+		const uploadedIcon = await fileToDataUrl(fd.get('icon') as File | null);
+
 		await db.update(stores).set({
 			name: result.output.name,
+			iconUrl: uploadedIcon ?? existing.iconUrl,
 			shopifyDomain: result.output.shopifyDomain,
 			apiAccessToken: encrypt(tokenToUse),
 			oauthClientId: raw.oauthClientId.trim() || null,
@@ -57,6 +63,19 @@ export const actions: Actions = {
 		if (locals.session) {
 			await logAudit(locals.session.userId, 'admin', 'store.update', { targetType: 'store', targetId: params.id });
 		}
+
+		if (env.PUBLIC_APP_URL) {
+			try {
+				const client = getShopifyClient({
+					shopifyDomain: result.output.shopifyDomain,
+					apiAccessToken: tokenToUse
+				});
+				await registerOrderCreateWebhook(client, `${env.PUBLIC_APP_URL}/api/webhooks/orders-create`);
+			} catch (err) {
+				console.error('[webhook registration failed]', err);
+			}
+		}
+
 		throw redirect(303, '/admin/stores');
 	},
 

@@ -15,6 +15,19 @@
 	let oauthRedirectUri = $state('');
 	const scope = SHOPIFY_SCOPE_STRING;
 
+	let iconPreview = $state<string | null>(null);
+
+	function onIconChange(e: Event) {
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) {
+			iconPreview = null;
+			return;
+		}
+		const reader = new FileReader();
+		reader.onload = () => (iconPreview = reader.result as string);
+		reader.readAsDataURL(file);
+	}
+
 	async function testConnection() {
 		testing = true;
 		testResult = null;
@@ -60,11 +73,24 @@
 
 	<div class="card">
 		<div class="card-content pt-6">
-			<form method="POST" use:enhance class="space-y-5">
+			<form method="POST" use:enhance enctype="multipart/form-data" class="space-y-5">
 				<div class="space-y-1.5">
 					<label class="label" for="name">Store Name <span class="text-destructive">*</span></label>
 					<input id="name" name="name" class="input" placeholder="My Shopify Store" value={form?.values?.name ?? ''} required />
 					<p class="text-xs text-muted-foreground">Shown to dispatchers in the sidebar</p>
+				</div>
+
+				<div class="space-y-1.5">
+					<label class="label" for="icon">Store Icon</label>
+					<div class="flex items-center gap-3">
+						{#if iconPreview}
+							<img src={iconPreview} alt="" class="size-10 rounded-lg object-contain border border-border shrink-0" />
+						{:else}
+							<div class="size-10 rounded-lg bg-muted border border-border shrink-0"></div>
+						{/if}
+						<input id="icon" name="icon" type="file" accept="image/*" class="input" onchange={onIconChange} />
+					</div>
+					<p class="text-xs text-muted-foreground">Shown in the dispatcher sidebar and mobile nav instead of the Shopify logo</p>
 				</div>
 
 				<div class="space-y-1.5">

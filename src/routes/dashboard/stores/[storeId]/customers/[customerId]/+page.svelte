@@ -23,21 +23,18 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
 				</svg>
 			</a>
-			<div class="size-14 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xl">
-				{customer.displayName[0]?.toUpperCase() ?? '?'}
-			</div>
 			<div>
 				<h1 class="text-2xl font-bold">{customer.displayName}</h1>
 				<p class="text-sm text-muted-foreground">{customer.numberOfOrders} order{customer.numberOfOrders !== 1 ? 's' : ''}</p>
 			</div>
-			<div class="ml-auto flex gap-2">
-				<a href="/dashboard/stores/{storeId}/orders/new?customerId={encodeURIComponent(customer.id)}" class="btn-primary">
-					New Order
-				</a>
-				<button class="btn-secondary" onclick={() => editing = !editing}>
-					{editing ? 'Cancel Edit' : 'Edit'}
-				</button>
-			</div>
+		</div>
+		<div class="flex gap-2 mt-3">
+			<a href="/dashboard/stores/{storeId}/orders/new?customerId={encodeURIComponent(customer.id)}" class="btn-primary">
+				New Order
+			</a>
+			<button class="btn-secondary" onclick={() => editing = !editing}>
+				{editing ? 'Cancel Edit' : 'Edit'}
+			</button>
 		</div>
 	</div>
 

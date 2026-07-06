@@ -14,6 +14,29 @@
 		if (actorId) sp.set('actorId', actorId);
 		goto(`?${sp}`);
 	}
+
+	function selectActor(newRole: string, newActorId: string) {
+		role = newRole;
+		actorId = newActorId;
+		applyFilters();
+	}
+
+	const pills = $derived([
+		{ label: 'All', role: '', actorId: '' },
+		{ label: 'Admin', role: 'admin', actorId: '' },
+		...data.dispatchers.map((d) => ({ label: d.name, role: 'dispatcher', actorId: d.id }))
+	]);
+
+	let selectedLog = $state<PageData['logs'][number] | null>(null);
+
+	function formatMetadata(metadata: string | null) {
+		if (!metadata) return null;
+		try {
+			return JSON.stringify(JSON.parse(metadata), null, 2);
+		} catch {
+			return metadata;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -27,31 +50,17 @@
 	</div>
 
 	<div class="flex flex-wrap items-center gap-2 mb-4">
-		<select
-			bind:value={role}
-			onchange={() => { actorId = ''; applyFilters(); }}
-			class="input w-auto text-sm py-1.5"
-		>
-			<option value="">All actors</option>
-			<option value="admin">Admin</option>
-			<option value="dispatcher">Dispatcher</option>
-		</select>
-		{#if role === 'dispatcher'}
-			<select bind:value={actorId} onchange={applyFilters} class="input w-auto text-sm py-1.5">
-				<option value="">All dispatchers</option>
-				{#each data.dispatchers as d (d.id)}
-					<option value={d.id}>{d.name}</option>
-				{/each}
-			</select>
-		{/if}
-		{#if role || actorId}
+		{#each pills as pill}
 			<button
-				class="text-xs text-primary hover:underline"
-				onclick={() => { role = ''; actorId = ''; applyFilters(); }}
+				onclick={() => selectActor(pill.role, pill.actorId)}
+				class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors duration-150 cursor-pointer whitespace-nowrap
+					{role === pill.role && actorId === pill.actorId
+						? 'bg-primary text-primary-foreground'
+						: 'bg-zinc-200/70 text-muted-foreground hover:bg-accent'}"
 			>
-				Clear filters
+				{pill.label}
 			</button>
-		{/if}
+		{/each}
 	</div>
 
 	{#if data.logs.length === 0}
@@ -73,7 +82,7 @@
 					</thead>
 					<tbody class="divide-y divide-border">
 						{#each data.logs as log}
-							<tr class="hover:bg-muted/20">
+							<tr class="hover:bg-muted/20 cursor-pointer" onclick={() => selectedLog = log}>
 								<td class="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">{formatDate(log.createdAt.toISOString())}</td>
 								<td class="px-4 py-3">
 									<span class="badge {log.actorRole === 'admin' ? 'badge-partial' : 'badge-pending'}">{log.actorRole}</span>
@@ -94,7 +103,7 @@
 		<div class="card overflow-hidden md:hidden">
 			<div class="divide-y divide-border">
 				{#each data.logs as log}
-					<div class="px-4 py-3">
+					<button class="w-full text-left px-4 py-3 hover:bg-muted/20" onclick={() => selectedLog = log}>
 						<div class="flex items-center justify-between gap-2 mb-1">
 							<span class="font-mono text-xs font-semibold text-foreground">{log.action}</span>
 							<span class="badge {log.actorRole === 'admin' ? 'badge-partial' : 'badge-pending'} shrink-0">{log.actorRole}</span>
@@ -106,9 +115,62 @@
 							<span class="text-xs text-muted-foreground font-mono">{log.actorId.slice(0, 8)}…</span>
 							<span class="text-xs text-muted-foreground">{formatDate(log.createdAt.toISOString())}</span>
 						</div>
-					</div>
+					</button>
 				{/each}
 			</div>
 		</div>
 	{/if}
 </div>
+
+{#if selectedLog}
+	<div
+		class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+		role="dialog"
+		aria-modal="true"
+		onclick={() => selectedLog = null}
+		onkeydown={(e) => e.key === 'Escape' && (selectedLog = null)}
+		tabindex="-1"
+	>
+		<div class="card w-full max-w-lg shadow-xl" onclick={(e) => e.stopPropagation()}>
+			<div class="card-header flex items-center justify-between">
+				<h2 class="text-lg font-semibold">Audit Entry</h2>
+				<button class="btn-icon text-muted-foreground" onclick={() => selectedLog = null}>
+					<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+					</svg>
+				</button>
+			</div>
+			<div class="card-content space-y-3 text-sm">
+				<div>
+					<div class="text-xs text-muted-foreground uppercase tracking-wide">When</div>
+					<div class="font-mono">{formatDate(selectedLog.createdAt.toISOString())}</div>
+				</div>
+				<div>
+					<div class="text-xs text-muted-foreground uppercase tracking-wide">Actor</div>
+					<div>
+						<span class="badge {selectedLog.actorRole === 'admin' ? 'badge-partial' : 'badge-pending'}">{selectedLog.actorRole}</span>
+						<span class="ml-2 font-mono text-xs break-all">{selectedLog.actorId}</span>
+					</div>
+				</div>
+				<div>
+					<div class="text-xs text-muted-foreground uppercase tracking-wide">Action</div>
+					<div class="font-mono">{selectedLog.action}</div>
+				</div>
+				{#if selectedLog.targetType || selectedLog.targetId}
+					<div>
+						<div class="text-xs text-muted-foreground uppercase tracking-wide">Target</div>
+						<div class="font-mono text-xs break-all">
+							{selectedLog.targetType ? `${selectedLog.targetType}: ` : ''}{selectedLog.targetId ?? '—'}
+						</div>
+					</div>
+				{/if}
+				{#if formatMetadata(selectedLog.metadata)}
+					<div>
+						<div class="text-xs text-muted-foreground uppercase tracking-wide mb-1">Metadata</div>
+						<pre class="bg-muted rounded-md p-3 text-xs overflow-x-auto whitespace-pre-wrap break-all">{formatMetadata(selectedLog.metadata)}</pre>
+					</div>
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}

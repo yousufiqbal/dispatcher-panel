@@ -5,8 +5,11 @@ import { stores } from '$lib/server/db/schema';
 import { safeParse } from 'valibot';
 import { StoreSchema } from '$lib/schemas/store';
 import { encrypt } from '$lib/server/crypto';
+import { fileToDataUrl } from '$lib/server/image';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
+import { registerOrderCreateWebhook } from '$lib/server/shopify/webhooks';
 import { logAudit } from '$lib/server/audit';
+import { env } from '$env/dynamic/private';
 
 export const load: PageServerLoad = async () => ({ });
 
@@ -38,9 +41,12 @@ export const actions: Actions = {
 			return fail(400, { errors: ['Could not connect to Shopify — check domain and token'], values: raw });
 		}
 
+		const iconUrl = await fileToDataUrl(fd.get('icon') as File | null);
+
 		const encryptedToken = encrypt(result.output.apiAccessToken);
 		await db.insert(stores).values({
 			name: result.output.name,
+			iconUrl,
 			shopifyDomain: result.output.shopifyDomain,
 			apiAccessToken: encryptedToken,
 			oauthClientId: raw.oauthClientId.trim() || null,
@@ -53,6 +59,18 @@ export const actions: Actions = {
 				targetType: 'store',
 				metadata: { name: result.output.name }
 			});
+		}
+
+		if (env.PUBLIC_APP_URL) {
+			try {
+				const client = getShopifyClient({
+					shopifyDomain: result.output.shopifyDomain,
+					apiAccessToken: result.output.apiAccessToken
+				});
+				await registerOrderCreateWebhook(client, `${env.PUBLIC_APP_URL}/api/webhooks/orders-create`);
+			} catch (err) {
+				console.error('[webhook registration failed]', err);
+			}
 		}
 
 		throw redirect(303, '/admin/stores');

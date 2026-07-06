@@ -43,7 +43,7 @@
 	<!-- Sidebar (desktop only) -->
 	<aside class="fixed inset-y-0 left-0 z-50 hidden lg:flex flex-col bg-card border-r border-border w-64 shadow-sm">
 		<!-- Logo -->
-		<div class="flex items-center gap-3 px-5 h-[73px] bg-zinc-100 shadow-sm">
+		<div class="flex items-center gap-3 px-5 h-[73px] bg-card shadow-sm">
 			<div class="flex items-center justify-center size-8 rounded-lg bg-primary text-primary-foreground text-xs font-bold shrink-0">D</div>
 			<div class="flex-1 min-w-0">
 				<div class="text-lg font-semibold text-foreground truncate">Dispatcher Panel</div>

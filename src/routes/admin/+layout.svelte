@@ -1,18 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
-	import { slide } from 'svelte/transition';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
 
-	let adminSheetOpen = $state(false);
 	let logoutConfirmOpen = $state(false);
-
-	$effect(() => {
-		$page.url.pathname;
-		adminSheetOpen = false;
-	});
 
 	const navItems = [
 		{ href: '/admin', label: 'Overview', icon: 'home' },
@@ -112,51 +105,17 @@
 		</a>
 	{/each}
 	<button
-		onclick={() => adminSheetOpen = true}
-		class="flex-1 flex flex-col items-center justify-center gap-1 text-xs {adminSheetOpen ? 'text-primary' : 'text-muted-foreground'}"
+		onclick={() => logoutConfirmOpen = true}
+		class="flex-1 flex flex-col items-center justify-center gap-0.5 text-xs text-muted-foreground"
 	>
-		<span class="flex items-center justify-center size-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold">
-			{data.admin?.email?.[0]?.toUpperCase() ?? 'A'}
+		<span class="flex items-center justify-center size-8 rounded-full">
+			<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+			</svg>
 		</span>
-		<span class="font-medium">Admin</span>
+		<span class="font-medium">Logout</span>
 	</button>
 </nav>
-
-<!-- Mobile admin profile sheet (drop-up) -->
-{#if adminSheetOpen}
-	<div
-		class="lg:hidden fixed inset-0 z-40"
-		role="button"
-		tabindex="-1"
-		onclick={() => adminSheetOpen = false}
-		onkeydown={(e) => e.key === 'Escape' && (adminSheetOpen = false)}
-	></div>
-	<div
-		transition:slide={{ duration: 180 }}
-		class="lg:hidden fixed bottom-16 inset-x-0 z-50 bg-card/95 backdrop-blur border-t border-border rounded-t-2xl shadow-[0_-4px_16px_rgba(0,0,0,0.08)] flex flex-col"
-	>
-		<div class="px-4 py-3 border-b border-border flex items-center gap-3">
-			<div class="size-9 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary shrink-0">
-				{data.admin?.email?.[0]?.toUpperCase() ?? 'A'}
-			</div>
-			<div class="flex-1 min-w-0">
-				<div class="text-sm font-medium text-foreground truncate">{data.admin?.email}</div>
-				<div class="text-xs text-muted-foreground">Administrator</div>
-			</div>
-		</div>
-		<div class="p-2">
-			<button
-				onclick={() => { adminSheetOpen = false; logoutConfirmOpen = true; }}
-				class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-destructive hover:bg-destructive/10 transition-colors duration-150"
-			>
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-				</svg>
-				Logout
-			</button>
-		</div>
-	</div>
-{/if}
 
 <!-- Logout confirm modal -->
 {#if logoutConfirmOpen}

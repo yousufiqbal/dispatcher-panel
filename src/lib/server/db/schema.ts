@@ -37,6 +37,7 @@ export const stores = sqliteTable('stores', {
 		.primaryKey()
 		.$defaultFn(() => crypto.randomUUID()),
 	name: text('name').notNull(),
+	iconUrl: text('icon_url'),
 	shopifyDomain: text('shopify_domain').notNull().unique(),
 	apiAccessToken: text('api_access_token').notNull(),
 	oauthClientId: text('oauth_client_id'),
@@ -66,6 +67,21 @@ export const dispatcherStoreAccess = sqliteTable(
 	},
 	(table) => [primaryKey({ columns: [table.dispatcherId, table.storeId] })]
 );
+
+export const dispatcherPushSubscriptions = sqliteTable('dispatcher_push_subscriptions', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	dispatcherId: text('dispatcher_id')
+		.notNull()
+		.references(() => dispatchers.id, { onDelete: 'cascade' }),
+	endpoint: text('endpoint').notNull().unique(),
+	p256dh: text('p256dh').notNull(),
+	auth: text('auth').notNull(),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
 
 export const sessions = sqliteTable('sessions', {
 	id: text('id').primaryKey(),

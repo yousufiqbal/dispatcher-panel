@@ -11,6 +11,16 @@
 	let oauthClientId = $state(data.store.oauthClientId ?? '');
 	let oauthRedirectUri = $state(data.store.oauthRedirectUri ?? '');
 	const scope = SHOPIFY_SCOPE_STRING;
+
+	let iconPreview = $state<string | null>(data.store.iconUrl ?? null);
+
+	function onIconChange(e: Event) {
+		const file = (e.target as HTMLInputElement).files?.[0];
+		if (!file) return;
+		const reader = new FileReader();
+		reader.onload = () => (iconPreview = reader.result as string);
+		reader.readAsDataURL(file);
+	}
 </script>
 
 <svelte:head>
@@ -40,10 +50,22 @@
 
 	<div class="card mb-6">
 		<div class="card-content pt-6">
-			<form method="POST" action="?/update" use:enhance class="space-y-5">
+			<form method="POST" action="?/update" use:enhance enctype="multipart/form-data" class="space-y-5">
 				<div class="space-y-1.5">
 					<label class="label" for="name">Store Name</label>
 					<input id="name" name="name" class="input" value={data.store.name} required />
+				</div>
+				<div class="space-y-1.5">
+					<label class="label" for="icon">Store Icon</label>
+					<div class="flex items-center gap-3">
+						{#if iconPreview}
+							<img src={iconPreview} alt="" class="size-10 rounded-lg object-contain border border-border shrink-0" />
+						{:else}
+							<div class="size-10 rounded-lg bg-muted border border-border shrink-0"></div>
+						{/if}
+						<input id="icon" name="icon" type="file" accept="image/*" class="input" onchange={onIconChange} />
+					</div>
+					<p class="text-xs text-muted-foreground">Leave blank to keep the current icon</p>
 				</div>
 				<div class="space-y-1.5">
 					<label class="label" for="shopifyDomain">Shopify Domain</label>

@@ -218,17 +218,17 @@
 	</div>
 
 	<!-- Status tabs -->
-	<div class="flex items-center gap-1 mb-5 border-b border-border overflow-x-auto overflow-y-hidden">
+	<div class="flex items-center gap-2 mb-5 pb-1 overflow-x-auto overflow-y-hidden">
 		{#each tabs as tab}
 			{#if tab.separator}
 				<div class="w-px h-5 bg-border self-center mx-1 shrink-0"></div>
 			{/if}
 			<button
 				onclick={() => setStatus(tab.key)}
-				class="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors duration-150 border-b-2 -mb-px cursor-pointer whitespace-nowrap
+				class="flex items-center gap-1.5 text-sm font-medium transition-colors duration-150 cursor-pointer whitespace-nowrap shrink-0 px-3.5 py-1.5 rounded-full
 					{(data.status ?? 'all') === tab.key
-						? 'border-primary text-primary'
-						: 'border-transparent text-muted-foreground hover:text-foreground'}"
+						? 'bg-primary text-primary-foreground'
+						: 'bg-zinc-200/70 text-muted-foreground hover:bg-accent'}"
 			>
 				{tab.label}
 				{#if tab.key === 'pending' && data.pendingCount > 0}

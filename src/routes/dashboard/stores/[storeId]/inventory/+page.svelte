@@ -8,6 +8,7 @@
 	let searchInput = $state(data.q ?? '');
 	let searchTimeout: ReturnType<typeof setTimeout>;
 	let loadingMore = $state(false);
+	let compact = $state(false);
 
 	$effect(() => {
 		data;
@@ -61,6 +62,21 @@
 				oninput={onSearch}
 			/>
 		</div>
+		<button
+			onclick={() => compact = !compact}
+			class="hidden lg:inline-flex btn-icon btn-secondary shrink-0"
+			title={compact ? 'Expand to full width' : 'Compact width'}
+		>
+			{#if compact}
+				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 20.25h-4.5m4.5 0v-4.5m0 4.5L15 15" />
+				</svg>
+			{:else}
+				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M15 9h4.5M15 9V4.5M15 9l5.25-5.25M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+				</svg>
+			{/if}
+		</button>
 	</div>
 
 	{#if data.products.length === 0}
@@ -71,7 +87,7 @@
 			{/if}
 		</div>
 	{:else}
-		<div class="space-y-4">
+		<div class="space-y-4 {compact ? 'lg:max-w-[50%]' : ''}">
 			{#each data.products as product}
 				<div class="card overflow-hidden">
 					<div class="flex items-center gap-3 px-4 sm:px-5 py-3 border-b border-border bg-muted/20">

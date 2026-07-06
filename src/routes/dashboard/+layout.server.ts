@@ -19,7 +19,8 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 			name: stores.name,
 			shopifyDomain: stores.shopifyDomain,
 			apiAccessToken: stores.apiAccessToken,
-			isActive: stores.isActive
+			isActive: stores.isActive,
+			iconUrl: stores.iconUrl
 		})
 		.from(dispatcherStoreAccess)
 		.innerJoin(stores, eq(stores.id, dispatcherStoreAccess.storeId))
@@ -31,9 +32,10 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 		);
 
 	// Cached, so switching/reloading pages doesn't hammer Shopify.
+	// A custom-uploaded store icon always wins over Shopify's own shop logo.
 	const [pendingCounts, logoUrls] = await Promise.all([
 		Promise.all(access.map((a) => getCachedPendingCount(a.storeId, a).catch(() => 0))),
-		Promise.all(access.map((a) => getCachedShopLogo(a.storeId, a).catch(() => null)))
+		Promise.all(access.map((a) => (a.iconUrl ? Promise.resolve(a.iconUrl) : getCachedShopLogo(a.storeId, a).catch(() => null))))
 	]);
 
 	const dispatcherUser = session.user as { role: 'dispatcher'; id: string; email: string; name: string; isActive: boolean };
