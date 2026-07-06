@@ -3,15 +3,17 @@ import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
 import { listOrders, confirmOrder, CONFIRMED_TAG } from '$lib/server/shopify/orders';
 import { db } from '$lib/server/db';
+import { couriers, courierStoreAccess } from '$lib/server/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { getAuthorizedStore } from '$lib/server/store-access';
 import { logAudit } from '$lib/server/audit';
 
-async function getCourierAvailability() {
-	const rows = await db.query.courierSettings.findMany();
-	return {
-		postex: rows.find((r) => r.courier === 'postex')?.enabled ?? false,
-		dex: rows.find((r) => r.courier === 'dex')?.enabled ?? false
-	};
+async function getStoreCouriers(storeId: string) {
+	return db
+		.select({ id: couriers.id, name: couriers.name })
+		.from(courierStoreAccess)
+		.innerJoin(couriers, eq(couriers.id, courierStoreAccess.courierId))
+		.where(and(eq(courierStoreAccess.storeId, storeId), eq(couriers.enabled, true)));
 }
 
 // `pending`/`confirmed` are NOT filtered by Shopify's tag: search (that's index-backed
@@ -84,7 +86,7 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 		const [result, badgeCounts, couriers] = await Promise.all([
 			listDraftOrders(client, { first: 30, after: cursor, query }),
 			getBadgeCounts(client),
-			getCourierAvailability()
+			getStoreCouriers(params.storeId)
 		]);
 		return {
 			orders: [],

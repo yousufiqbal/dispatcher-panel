@@ -27,9 +27,9 @@
 		selectedIds = selectedIds.size === ids.length ? new Set() : new Set(ids);
 	}
 
-	function bookSelected(courier: 'postex' | 'dex') {
+	function bookSelected(courierId: string) {
 		const ids = [...selectedIds].map((gid) => gid.split('/').pop()).join(',');
-		goto(`/dashboard/stores/${storeId}/orders/book/${courier}?ids=${ids}`);
+		goto(`/dashboard/stores/${storeId}/orders/book/${courierId}?ids=${ids}`);
 	}
 
 	const selectableStatuses = ['pending', 'confirmed'];
@@ -256,14 +256,11 @@
 		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
 			<span class="text-sm font-medium">{selectedIds.size} selected</span>
 			<div class="flex items-center gap-2">
-				{#if data.couriers.postex}
-					<button class="btn-secondary btn-sm" onclick={() => bookSelected('postex')}>Book PostEx</button>
-				{/if}
-				{#if data.couriers.dex}
-					<button class="btn-secondary btn-sm" onclick={() => bookSelected('dex')}>Book DEX</button>
-				{/if}
-				{#if !data.couriers.postex && !data.couriers.dex}
-					<span class="text-xs text-muted-foreground">No courier enabled — set one up in Admin Settings</span>
+				{#each data.couriers as courier}
+					<button class="btn-secondary btn-sm" onclick={() => bookSelected(courier.id)}>Book {courier.name}</button>
+				{/each}
+				{#if data.couriers.length === 0}
+					<span class="text-xs text-muted-foreground">No courier assigned to this store — set one up in Admin → Couriers</span>
 				{/if}
 			</div>
 		</div>
