@@ -15,7 +15,7 @@
 <div class="p-3 sm:p-6 max-w-2xl">
 	<div class="mb-6">
 		<div class="flex items-center gap-3">
-			<a href="/admin/couriers" class="btn-secondary btn-icon shrink-0" title="Back to Couriers">
+			<a href="/admin/couriers/{data.courier.id}" class="btn-secondary btn-icon shrink-0" title="Back to {data.courier.name}">
 				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
 				</svg>
@@ -84,17 +84,6 @@
 			</form>
 		</div>
 	</div>
-
-	<!-- Store assignment link -->
-	<a href="/admin/couriers/{data.courier.id}/stores" class="card mb-6 flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
-		<div>
-			<div class="font-semibold text-sm text-foreground">Assigned Stores</div>
-			<div class="text-xs text-muted-foreground mt-0.5">{data.storeCount} store{data.storeCount !== 1 ? 's' : ''} assigned</div>
-		</div>
-		<svg class="size-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-			<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-		</svg>
-	</a>
 
 	<!-- Danger zone -->
 	<div class="card border-destructive/30">

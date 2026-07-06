@@ -113,7 +113,7 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 	const [result, badgeCounts, couriers] = await Promise.all([
 		listOrders(client, { first: isTagFiltered ? 60 : 30, after: cursor, query: shopifyQuery || undefined }),
 		getBadgeCounts(client),
-		getCourierAvailability()
+		getStoreCouriers(params.storeId)
 	]);
 
 	let orders = result.nodes;

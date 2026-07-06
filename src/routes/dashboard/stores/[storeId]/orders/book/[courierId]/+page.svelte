@@ -28,6 +28,18 @@
 		<div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive mb-6">{form.error}</div>
 	{/if}
 
+	{#if data.cityWarnings.length > 0}
+		<div class="rounded-md bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 mb-6">
+			<p class="font-medium mb-1">City not in {data.courierLabel}'s delivery list:</p>
+			<ul class="list-disc list-inside space-y-0.5">
+				{#each data.cityWarnings as w}
+					<li>{w.orderName} — "{w.city}"</li>
+				{/each}
+			</ul>
+			<p class="text-xs text-amber-700 mt-1">Booking may still work, but double-check the address before proceeding.</p>
+		</div>
+	{/if}
+
 	<div class="card mb-5">
 		<div class="divide-y divide-border">
 			{#each data.orders as order}

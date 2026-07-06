@@ -1,7 +1,7 @@
 import { fail, redirect, error } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { couriers, courierStoreAccess } from '$lib/server/db/schema';
+import { couriers } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { encrypt } from '$lib/server/crypto';
 import { logAudit } from '$lib/server/audit';
@@ -10,14 +10,8 @@ export const load: PageServerLoad = async ({ params }) => {
 	const courier = await db.query.couriers.findFirst({ where: eq(couriers.id, params.id) });
 	if (!courier) throw error(404, 'Courier not found');
 
-	const access = await db
-		.select({ storeId: courierStoreAccess.storeId })
-		.from(courierStoreAccess)
-		.where(eq(courierStoreAccess.courierId, params.id));
-
 	return {
-		courier: { ...courier, apiKey: undefined, hasApiKey: !!courier.apiKey },
-		storeCount: access.length
+		courier: { ...courier, apiKey: undefined, hasApiKey: !!courier.apiKey }
 	};
 };
 

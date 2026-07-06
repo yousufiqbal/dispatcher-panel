@@ -12,6 +12,7 @@ export const load: LayoutServerLoad = async ({ locals, params }) => {
 		.select({
 			storeId: dispatcherStoreAccess.storeId,
 			name: stores.name,
+			iconUrl: stores.iconUrl,
 			shopifyDomain: stores.shopifyDomain,
 			apiAccessToken: stores.apiAccessToken,
 			isActive: stores.isActive
@@ -35,6 +36,7 @@ export const load: LayoutServerLoad = async ({ locals, params }) => {
 		currentStore: {
 			id: store.storeId,
 			name: store.name,
+			logoUrl: store.iconUrl,
 			shopifyDomain: store.shopifyDomain,
 			apiAccessToken: store.apiAccessToken // encrypted, will be decrypted in client factory
 		}

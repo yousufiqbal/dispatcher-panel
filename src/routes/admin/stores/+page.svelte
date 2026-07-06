@@ -36,7 +36,7 @@
 		<div class="card">
 			<div class="divide-y divide-border">
 				{#each data.stores as store}
-					<div class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors duration-100">
+					<a href="/admin/stores/{store.id}" class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors duration-100">
 						<div class="flex items-center gap-4">
 							<div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
 								{store.name[0].toUpperCase()}
@@ -55,9 +55,11 @@
 						</div>
 						<div class="flex items-center gap-3">
 							<span class="text-xs text-muted-foreground hidden sm:block">Added {formatDateShort(store.createdAt.toISOString())}</span>
-							<a href="/admin/stores/{store.id}" class="btn-secondary btn-sm">Edit</a>
+							<svg class="size-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+							</svg>
 						</div>
-					</div>
+					</a>
 				{/each}
 			</div>
 		</div>

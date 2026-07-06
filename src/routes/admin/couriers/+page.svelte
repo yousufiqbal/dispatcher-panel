@@ -35,7 +35,7 @@
 		<div class="card">
 			<div class="divide-y divide-border">
 				{#each data.couriers as c}
-					<div class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
+					<a href="/admin/couriers/{c.id}" class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
 						<div class="flex items-center gap-4">
 							<div class="size-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
 								{c.name[0].toUpperCase()}
@@ -61,8 +61,10 @@
 								{/if}
 							</div>
 						</div>
-						<a href="/admin/couriers/{c.id}" class="btn-secondary btn-sm">Edit</a>
-					</div>
+						<svg class="size-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+							<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+						</svg>
+					</a>
 				{/each}
 			</div>
 		</div>

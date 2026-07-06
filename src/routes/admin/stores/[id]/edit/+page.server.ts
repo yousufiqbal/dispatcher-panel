@@ -76,7 +76,7 @@ export const actions: Actions = {
 			}
 		}
 
-		throw redirect(303, '/admin/stores');
+		throw redirect(303, `/admin/stores/${params.id}`);
 	},
 
 	delete: async ({ params, locals }) => {
