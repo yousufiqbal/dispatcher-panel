@@ -9,12 +9,17 @@ function toShopifyCustomerId(id: string): string {
 	return id.startsWith('gid://') ? id : `gid://shopify/Customer/${id}`;
 }
 
-export const load: PageServerLoad = async ({ parent, params }) => {
+export const load: PageServerLoad = async ({ parent, params, locals }) => {
 	const { currentStore } = await parent();
 	const client = getShopifyClient(currentStore);
 
 	try {
 		const customer = await getCustomer(client, toShopifyCustomerId(params.customerId));
+		if (locals.session) {
+			await logAudit(locals.session.userId, 'dispatcher', 'customer.view', {
+				targetType: 'customer', targetId: params.customerId, storeId: params.storeId
+			});
+		}
 		return { customer };
 	} catch {
 		throw error(404, 'Customer not found');

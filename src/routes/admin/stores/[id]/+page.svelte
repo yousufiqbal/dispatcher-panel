@@ -17,15 +17,16 @@
 	<title>Edit Store — {data.store.name}</title>
 </svelte:head>
 
-<div class="p-8 max-w-2xl">
+<div class="p-3 sm:p-6 max-w-2xl">
 	<div class="mb-6">
-		<a href="/admin/stores" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-4 w-fit">
-			<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-			</svg>
-			Back to Stores
-		</a>
-		<h1 class="text-2xl font-bold">Edit Store</h1>
+		<div class="flex items-center gap-3">
+			<a href="/admin/stores" class="btn-secondary btn-icon shrink-0" title="Back to Stores">
+				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+				</svg>
+			</a>
+			<h1 class="text-2xl font-bold">Edit Store</h1>
+		</div>
 		<p class="text-sm text-muted-foreground mt-1">{data.store.shopifyDomain}</p>
 	</div>
 

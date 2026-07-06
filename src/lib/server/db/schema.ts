@@ -80,6 +80,43 @@ export const sessions = sqliteTable('sessions', {
 	userAgent: text('user_agent')
 });
 
+export const courierSettings = sqliteTable('courier_settings', {
+	courier: text('courier', { enum: ['postex', 'dex'] }).primaryKey(),
+	enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+	apiKey: text('api_key'),
+	defaultWeight: text('default_weight'),
+	defaultFragile: integer('default_fragile', { mode: 'boolean' }).notNull().default(false),
+	defaultNote: text('default_note'),
+	updatedAt: integer('updated_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
+export const courierBookings = sqliteTable('courier_bookings', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	storeId: text('store_id')
+		.notNull()
+		.references(() => stores.id, { onDelete: 'cascade' }),
+	orderId: text('order_id').notNull(),
+	orderName: text('order_name').notNull(),
+	courier: text('courier', { enum: ['postex', 'dex'] }).notNull(),
+	trackingId: text('tracking_id').notNull(),
+	weight: text('weight'),
+	codAmount: text('cod_amount'),
+	fragile: integer('fragile', { mode: 'boolean' }).notNull().default(false),
+	note: text('note'),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
+export const activityLogSettings = sqliteTable('activity_log_settings', {
+	action: text('action').primaryKey(),
+	enabled: integer('enabled', { mode: 'boolean' }).notNull()
+});
+
 export const auditLog = sqliteTable('audit_log', {
 	id: text('id')
 		.primaryKey()

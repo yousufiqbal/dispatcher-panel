@@ -9,7 +9,7 @@
 	<title>Stores — Admin</title>
 </svelte:head>
 
-<div class="p-8">
+<div class="p-3 sm:p-6">
 	<div class="flex items-center justify-between mb-6">
 		<div>
 			<h1 class="text-2xl font-bold">Stores</h1>

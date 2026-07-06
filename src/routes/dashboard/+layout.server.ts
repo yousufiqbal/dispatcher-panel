@@ -3,6 +3,8 @@ import type { LayoutServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { dispatcherStoreAccess, stores, dispatchers } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { getCachedPendingCount } from '$lib/server/pending-count-cache';
+import { getCachedShopLogo } from '$lib/server/shop-logo-cache';
 
 export const load: LayoutServerLoad = async ({ locals }) => {
 	const session = locals.session;
@@ -16,6 +18,7 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 			storeId: dispatcherStoreAccess.storeId,
 			name: stores.name,
 			shopifyDomain: stores.shopifyDomain,
+			apiAccessToken: stores.apiAccessToken,
 			isActive: stores.isActive
 		})
 		.from(dispatcherStoreAccess)
@@ -27,13 +30,21 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 			)
 		);
 
+	// Cached, so switching/reloading pages doesn't hammer Shopify.
+	const [pendingCounts, logoUrls] = await Promise.all([
+		Promise.all(access.map((a) => getCachedPendingCount(a.storeId, a).catch(() => 0))),
+		Promise.all(access.map((a) => getCachedShopLogo(a.storeId, a).catch(() => null)))
+	]);
+
 	const dispatcherUser = session.user as { role: 'dispatcher'; id: string; email: string; name: string; isActive: boolean };
 	return {
 		dispatcher: dispatcherUser,
-		assignedStores: access.map((a) => ({
+		assignedStores: access.map((a, i) => ({
 			id: a.storeId,
 			name: a.name,
-			shopifyDomain: a.shopifyDomain
+			shopifyDomain: a.shopifyDomain,
+			pendingCount: pendingCounts[i],
+			logoUrl: logoUrls[i]
 		}))
 	};
 };

@@ -8,7 +8,7 @@ function toDraftOrderId(id: string): string {
 	return id.startsWith('gid://') ? id : `gid://shopify/DraftOrder/${id}`;
 }
 
-export const load: PageServerLoad = async ({ parent, params }) => {
+export const load: PageServerLoad = async ({ parent, params, locals }) => {
 	const { currentStore } = await parent();
 	const client = getShopifyClient(currentStore);
 	const gql = `
@@ -30,6 +30,11 @@ export const load: PageServerLoad = async ({ parent, params }) => {
 	try {
 		const data = await shopifyRequest<{ draftOrder: any }>(client, gql, { id: toDraftOrderId(params.draftId) });
 		if (!data.draftOrder) throw error(404, 'Draft order not found');
+		if (locals.session) {
+			await logAudit(locals.session.userId, 'dispatcher', 'draftOrder.view', {
+				targetType: 'draftOrder', targetId: params.draftId, storeId: params.storeId
+			});
+		}
 		return { draft: data.draftOrder };
 	} catch (e) {
 		throw error(404, 'Draft order not found');

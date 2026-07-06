@@ -30,10 +30,16 @@
 		sp.set('after', data.pageInfo.endCursor);
 		goto(`?${sp}`, { keepFocus: true });
 	}
+
+	function statusBadge(status: string) {
+		if (status === 'ACTIVE') return 'bg-green-100 text-green-800';
+		if (status === 'DRAFT') return 'bg-zinc-100 text-zinc-700';
+		return 'bg-amber-100 text-amber-800';
+	}
 </script>
 
 <svelte:head>
-	<title>Customers — Dispatcher Panel</title>
+	<title>Products — Dispatcher Panel</title>
 </svelte:head>
 
 <div class="p-3 sm:p-6">
@@ -45,25 +51,19 @@
 			<input
 				type="search"
 				class="input pl-9"
-				placeholder="Search Customers"
+				placeholder="Search {data.totalCount} Products"
 				bind:value={searchInput}
 				oninput={onSearch}
 			/>
 		</div>
-		<a href="/dashboard/stores/{storeId}/customers/new" class="btn-primary shrink-0 size-9 p-0 sm:size-auto sm:px-4 sm:py-2">
-			<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-			</svg>
-			<span class="hidden sm:inline">New Customer</span>
-		</a>
 	</div>
 
-	{#if data.customers.length === 0}
+	{#if data.products.length === 0}
 		<div class="card p-12 text-center">
 			<svg class="size-12 mx-auto text-muted-foreground/30 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
 			</svg>
-			<h3 class="font-semibold text-foreground mb-1">No customers found</h3>
+			<h3 class="font-semibold text-foreground mb-1">No products found</h3>
 			{#if searchInput}
 				<p class="text-sm text-muted-foreground">No results for "{searchInput}"</p>
 			{/if}
@@ -71,19 +71,30 @@
 	{:else}
 		<div class="card overflow-hidden">
 			<div class="divide-y divide-border">
-				{#each data.customers as customer}
+				{#each data.products as product}
 					<a
-						href="/dashboard/stores/{storeId}/customers/{customer.id.split('/').pop()}"
-						class="flex items-center gap-4 px-6 py-4 hover:bg-muted/30 transition-colors"
+						href="/dashboard/stores/{storeId}/products/{product.id.split('/').pop()}"
+						class="flex items-center gap-4 px-4 sm:px-6 py-4 hover:bg-muted/30 transition-colors"
 					>
-						<div class="size-9 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm shrink-0">
-							{customer.displayName[0]?.toUpperCase() ?? '?'}
-						</div>
+						{#if product.featuredImage}
+							<img src={product.featuredImage.url} alt={product.featuredImage.altText ?? ''} class="size-12 rounded-md object-cover border border-border shrink-0" />
+						{:else}
+							<div class="size-12 rounded-md bg-muted flex items-center justify-center shrink-0 border border-border">
+								<svg class="size-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5M4.5 3h15A1.5 1.5 0 0121 4.5v15a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 19.5v-15A1.5 1.5 0 014.5 3z" />
+								</svg>
+							</div>
+						{/if}
 						<div class="flex-1 min-w-0">
-							<div class="font-medium text-sm text-foreground">{customer.displayName}</div>
-							<div class="text-xs text-muted-foreground">{customer.email ?? ''}{customer.email && customer.phone ? ' · ' : ''}{customer.phone ?? ''}</div>
+							<div class="font-medium text-sm text-foreground truncate">{product.title}</div>
+							<div class="text-xs text-muted-foreground">
+								{product.variants.nodes.length} variant{product.variants.nodes.length !== 1 ? 's' : ''}
+								· {product.totalInventory} in stock
+							</div>
 						</div>
-						<div class="text-xs text-muted-foreground">{customer.numberOfOrders} order{customer.numberOfOrders !== 1 ? 's' : ''}</div>
+						<span class="text-xs font-semibold px-2 py-0.5 rounded-full shrink-0 {statusBadge(product.status)}">
+							{product.status.charAt(0) + product.status.slice(1).toLowerCase()}
+						</span>
 						<svg class="size-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 							<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
 						</svg>

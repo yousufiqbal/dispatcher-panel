@@ -1,10 +1,26 @@
-import type { PageServerLoad } from './$types';
+import { fail, redirect } from '@sveltejs/kit';
+import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { listOrders, CONFIRMED_TAG } from '$lib/server/shopify/orders';
+import { listOrders, confirmOrder, CONFIRMED_TAG } from '$lib/server/shopify/orders';
+import { db } from '$lib/server/db';
+import { getAuthorizedStore } from '$lib/server/store-access';
+import { logAudit } from '$lib/server/audit';
 
+async function getCourierAvailability() {
+	const rows = await db.query.courierSettings.findMany();
+	return {
+		postex: rows.find((r) => r.courier === 'postex')?.enabled ?? false,
+		dex: rows.find((r) => r.courier === 'dex')?.enabled ?? false
+	};
+}
+
+// `pending`/`confirmed` are NOT filtered by Shopify's tag: search (that's index-backed
+// and lags a few seconds behind tag mutations — an order just confirmed would still
+// show as pending). Instead we fetch all open+unfulfilled orders and split them by
+// their live `tags` field, which reflects the tag mutation instantly.
 const STATUS_QUERIES: Record<string, string> = {
-	pending: `fulfillment_status:unfulfilled status:open -tag:${CONFIRMED_TAG}`,
-	confirmed: `fulfillment_status:unfulfilled status:open tag:${CONFIRMED_TAG}`,
+	pending: 'fulfillment_status:unfulfilled status:open',
+	confirmed: 'fulfillment_status:unfulfilled status:open',
 	fulfilled: 'fulfillment_status:shipped',
 	cancelled: 'status:cancelled',
 	returned: 'financial_status:refunded',
@@ -44,7 +60,14 @@ async function listDraftOrders(client: ReturnType<typeof getShopifyClient>, { fi
 	return data.draftOrders;
 }
 
-export const load: PageServerLoad = async ({ parent, url }) => {
+async function getBadgeCounts(client: ReturnType<typeof getShopifyClient>) {
+	const openUnfulfilled = await listOrders(client, { first: 100, query: STATUS_QUERIES.pending });
+	const pendingCount = openUnfulfilled.nodes.filter((o) => !o.tags.includes(CONFIRMED_TAG)).length;
+	const confirmedCount = openUnfulfilled.nodes.filter((o) => o.tags.includes(CONFIRMED_TAG)).length;
+	return { pendingCount, confirmedCount };
+}
+
+export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 	const { currentStore } = await parent();
 	const client = getShopifyClient(currentStore);
 
@@ -52,12 +75,16 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 	const status = url.searchParams.get('status') ?? 'all';
 	const cursor = url.searchParams.get('after') ?? undefined;
 
+	if (locals.session) {
+		await logAudit(locals.session.userId, 'dispatcher', 'orders.list.view', { storeId: params.storeId, metadata: { status } });
+	}
+
 	if (status === 'drafts') {
 		const query = searchQ ? `name:*${searchQ}* OR customer_name:*${searchQ}*` : undefined;
-		const [result, pendingResult, confirmedResult] = await Promise.all([
+		const [result, badgeCounts, couriers] = await Promise.all([
 			listDraftOrders(client, { first: 30, after: cursor, query }),
-			listOrders(client, { first: 50, query: STATUS_QUERIES.pending }),
-			listOrders(client, { first: 50, query: STATUS_QUERIES.confirmed })
+			getBadgeCounts(client),
+			getCourierAvailability()
 		]);
 		return {
 			orders: [],
@@ -65,10 +92,12 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 			pageInfo: result.pageInfo,
 			searchQ,
 			status,
-			pendingCount: pendingResult.nodes.length,
-			confirmedCount: confirmedResult.nodes.length
+			...badgeCounts,
+			couriers
 		};
 	}
+
+	const isTagFiltered = status === 'pending' || status === 'confirmed';
 
 	let shopifyQuery = STATUS_QUERIES[status] ?? '';
 	if (searchQ) {
@@ -77,19 +106,46 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 		shopifyQuery = shopifyQuery ? `${shopifyQuery} AND ${searchPart}` : searchPart;
 	}
 
-	const [result, pendingResult, confirmedResult] = await Promise.all([
-		listOrders(client, { first: 30, after: cursor, query: shopifyQuery || undefined }),
-		listOrders(client, { first: 50, query: STATUS_QUERIES.pending || undefined }),
-		listOrders(client, { first: 50, query: STATUS_QUERIES.confirmed || undefined })
+	// Fetch extra when tag-filtering client-side, since some fetched orders get
+	// dropped by the tag split below (pagination becomes approximate as a result).
+	const [result, badgeCounts, couriers] = await Promise.all([
+		listOrders(client, { first: isTagFiltered ? 60 : 30, after: cursor, query: shopifyQuery || undefined }),
+		getBadgeCounts(client),
+		getCourierAvailability()
 	]);
 
+	let orders = result.nodes;
+	if (status === 'pending') orders = orders.filter((o) => !o.tags.includes(CONFIRMED_TAG));
+	else if (status === 'confirmed') orders = orders.filter((o) => o.tags.includes(CONFIRMED_TAG));
+
 	return {
-		orders: result.nodes,
+		orders,
 		drafts: [],
 		pageInfo: result.pageInfo,
 		searchQ,
 		status,
-		pendingCount: pendingResult.nodes.length,
-		confirmedCount: confirmedResult.nodes.length
+		...badgeCounts,
+		couriers
 	};
+};
+
+export const actions: Actions = {
+	bulkConfirm: async ({ request, params, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const fd = await request.formData();
+		const ids = (fd.get('ids') as string).split(',').filter(Boolean);
+
+		try {
+			await Promise.all(ids.map((id) => confirmOrder(client, id.startsWith('gid://') ? id : `gid://shopify/Order/${id}`)));
+			if (locals.session) {
+				await logAudit(locals.session.userId, 'dispatcher', 'order.bulkConfirm', {
+					targetType: 'order', storeId: params.storeId, metadata: { count: ids.length }
+				});
+			}
+		} catch (e) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Failed to confirm orders' });
+		}
+		throw redirect(303, `/dashboard/stores/${params.storeId}/orders?status=pending`);
+	}
 };

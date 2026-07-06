@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
+	import { enhance } from '$app/forms';
 	import { page, navigating } from '$app/stores';
+	import { addToast } from '$lib/toast.svelte';
+	import Checkbox from '$lib/components/Checkbox.svelte';
 	import { formatCurrency, formatDate, formatRelativeDate } from '$lib/utils';
 	import type { PageData } from './$types';
 
@@ -8,6 +11,30 @@
 
 	let searchInput = $state(data.searchQ ?? '');
 	let searchTimeout: ReturnType<typeof setTimeout>;
+
+	let selectedIds = $state<Set<string>>(new Set());
+	let copiedPhone = $state<string | null>(null);
+	let refreshing = $state(false);
+
+	function toggleSelect(id: string) {
+		const next = new Set(selectedIds);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		selectedIds = next;
+	}
+
+	function toggleSelectAll(ids: string[]) {
+		selectedIds = selectedIds.size === ids.length ? new Set() : new Set(ids);
+	}
+
+	function bookSelected(courier: 'postex' | 'dex') {
+		const ids = [...selectedIds].map((gid) => gid.split('/').pop()).join(',');
+		goto(`/dashboard/stores/${storeId}/orders/book/${courier}?ids=${ids}`);
+	}
+
+	const selectableStatuses = ['pending', 'confirmed'];
+	let showBulkConfirmDialog = $state(false);
+	let bulkConfirming = $state(false);
 
 	const tabs = [
 		{ key: 'all', label: 'All' },
@@ -44,7 +71,8 @@
 		// Reset pagination on filter/search change
 		sp.delete('after');
 		sp.delete('page');
-		goto(`?${sp}`);
+		selectedIds = new Set();
+		goto(`?${sp}`, { keepFocus: true });
 	}
 
 	function onSearch() {
@@ -77,16 +105,24 @@
 		}
 	});
 
+	let loadingMore = $state(false);
+
+	$effect(() => {
+		data;
+		loadingMore = false;
+	});
+
 	function goToPage(n: number) {
 		const sp = new URLSearchParams($page.url.searchParams);
 		sp.set('page', String(n));
 		const c = cursors[n];
 		if (c) sp.set('after', c);
 		else sp.delete('after');
-		goto(`?${sp}`);
+		goto(`?${sp}`, { keepFocus: true });
 	}
 
 	function nextPage() {
+		loadingMore = true;
 		const next = currentPage + 1;
 		const updated = { ...cursors, [next]: data.pageInfo.endCursor };
 		cursors = updated;
@@ -122,7 +158,16 @@
 					{n}
 				</button>
 			{/each}
-			<button class="btn-secondary btn-sm" disabled={!data.pageInfo.hasNextPage} onclick={nextPage}>→</button>
+			<button class="btn-secondary btn-sm" disabled={!data.pageInfo.hasNextPage || loadingMore} onclick={nextPage}>
+				{#if loadingMore}
+					<svg class="size-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+					</svg>
+				{:else}
+					→
+				{/if}
+			</button>
 		</div>
 	</div>
 {/snippet}
@@ -147,18 +192,19 @@
 			<input
 				type="search"
 				class="input pl-9"
-				placeholder="Order #, name, phone…"
+				placeholder="Search Orders"
 				bind:value={searchInput}
 				oninput={onSearch}
 			/>
 		</div>
 		<div class="flex items-center gap-2 shrink-0">
 			<button
-				onclick={() => invalidateAll()}
+				onclick={async () => { refreshing = true; await invalidateAll(); refreshing = false; }}
 				class="btn-secondary btn-icon"
 				title="Refresh orders"
+				disabled={refreshing}
 			>
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<svg class="size-4 {refreshing ? 'animate-spin' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
 				</svg>
 			</button>
@@ -198,6 +244,30 @@
 			</button>
 		{/each}
 	</div>
+
+	{#if data.status === 'pending' && selectedIds.size > 0}
+		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
+			<span class="text-sm font-medium">{selectedIds.size} selected</span>
+			<button class="btn-primary btn-sm" onclick={() => showBulkConfirmDialog = true}>Confirm Selected</button>
+		</div>
+	{/if}
+
+	{#if data.status === 'confirmed' && selectedIds.size > 0}
+		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
+			<span class="text-sm font-medium">{selectedIds.size} selected</span>
+			<div class="flex items-center gap-2">
+				{#if data.couriers.postex}
+					<button class="btn-secondary btn-sm" onclick={() => bookSelected('postex')}>Book PostEx</button>
+				{/if}
+				{#if data.couriers.dex}
+					<button class="btn-secondary btn-sm" onclick={() => bookSelected('dex')}>Book DEX</button>
+				{/if}
+				{#if !data.couriers.postex && !data.couriers.dex}
+					<span class="text-xs text-muted-foreground">No courier enabled — set one up in Admin Settings</span>
+				{/if}
+			</div>
+		</div>
+	{/if}
 
 	<div class="transition-opacity duration-150 {$navigating ? 'opacity-40 pointer-events-none' : ''}">
 	<!-- Drafts table -->
@@ -308,6 +378,14 @@
 				<table class="w-full text-sm">
 					<thead>
 						<tr class="border-b border-border bg-muted/30">
+							{#if selectableStatuses.includes(data.status)}
+								<th class="px-3 py-2 w-8">
+									<Checkbox
+										checked={data.orders.length > 0 && selectedIds.size === data.orders.length}
+										onCheckedChange={() => toggleSelectAll(data.orders.map((o) => o.id))}
+									/>
+								</th>
+							{/if}
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Order</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Date</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Customer</th>
@@ -325,6 +403,11 @@
 								class="hover:bg-muted/40 transition-colors cursor-pointer"
 								onclick={() => goto(`/dashboard/stores/${storeId}/orders/${order.id.split('/').pop()}`)}
 							>
+								{#if selectableStatuses.includes(data.status)}
+									<td class="px-3 py-1.5" onclick={(e) => e.stopPropagation()}>
+										<Checkbox checked={selectedIds.has(order.id)} onCheckedChange={() => toggleSelect(order.id)} />
+									</td>
+								{/if}
 								<td class="px-3 py-1.5 font-bold text-foreground whitespace-nowrap">{order.name}</td>
 								<td class="px-3 py-1.5 text-foreground/70 whitespace-nowrap">{formatRelativeDate(order.createdAt)}</td>
 								<td class="px-3 py-1.5">
@@ -332,11 +415,22 @@
 								</td>
 								<td class="px-3 py-1.5 text-foreground/70 whitespace-nowrap font-mono text-xs">
 									{#if order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}
-										<a
-											href="tel:{order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}"
-											class="hover:text-primary hover:underline"
-											onclick={(e) => e.stopPropagation()}
-										>{order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}</a>
+										{@const phone = order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone ?? ''}
+										<span class="inline-flex items-center gap-1">
+											<a href="tel:{phone}" class="hover:text-primary hover:underline" onclick={(e) => e.stopPropagation()}>{phone}</a>
+											<button
+												type="button"
+												class="text-muted-foreground hover:text-primary"
+												title="Copy phone number"
+												onclick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(phone); copiedPhone = phone; setTimeout(() => copiedPhone === phone && (copiedPhone = null), 1200); }}
+											>
+												{#if copiedPhone === phone}
+													<svg class="size-3.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+												{:else}
+													<svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+												{/if}
+											</button>
+										</span>
 									{:else}
 										—
 									{/if}
@@ -386,34 +480,49 @@
 		<div class="md:hidden card overflow-hidden">
 			<div class="divide-y divide-border">
 				{#each data.orders as order}
-					<button
-						class="w-full text-left p-4 hover:bg-muted/30 transition-colors active:bg-muted/40"
-						onclick={() => goto(`/dashboard/stores/${storeId}/orders/${order.id.split('/').pop()}`)}
-					>
-						<div class="flex items-start justify-between gap-2 mb-2">
-							<span class="font-bold text-foreground">{order.name}</span>
-							<span class="{getStatusClass(order.displayFinancialStatus, order.displayFulfillmentStatus)} shrink-0">
-								{getStatusLabel(order.displayFinancialStatus, order.displayFulfillmentStatus)}
-							</span>
-						</div>
-						<div class="flex items-end justify-between gap-2">
-							<div>
-								<div class="text-sm text-muted-foreground">{order.customer?.displayName ?? 'Unknown'}</div>
-								{#if order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}<div class="text-xs text-muted-foreground">{order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}</div>{/if}
-								<div class="text-xs text-muted-foreground mt-0.5">
-									{formatDate(order.createdAt)} · {order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)} item{order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0) === 1 ? '' : 's'}
-								</div>
+					<div class="flex items-stretch">
+						{#if selectableStatuses.includes(data.status)}
+							<div class="flex items-center pl-4 pr-1">
+								<Checkbox checked={selectedIds.has(order.id)} onCheckedChange={() => toggleSelect(order.id)} />
 							</div>
-							<span class="font-semibold text-foreground shrink-0">
-								{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
-							</span>
-						</div>
-					</button>
+						{/if}
+						<button
+							class="flex-1 min-w-0 text-left p-4 hover:bg-muted/30 transition-colors active:bg-muted/40"
+							onclick={() => goto(`/dashboard/stores/${storeId}/orders/${order.id.split('/').pop()}`)}
+						>
+							<div class="flex items-start justify-between gap-2 mb-2">
+								<span class="font-bold text-foreground">{order.name}</span>
+								<span class="{getStatusClass(order.displayFinancialStatus, order.displayFulfillmentStatus)} shrink-0">
+									{getStatusLabel(order.displayFinancialStatus, order.displayFulfillmentStatus)}
+								</span>
+							</div>
+							<div class="flex items-end justify-between gap-2">
+								<div>
+									<div class="text-sm text-muted-foreground">{order.customer?.displayName ?? 'Unknown'}</div>
+									{#if order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}<div class="text-xs text-muted-foreground">{order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}</div>{/if}
+									<div class="text-xs text-muted-foreground mt-0.5">
+										{formatDate(order.createdAt)} · {order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)} item{order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0) === 1 ? '' : 's'}
+									</div>
+								</div>
+								<span class="font-semibold text-foreground shrink-0">
+									{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
+								</span>
+							</div>
+						</button>
+					</div>
 				{/each}
 			</div>
 			{#if data.pageInfo.hasNextPage}
 				<div class="p-3 border-t border-border">
-					<button class="btn-secondary w-full" onclick={nextPage}>Load more</button>
+					<button class="btn-secondary w-full inline-flex items-center justify-center gap-2" disabled={loadingMore} onclick={nextPage}>
+						{#if loadingMore}
+							<svg class="size-4 animate-spin" fill="none" viewBox="0 0 24 24">
+								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
+							</svg>
+						{/if}
+						{loadingMore ? 'Loading…' : 'Load more'}
+					</button>
 				</div>
 			{/if}
 		</div>
@@ -421,3 +530,49 @@
 	{/if}
 	</div>
 </div>
+
+<!-- Bulk confirm dialog -->
+{#if showBulkConfirmDialog}
+	<div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+		<div class="card w-full max-w-md shadow-xl">
+			<div class="card-header">
+				<h2 class="text-lg font-semibold">Confirm {selectedIds.size} order{selectedIds.size !== 1 ? 's' : ''}?</h2>
+				<p class="text-sm text-muted-foreground">Marks these orders as confirmed with the customer. They can then be fulfilled.</p>
+			</div>
+			<div class="card-content">
+				<form
+					method="POST"
+					action="?/bulkConfirm"
+					use:enhance={() => {
+						bulkConfirming = true;
+						return async ({ result, update }) => {
+							await update();
+							bulkConfirming = false;
+							showBulkConfirmDialog = false;
+							if (result.type === 'redirect') {
+								selectedIds = new Set();
+								addToast('Orders confirmed');
+							} else {
+								addToast('Failed to confirm orders', 'error');
+							}
+						};
+					}}
+				>
+					<input type="hidden" name="ids" value={[...selectedIds].join(',')} />
+					<div class="flex gap-3">
+						<button type="submit" class="btn-primary" disabled={bulkConfirming}>
+							{#if bulkConfirming}
+								<svg class="size-4 animate-spin" fill="none" viewBox="0 0 24 24">
+									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+								</svg>
+							{/if}
+							{bulkConfirming ? 'Confirming…' : 'Confirm Orders'}
+						</button>
+						<button type="button" class="btn-secondary" disabled={bulkConfirming} onclick={() => showBulkConfirmDialog = false}>Cancel</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
+{/if}

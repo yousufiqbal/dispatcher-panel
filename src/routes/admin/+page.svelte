@@ -9,7 +9,7 @@
 	<title>Admin Overview — Dispatcher Panel</title>
 </svelte:head>
 
-<div class="p-8">
+<div class="p-3 sm:p-6">
 	<div class="mb-8">
 		<h1 class="text-2xl font-bold text-foreground">Overview</h1>
 		<p class="text-muted-foreground text-sm mt-1">System status at a glance</p>
@@ -20,12 +20,10 @@
 		<div class="card p-5">
 			<div class="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-2">Dispatchers</div>
 			<div class="text-3xl font-bold text-foreground">{data.activeDispatcherCount}</div>
-			<div class="text-xs text-muted-foreground mt-1">{data.dispatcherCount} total</div>
 		</div>
 		<div class="card p-5">
 			<div class="text-xs text-muted-foreground font-medium uppercase tracking-wide mb-2">Stores</div>
 			<div class="text-3xl font-bold text-foreground">{data.activeStoreCount}</div>
-			<div class="text-xs text-muted-foreground mt-1">{data.storeCount} total</div>
 		</div>
 	</div>
 

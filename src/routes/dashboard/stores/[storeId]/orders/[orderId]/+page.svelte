@@ -54,17 +54,18 @@
 
 	<!-- Header -->
 	<div class="flex items-start justify-between gap-4 flex-wrap">
-		<div>
-			<a href="/dashboard/stores/{storeId}/orders" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-3 w-fit">
+		<div class="flex items-start gap-3">
+			<a href="/dashboard/stores/{storeId}/orders" class="btn-secondary btn-icon shrink-0" title="Back to Orders">
 				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
-				Orders
 			</a>
-			<div class="flex items-center gap-3 flex-wrap">
-				<h1 class="text-2xl font-bold">{order.name}</h1>
-				<span class="badge-partial">{order.displayFinancialStatus.replace(/_/g,' ')}</span>
-				<span class="{statusClass(order.displayFinancialStatus, order.displayFulfillmentStatus)}">{order.displayFulfillmentStatus.replace(/_/g,' ')}</span>
+			<div>
+				<div class="flex items-center gap-3 flex-wrap">
+					<h1 class="text-2xl font-bold">{order.name}</h1>
+					<span class="badge-partial">{order.displayFinancialStatus.replace(/_/g,' ')}</span>
+					<span class="{statusClass(order.displayFinancialStatus, order.displayFulfillmentStatus)}">{order.displayFulfillmentStatus.replace(/_/g,' ')}</span>
+				</div>
+				<p class="text-sm text-muted-foreground mt-1">{formatDate(order.createdAt)}</p>
 			</div>
-			<p class="text-sm text-muted-foreground mt-1">{formatDate(order.createdAt)}</p>
 		</div>
 
 		{#if !isCancelled}

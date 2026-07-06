@@ -17,14 +17,12 @@
 
 <div class="p-3 sm:p-6">
 	<div class="mb-6">
-		<a href="/dashboard/stores/{storeId}/customers" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-4 w-fit">
-			<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-			</svg>
-			Back to Customers
-		</a>
-
 		<div class="flex items-center gap-4">
+			<a href="/dashboard/stores/{storeId}/customers" class="btn-secondary btn-icon shrink-0" title="Back to Customers">
+				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
+				</svg>
+			</a>
 			<div class="size-14 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xl">
 				{customer.displayName[0]?.toUpperCase() ?? '?'}
 			</div>

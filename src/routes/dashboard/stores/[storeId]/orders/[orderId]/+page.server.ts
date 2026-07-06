@@ -9,16 +9,19 @@ function toShopifyOrderId(orderId: string): string {
 	return orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`;
 }
 
-export const load: PageServerLoad = async ({ parent, params }) => {
+export const load: PageServerLoad = async ({ parent, params, locals }) => {
 	const { currentStore } = await parent();
 	const client = getShopifyClient(currentStore);
 
-	console.log('[orderId param]', params.orderId);
 	try {
 		const order = await getOrder(client, toShopifyOrderId(params.orderId));
+		if (locals.session) {
+			await logAudit(locals.session.userId, 'dispatcher', 'order.view', {
+				targetType: 'order', targetId: params.orderId, storeId: params.storeId
+			});
+		}
 		return { order };
 	} catch (e) {
-		console.error('[getOrder failed]', e);
 		throw error(404, 'Order not found');
 	}
 };
@@ -59,7 +62,7 @@ export const actions: Actions = {
 		} catch (e: unknown) {
 			return fail(400, { error: e instanceof Error ? e.message : 'Failed to confirm order' });
 		}
-		throw redirect(303, `/dashboard/stores/${params.storeId}/orders/${params.orderId}`);
+		throw redirect(303, `/dashboard/stores/${params.storeId}/orders?status=pending`);
 	},
 
 	unconfirm: async ({ params, locals }) => {
