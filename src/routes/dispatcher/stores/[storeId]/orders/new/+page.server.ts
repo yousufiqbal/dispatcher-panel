@@ -2,6 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient } from '$lib/server/shopify/client';
 import { createDraftOrder, completeDraftOrder } from '$lib/server/shopify/draft-orders';
+import { createCustomer } from '$lib/server/shopify/customers';
 import { logAudit } from '$lib/server/audit';
 import { getAuthorizedStore } from '$lib/server/store-access';
 
@@ -13,7 +14,7 @@ export const actions: Actions = {
 		const client = getShopifyClient(store);
 		const fd = await request.formData();
 
-		const customerId = fd.get('customerId') as string | null;
+		let customerId = (fd.get('customerId') as string | null)?.trim() || null;
 		const note = fd.get('note') as string | null;
 		const discountValue = fd.get('discountValue') as string | null;
 		const discountType = fd.get('discountType') as 'PERCENTAGE' | 'FIXED_AMOUNT';
@@ -50,12 +51,43 @@ export const actions: Actions = {
 				}
 			: undefined;
 
+		// "New customer" mode — create the customer first, reusing the shipping
+		// address as their default address when one was entered.
+		const newFirstName = ((fd.get('cust_firstName') as string) ?? '').trim();
+		if (!customerId && newFirstName) {
+			try {
+				customerId = await createCustomer(client, {
+					firstName: newFirstName,
+					lastName: ((fd.get('cust_lastName') as string) ?? '').trim(),
+					email: ((fd.get('cust_email') as string) ?? '').trim() || undefined,
+					phone: ((fd.get('cust_phone') as string) ?? '').trim() || undefined,
+					addresses: shippingAddress
+						? [{
+								address1: shippingAddress.address1,
+								city: shippingAddress.city,
+								province: shippingAddress.province,
+								country: shippingAddress.country,
+								zip: shippingAddress.zip
+							}]
+						: undefined
+				});
+			} catch (e) {
+				return fail(400, { error: `Failed to create customer: ${e instanceof Error ? e.message : 'Unknown error'}` });
+			}
+		}
+
+		let orderId: string;
 		try {
+			const shippingCharge = parseFloat((fd.get('shippingCharge') as string) || '0');
 			const draftOrder = await createDraftOrder(client, {
 				lineItems,
 				customerId: customerId || undefined,
 				shippingAddress,
 				note: note || undefined,
+				shippingLine:
+					shippingCharge > 0
+						? { title: (fd.get('shippingTitle') as string)?.trim() || 'Shipping', price: shippingCharge.toFixed(2) }
+						: undefined,
 				appliedDiscount:
 					discountValue && parseFloat(discountValue) > 0
 						? { value: parseFloat(discountValue), valueType: discountType, title: 'Discount' }
@@ -69,10 +101,10 @@ export const actions: Actions = {
 			}
 
 			const completed = await completeDraftOrder(client, draftOrder.id);
-			throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${encodeURIComponent(completed.orderId)}`);
+			orderId = completed.orderId;
 		} catch (e) {
-			if (e instanceof Response) throw e;
 			return fail(400, { error: e instanceof Error ? e.message : 'Failed to create order' });
 		}
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${orderId.split('/').pop()}`);
 	}
 };

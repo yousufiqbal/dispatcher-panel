@@ -1,8 +1,7 @@
-import { error, fail, redirect, error as svelteError } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient } from '$lib/server/shopify/client';
 import { getOrder, updateOrderShipping } from '$lib/server/shopify/orders';
-import { searchProducts } from '$lib/server/shopify/draft-orders';
 import { orderEditBegin, orderEditSetQuantity, orderEditAddVariant, orderEditAddDiscount, orderEditCommit } from '$lib/server/shopify/order-edit';
 import { getAuthorizedStore } from '$lib/server/store-access';
 import { logAudit } from '$lib/server/audit';
@@ -71,7 +70,7 @@ export const actions: Actions = {
 			}
 
 			const notifyCustomer = fd.get('notifyCustomer') === 'true';
-		await orderEditCommit(client, calcId, notifyCustomer, 'Edited by dispatcher');
+			await orderEditCommit(client, calcId, notifyCustomer, 'Edited by dispatcher');
 
 			if (locals.session) {
 				await logAudit(locals.session.userId, 'dispatcher', 'order.edit', {

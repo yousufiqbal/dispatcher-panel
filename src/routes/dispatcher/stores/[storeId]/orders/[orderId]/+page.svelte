@@ -2,7 +2,8 @@
 	import { enhance } from '$app/forms';
 	import { addToast } from '$lib/toast.svelte';
 	import { page } from '$app/stores';
-	import { formatCurrency, formatDate, shopifyIdToNumber } from '$lib/utils';
+	import { formatCurrency, formatDate } from '$lib/utils';
+	import { deliveryPill } from '$lib/delivery-status';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -10,6 +11,7 @@
 	let lightboxUrl = $state<string | null>(null);
 	let lightboxAlt = $state('');
 	let showMoreMenu = $state(false);
+	let showCourierMenu = $state(false);
 	let showCancelDialog = $state(false);
 	let showConfirmDialog = $state(false);
 	let showUnconfirmDialog = $state(false);
@@ -18,6 +20,7 @@
 	let showInvoiceDialog = $state(false);
 	let showMarkPaidDialog = $state(false);
 	let showDuplicateDialog = $state(false);
+	let showUnbookDialog = $state(false);
 	let editShipping = $state(false);
 	let submitting = $state<string | null>(null);
 
@@ -28,6 +31,13 @@
 		order.displayFinancialStatus === 'VOIDED' || order.displayFinancialStatus === 'REFUNDED'
 	);
 	const isFulfilled = $derived(order.displayFulfillmentStatus === 'FULFILLED');
+	// Shopify's fulfillment displayStatus — same as the admin's "Delivery status" column.
+	const delivery = $derived(
+		deliveryPill(
+			order.fulfillments.find((f) => f.displayStatus)?.displayStatus,
+			!!data.booking || order.fulfillments.some((f) => f.trackingInfo.some((t) => t.number))
+		)
+	);
 	const isConfirmed = $derived(order.tags.includes('Confirmed'));
 	const customerPhone = $derived(order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone);
 
@@ -44,6 +54,94 @@
 		<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
 		<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
 	</svg>
+{/snippet}
+
+{#snippet shippingCard()}
+	<div class="card">
+		<div class="px-5 py-4 border-b border-border flex items-center justify-between">
+			<h2 class="font-semibold text-sm">Shipping Address</h2>
+			{#if order.shippingAddress && !isCancelled}
+				<button class="btn-ghost btn-sm text-xs" onclick={() => editShipping = !editShipping}>
+					{editShipping ? 'Cancel' : 'Edit'}
+				</button>
+			{/if}
+		</div>
+		<div class="px-5 py-4">
+			{#if editShipping && order.shippingAddress}
+				<form method="POST" action="?/updateShipping" use:enhance={() => { submitting = 'shipping'; return async ({ result, update }) => {
+					await update();
+					submitting = null;
+					if (result.type === 'redirect' || result.type === 'success') {
+						addToast('Shipping address updated');
+						editShipping = false;
+					} else {
+						addToast('Failed to update shipping address', 'error');
+					}
+				}; }} class="space-y-3">
+					<div class="grid grid-cols-2 gap-2">
+						<div class="space-y-1">
+							<label class="label text-xs">First Name</label>
+							<input name="firstName" class="input h-8 text-xs" value={order.shippingAddress.name.split(' ')[0]} required />
+						</div>
+						<div class="space-y-1">
+							<label class="label text-xs">Last Name</label>
+							<input name="lastName" class="input h-8 text-xs" value={order.shippingAddress.name.split(' ').slice(1).join(' ')} required />
+						</div>
+					</div>
+					<input name="address1" class="input h-8 text-xs" placeholder="Address" value={order.shippingAddress.address1} required />
+					<div class="grid grid-cols-2 gap-2">
+						<input name="city" class="input h-8 text-xs" placeholder="City" value={order.shippingAddress.city} required />
+						<input name="zip" class="input h-8 text-xs" placeholder="ZIP" value={order.shippingAddress.zip} />
+					</div>
+					<div class="grid grid-cols-2 gap-2">
+						<input name="province" class="input h-8 text-xs" placeholder="Province" value={order.shippingAddress.province} />
+						<input name="country" class="input h-8 text-xs" placeholder="Country" value={order.shippingAddress.country} required />
+					</div>
+					<input name="phone" class="input h-8 text-xs" placeholder="Phone" value={order.shippingAddress.phone ?? ''} />
+					<div class="flex gap-2">
+						<button type="submit" class="btn-primary btn-sm" disabled={submitting === 'shipping'}>
+							{#if submitting === 'shipping'}{@render spinner()}{/if}Save
+						</button>
+						<button type="button" class="btn-secondary btn-sm" disabled={submitting === 'shipping'} onclick={() => editShipping = false}>Cancel</button>
+					</div>
+				</form>
+			{:else if order.shippingAddress}
+				<address class="not-italic text-sm text-foreground space-y-0.5">
+					<div class="font-medium">{order.shippingAddress.name}</div>
+					<div class="text-muted-foreground">{order.shippingAddress.address1}</div>
+					<div class="text-muted-foreground">{order.shippingAddress.city}, {order.shippingAddress.province} {order.shippingAddress.zip}</div>
+					<div class="text-muted-foreground">{order.shippingAddress.country}</div>
+					{#if order.shippingAddress.phone}
+						<div class="text-muted-foreground">{order.shippingAddress.phone}</div>
+					{/if}
+				</address>
+			{:else}
+				<p class="text-sm text-muted-foreground">No shipping address</p>
+			{/if}
+		</div>
+	</div>
+{/snippet}
+
+{#snippet customerCard()}
+	<div class="card">
+		<div class="px-5 py-4 border-b border-border">
+			<h2 class="font-semibold text-sm">Customer</h2>
+		</div>
+		<div class="px-5 py-4 space-y-2 text-sm">
+			{#if order.customer}
+				<div class="font-medium text-foreground">{order.customer.displayName}</div>
+				{#if order.customer.email}
+					<div class="text-muted-foreground">{order.customer.email}</div>
+				{/if}
+				{#if order.customer.phone}
+					<div class="text-muted-foreground">{order.customer.phone}</div>
+				{/if}
+				<a href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}" class="text-primary text-xs hover:underline block mt-1">View profile →</a>
+			{:else}
+				<span class="text-muted-foreground">Guest order</span>
+			{/if}
+		</div>
+	</div>
 {/snippet}
 
 <svelte:head>
@@ -78,13 +176,45 @@
 					</a>
 				{/if}
 				{#if !isFulfilled}
-				<a href="/dispatcher/stores/{storeId}/orders/{$page.params.orderId}/edit" class="btn-secondary">Edit</a>
-			{/if}
+					<a href="/dispatcher/stores/{storeId}/orders/{$page.params.orderId}/edit" class="btn-secondary">Edit</a>
+				{/if}
 				{#if !isFulfilled && !isConfirmed}
 					<button class="btn-primary" onclick={() => showConfirmDialog = true}>Confirm Order</button>
 				{/if}
 				{#if !isFulfilled && isConfirmed}
-					<button class="btn-primary" onclick={() => showFulfillDialog = true}>Fulfill Order</button>
+					{#if data.couriers.length === 0}
+						<span class="text-xs text-muted-foreground self-center">No courier assigned to this store</span>
+					{:else if data.couriers.length === 1}
+						<a
+							href="/dispatcher/stores/{storeId}/orders/book/{data.couriers[0].id}?ids={$page.params.orderId}"
+							class="btn-primary"
+						>
+							Book & Fulfill Order
+						</a>
+					{:else}
+						<div class="relative">
+							<button class="btn-primary" onclick={() => showCourierMenu = !showCourierMenu}>
+								Book & Fulfill Order
+								<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+								</svg>
+							</button>
+							{#if showCourierMenu}
+								<div
+									class="absolute right-0 top-full mt-1 w-48 bg-card border border-border rounded-lg shadow-lg z-20 py-1"
+									onmouseleave={() => showCourierMenu = false}
+								>
+									{#each data.couriers as c}
+										<a
+											href="/dispatcher/stores/{storeId}/orders/book/{c.id}?ids={$page.params.orderId}"
+											class="block w-full text-left px-4 py-2 text-sm hover:bg-muted transition-colors"
+											onclick={() => showCourierMenu = false}
+										>{c.name}</a>
+									{/each}
+								</div>
+							{/if}
+						</div>
+					{/if}
 				{/if}
 				<div class="relative">
 					<button class="btn-secondary btn-icon" onclick={() => showMoreMenu = !showMoreMenu} title="More actions">
@@ -102,13 +232,25 @@
 							{#if isConfirmed && !isFulfilled}
 								<button
 									class="w-full text-left px-4 py-2 text-sm hover:bg-muted transition-colors"
+									onclick={() => { showMoreMenu = false; showFulfillDialog = true; }}
+								>Fulfill Order</button>
+								<button
+									class="w-full text-left px-4 py-2 text-sm hover:bg-muted transition-colors"
 									onclick={() => { showMoreMenu = false; showUnconfirmDialog = true; }}
 								>Unconfirm Order</button>
 							{/if}
-							<button
-								class="w-full text-left px-4 py-2 text-sm hover:bg-muted transition-colors"
-								onclick={() => { showMoreMenu = false; showRefundDialog = true; }}
-							>Refund</button>
+							{#if isFulfilled}
+								<button
+									class="w-full text-left px-4 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
+									onclick={() => { showMoreMenu = false; showUnbookDialog = true; }}
+								>{data.booking ? 'Unbook & Unfulfill' : 'Unfulfill'}</button>
+							{/if}
+							{#if order.displayFinancialStatus !== 'PENDING'}
+								<button
+									class="w-full text-left px-4 py-2 text-sm hover:bg-muted transition-colors"
+									onclick={() => { showMoreMenu = false; showRefundDialog = true; }}
+								>Refund</button>
+							{/if}
 							<button
 								class="w-full text-left px-4 py-2 text-sm hover:bg-muted transition-colors"
 								onclick={() => { showMoreMenu = false; showDuplicateDialog = true; }}
@@ -137,68 +279,8 @@
 	<div class="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
 
 		<!-- Shipping Address (mobile only — shown first; desktop copy is in the right column below) -->
-		<div class="card lg:hidden">
-			<div class="px-5 py-4 border-b border-border flex items-center justify-between">
-				<h2 class="font-semibold text-sm">Shipping Address</h2>
-				{#if order.shippingAddress && !isCancelled}
-					<button class="btn-ghost btn-sm text-xs" onclick={() => editShipping = !editShipping}>
-						{editShipping ? 'Cancel' : 'Edit'}
-					</button>
-				{/if}
-			</div>
-			<div class="px-5 py-4">
-				{#if editShipping && order.shippingAddress}
-					<form method="POST" action="?/updateShipping" use:enhance={() => { submitting = 'shipping'; return async ({ result, update }) => {
-					await update();
-					submitting = null;
-					if (result.type === 'redirect' || result.type === 'success') {
-						addToast('Shipping address updated');
-						editShipping = false;
-					} else {
-						addToast('Failed to update shipping address', 'error');
-					}
-				}; }} class="space-y-3">
-						<div class="grid grid-cols-2 gap-2">
-							<div class="space-y-1">
-								<label class="label text-xs">First Name</label>
-								<input name="firstName" class="input h-8 text-xs" value={order.shippingAddress.name.split(' ')[0]} required />
-							</div>
-							<div class="space-y-1">
-								<label class="label text-xs">Last Name</label>
-								<input name="lastName" class="input h-8 text-xs" value={order.shippingAddress.name.split(' ').slice(1).join(' ')} required />
-							</div>
-						</div>
-						<input name="address1" class="input h-8 text-xs" placeholder="Address" value={order.shippingAddress.address1} required />
-						<div class="grid grid-cols-2 gap-2">
-							<input name="city" class="input h-8 text-xs" placeholder="City" value={order.shippingAddress.city} required />
-							<input name="zip" class="input h-8 text-xs" placeholder="ZIP" value={order.shippingAddress.zip} />
-						</div>
-						<div class="grid grid-cols-2 gap-2">
-							<input name="province" class="input h-8 text-xs" placeholder="Province" value={order.shippingAddress.province} />
-							<input name="country" class="input h-8 text-xs" placeholder="Country" value={order.shippingAddress.country} required />
-						</div>
-						<input name="phone" class="input h-8 text-xs" placeholder="Phone" value={order.shippingAddress.phone ?? ''} />
-						<div class="flex gap-2">
-							<button type="submit" class="btn-primary btn-sm" disabled={submitting === 'shipping'}>
-								{#if submitting === 'shipping'}{@render spinner()}{/if}Save
-							</button>
-							<button type="button" class="btn-secondary btn-sm" disabled={submitting === 'shipping'} onclick={() => editShipping = false}>Cancel</button>
-						</div>
-					</form>
-				{:else if order.shippingAddress}
-					<address class="not-italic text-sm text-foreground space-y-0.5">
-						<div class="font-medium">{order.shippingAddress.name}</div>
-						<div class="text-muted-foreground">{order.shippingAddress.address1}</div>
-						<div class="text-muted-foreground">{order.shippingAddress.city}, {order.shippingAddress.province} {order.shippingAddress.zip}</div>
-						<div class="text-muted-foreground">{order.shippingAddress.country}</div>
-						{#if order.shippingAddress.phone}
-							<div class="text-muted-foreground">{order.shippingAddress.phone}</div>
-						{/if}
-					</address>
-				{:else}
-					<p class="text-sm text-muted-foreground">No shipping address</p>
-				{/if}
-			</div>
+		<div class="lg:hidden">
+			{@render shippingCard()}
 		</div>
 
 		<!-- LEFT COLUMN -->
@@ -352,111 +434,61 @@
 		</div>
 
 		<!-- Customer (mobile only — desktop copy is in the right column below) -->
-		<div class="card lg:hidden">
-			<div class="px-5 py-4 border-b border-border">
-				<h2 class="font-semibold text-sm">Customer</h2>
-			</div>
-			<div class="px-5 py-4 space-y-2 text-sm">
-				{#if order.customer}
-					<div class="font-medium text-foreground">{order.customer.displayName}</div>
-					{#if order.customer.email}
-						<div class="text-muted-foreground">{order.customer.email}</div>
-					{/if}
-					{#if order.customer.phone}
-						<div class="text-muted-foreground">{order.customer.phone}</div>
-					{/if}
-					<a href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}" class="text-primary text-xs hover:underline block mt-1">View profile →</a>
-				{:else}
-					<span class="text-muted-foreground">Guest order</span>
-				{/if}
-			</div>
+		<div class="lg:hidden">
+			{@render customerCard()}
 		</div>
 
-		<!-- RIGHT COLUMN (desktop only): Shipping above Customer, stacked tight -->
+		<!-- RIGHT COLUMN (desktop only): Tracking (if fulfilled), Shipping, Customer -->
 		<div class="hidden lg:flex lg:col-start-3 flex-col gap-5">
-			<div class="card">
-				<div class="px-5 py-4 border-b border-border flex items-center justify-between">
-					<h2 class="font-semibold text-sm">Shipping Address</h2>
-					{#if order.shippingAddress && !isCancelled}
-						<button class="btn-ghost btn-sm text-xs" onclick={() => editShipping = !editShipping}>
-							{editShipping ? 'Cancel' : 'Edit'}
-						</button>
-					{/if}
-				</div>
-				<div class="px-5 py-4">
-					{#if editShipping && order.shippingAddress}
-						<form method="POST" action="?/updateShipping" use:enhance={() => { submitting = 'shipping'; return async ({ result, update }) => {
-						await update();
-						submitting = null;
-						if (result.type === 'redirect' || result.type === 'success') {
-							addToast('Shipping address updated');
-							editShipping = false;
-						} else {
-							addToast('Failed to update shipping address', 'error');
-						}
-					}; }} class="space-y-3">
-							<div class="grid grid-cols-2 gap-2">
-								<div class="space-y-1">
-									<label class="label text-xs">First Name</label>
-									<input name="firstName" class="input h-8 text-xs" value={order.shippingAddress.name.split(' ')[0]} required />
+			{#if isFulfilled}
+				{@const fallbackTracking = order.fulfillments.flatMap((f) => f.trackingInfo).find((t) => t.number)}
+				<div class="card">
+					<div class="px-5 py-4 border-b border-border">
+						<h2 class="font-semibold text-sm">Tracking</h2>
+					</div>
+					<div class="px-5 py-4 space-y-2 text-sm">
+						{#if data.booking}
+							<div class="font-medium text-foreground">{data.booking.courierName}</div>
+							<div class="text-muted-foreground font-mono">{data.booking.trackingId}</div>
+							{#if delivery}
+								<div>
+									<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
+										<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+										{delivery.label}
+									</span>
 								</div>
-								<div class="space-y-1">
-									<label class="label text-xs">Last Name</label>
-									<input name="lastName" class="input h-8 text-xs" value={order.shippingAddress.name.split(' ').slice(1).join(' ')} required />
-								</div>
-							</div>
-							<input name="address1" class="input h-8 text-xs" placeholder="Address" value={order.shippingAddress.address1} required />
-							<div class="grid grid-cols-2 gap-2">
-								<input name="city" class="input h-8 text-xs" placeholder="City" value={order.shippingAddress.city} required />
-								<input name="zip" class="input h-8 text-xs" placeholder="ZIP" value={order.shippingAddress.zip} />
-							</div>
-							<div class="grid grid-cols-2 gap-2">
-								<input name="province" class="input h-8 text-xs" placeholder="Province" value={order.shippingAddress.province} />
-								<input name="country" class="input h-8 text-xs" placeholder="Country" value={order.shippingAddress.country} required />
-							</div>
-							<input name="phone" class="input h-8 text-xs" placeholder="Phone" value={order.shippingAddress.phone ?? ''} />
-							<div class="flex gap-2">
-								<button type="submit" class="btn-primary btn-sm" disabled={submitting === 'shipping'}>
-									{#if submitting === 'shipping'}{@render spinner()}{/if}Save
-								</button>
-								<button type="button" class="btn-secondary btn-sm" disabled={submitting === 'shipping'} onclick={() => editShipping = false}>Cancel</button>
-							</div>
-						</form>
-					{:else if order.shippingAddress}
-						<address class="not-italic text-sm text-foreground space-y-0.5">
-							<div class="font-medium">{order.shippingAddress.name}</div>
-							<div class="text-muted-foreground">{order.shippingAddress.address1}</div>
-							<div class="text-muted-foreground">{order.shippingAddress.city}, {order.shippingAddress.province} {order.shippingAddress.zip}</div>
-							<div class="text-muted-foreground">{order.shippingAddress.country}</div>
-							{#if order.shippingAddress.phone}
-								<div class="text-muted-foreground">{order.shippingAddress.phone}</div>
 							{/if}
-						</address>
-					{:else}
-						<p class="text-sm text-muted-foreground">No shipping address</p>
-					{/if}
-				</div>
-			</div>
-
-			<div class="card">
-				<div class="px-5 py-4 border-b border-border">
-					<h2 class="font-semibold text-sm">Customer</h2>
-				</div>
-				<div class="px-5 py-4 space-y-2 text-sm">
-					{#if order.customer}
-						<div class="font-medium text-foreground">{order.customer.displayName}</div>
-						{#if order.customer.email}
-							<div class="text-muted-foreground">{order.customer.email}</div>
+							{#if data.booking.trackingUrl}
+								<a href={data.booking.trackingUrl} target="_blank" rel="noopener" class="text-primary text-xs hover:underline block mt-1">Track shipment →</a>
+							{/if}
+							<a
+								href="/dispatcher/stores/{storeId}/orders/labels?ids={$page.params.orderId}"
+								target="_blank"
+								rel="noopener"
+								class="text-primary text-xs hover:underline block mt-1"
+							>Print label →</a>
+						{:else if fallbackTracking}
+							<div class="font-medium text-foreground">{fallbackTracking.company ?? 'Unknown courier'}</div>
+							<div class="text-muted-foreground font-mono">{fallbackTracking.number}</div>
+							{#if delivery}
+								<div>
+									<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
+										<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+										{delivery.label}
+									</span>
+								</div>
+							{/if}
+							{#if fallbackTracking.url}
+								<a href={fallbackTracking.url} target="_blank" rel="noopener" class="text-primary text-xs hover:underline block mt-1">Track shipment →</a>
+							{/if}
+						{:else}
+							<span class="text-muted-foreground">No tracking info</span>
 						{/if}
-						{#if order.customer.phone}
-							<div class="text-muted-foreground">{order.customer.phone}</div>
-						{/if}
-						<a href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}" class="text-primary text-xs hover:underline block mt-1">View profile →</a>
-					{:else}
-						<span class="text-muted-foreground">Guest order</span>
-					{/if}
+					</div>
 				</div>
-			</div>
+			{/if}
+			{@render shippingCard()}
+			{@render customerCard()}
 		</div>
 	</div>
 </div>
@@ -510,6 +542,8 @@
 						<label class="label" for="trackingCompany">Courier</label>
 						<select id="trackingCompany" name="trackingCompany" class="input">
 							<option value="">— Select courier —</option>
+							<option value="PostEx">PostEx</option>
+							<option value="DEX">DEX</option>
 							<option value="TCS">TCS</option>
 							<option value="Leopards">Leopards Courier</option>
 							<option value="M&P">M&P Courier</option>
@@ -627,6 +661,51 @@
 							{#if submitting === 'unconfirm'}{@render spinner()}{/if}Unconfirm Order
 						</button>
 						<button type="button" class="btn-secondary" disabled={submitting === 'unconfirm'} onclick={() => showUnconfirmDialog = false}>Cancel</button>
+					</div>
+				</form>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Unbook / Unfulfill dialog -->
+{#if showUnbookDialog}
+	<div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+		<div class="card w-full max-w-md shadow-xl">
+			<div class="card-header">
+				<h2 class="text-lg font-semibold">{data.booking ? 'Unbook & unfulfill' : 'Unfulfill'} {order.name}?</h2>
+				<p class="text-sm text-muted-foreground">
+					{#if data.booking}
+						Cancels the shipment with the courier and reverts the order back to unfulfilled in Shopify.
+					{:else}
+						Reverts the order back to unfulfilled in Shopify. There's no local booking record for this order, so no courier is contacted.
+					{/if}
+				</p>
+			</div>
+			<div class="card-content">
+				<form
+					method="POST"
+					action="?/unbook"
+					use:enhance={() => {
+						submitting = 'unbook';
+						return async ({ result, update }) => {
+							await update();
+							submitting = null;
+							showUnbookDialog = false;
+							if (result.type === 'success') {
+								const warning = (result.data as { warning?: string } | undefined)?.warning;
+								addToast(warning ?? (data.booking ? 'Booking cancelled' : 'Order unfulfilled'), warning ? 'error' : 'success');
+							} else {
+								addToast(data.booking ? 'Failed to cancel booking' : 'Failed to unfulfill order', 'error');
+							}
+						};
+					}}
+				>
+					<div class="flex gap-3">
+						<button type="submit" class="btn-destructive" disabled={submitting === 'unbook'}>
+							{#if submitting === 'unbook'}{@render spinner()}{/if}{data.booking ? 'Unbook & Unfulfill' : 'Unfulfill'}
+						</button>
+						<button type="button" class="btn-secondary" disabled={submitting === 'unbook'} onclick={() => showUnbookDialog = false}>Never mind</button>
 					</div>
 				</form>
 			</div>

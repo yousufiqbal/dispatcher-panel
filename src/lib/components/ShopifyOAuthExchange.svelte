@@ -3,30 +3,48 @@
 		shopifyDomain,
 		clientId,
 		redirectUri,
-		scope,
 		exchange,
-		onToken
+		onToken,
+		beforeAuthorize
 	}: {
 		shopifyDomain: string;
 		clientId: string;
 		redirectUri: string;
-		scope: string;
 		exchange: (code: string) => Promise<string>;
 		onToken: (token: string) => void;
+		beforeAuthorize?: () => Promise<void>;
 	} = $props();
 
 	let code = $state('');
 	let exchanging = $state(false);
 	let exchangeError = $state('');
+	let authorizing = $state(false);
+	let authorizeError = $state('');
 
 	function authorizeUrl(): string {
 		const params = new URLSearchParams({
 			client_id: clientId,
-			scope,
 			redirect_uri: redirectUri,
 			state: crypto.randomUUID()
 		});
 		return `https://${shopifyDomain}/admin/oauth/authorize?${params.toString()}`;
+	}
+
+	async function getCode() {
+		if (!clientId || !redirectUri || authorizing) return;
+		authorizeError = '';
+		if (beforeAuthorize) {
+			authorizing = true;
+			try {
+				await beforeAuthorize();
+			} catch (e) {
+				authorizeError = e instanceof Error ? e.message : 'Failed to save OAuth app';
+				authorizing = false;
+				return;
+			}
+			authorizing = false;
+		}
+		window.open(authorizeUrl(), '_blank', 'noopener,noreferrer');
 	}
 
 	async function getToken() {
@@ -55,16 +73,17 @@
 			Opens the OAuth page. After you approve, Shopify redirects you — copy the
 			<code class="text-xs bg-muted px-1 py-0.5 rounded">code=</code> value from that URL.
 		</p>
-		<a
-			href={clientId && redirectUri ? authorizeUrl() : undefined}
-			target="_blank"
-			rel="noopener noreferrer"
+		<button
+			type="button"
 			class="btn-secondary btn-sm inline-flex items-center gap-1.5"
-			class:pointer-events-none={!clientId || !redirectUri}
-			class:opacity-50={!clientId || !redirectUri}
+			disabled={!clientId || !redirectUri || authorizing}
+			onclick={getCode}
 		>
-			Get Code
-		</a>
+			{authorizing ? 'Saving…' : 'Get Code'}
+		</button>
+		{#if authorizeError}
+			<p class="text-xs text-destructive mt-2">{authorizeError}</p>
+		{/if}
 	</div>
 
 	<div class="p-4">

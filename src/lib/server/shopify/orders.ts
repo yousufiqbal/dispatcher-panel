@@ -21,6 +21,7 @@ export interface OrderNode {
 		phone: string | null;
 	} | null;
 	tags: string[];
+	fulfillments: { displayStatus: string | null; trackingInfo: { company: string | null; number: string | null; url: string | null }[] }[];
 }
 
 export interface PageInfo {
@@ -40,6 +41,16 @@ const ORDER_FIELDS = `
   tags
 `;
 
+export async function getOrdersCount(client: ShopifyClient, query?: string): Promise<number> {
+	const gql = `
+		query OrdersCount($query: String) {
+			ordersCount(query: $query) { count }
+		}
+	`;
+	const data = await shopifyRequest<{ ordersCount: { count: number } }>(client, gql, { query });
+	return data.ordersCount.count;
+}
+
 export async function listOrders(
 	client: ShopifyClient,
 	opts: { first?: number; after?: string; before?: string; query?: string }
@@ -48,7 +59,7 @@ export async function listOrders(
     query ListOrders($first: Int, $after: String, $before: String, $query: String) {
       orders(first: $first, after: $after, before: $before, query: $query, sortKey: CREATED_AT, reverse: true) {
         pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
-        nodes { ${ORDER_FIELDS} }
+        nodes { ${ORDER_FIELDS} fulfillments(first: 5) { displayStatus trackingInfo { company number url } } }
       }
     }
   `;
@@ -78,7 +89,8 @@ export interface OrderDetail extends OrderNode {
 	fulfillments: {
 		id: string;
 		status: string;
-		trackingInfo: { number: string; url: string | null }[];
+		displayStatus: string | null;
+		trackingInfo: { company: string | null; number: string | null; url: string | null }[];
 		fulfillmentLineItems: {
 			nodes: { id: string; quantity: number; lineItem: { title: string } }[];
 		};
@@ -109,8 +121,8 @@ export async function getOrder(client: ShopifyClient, orderId: string): Promise<
           nodes { id title originalPriceSet { shopMoney { amount } } }
         }
         fulfillments(first: 10) {
-          id status
-          trackingInfo { number url }
+          id status displayStatus
+          trackingInfo { company number url }
           fulfillmentLineItems(first: 50) {
             nodes { id quantity lineItem { title } }
           }
@@ -203,8 +215,14 @@ export async function fulfillOrder(
     }
   `;
 	const foData = await shopifyRequest<{
-		order: { fulfillmentOrders: { nodes: { id: string; status: string }[] } };
+		order: { fulfillmentOrders: { nodes: { id: string; status: string }[] } } | null;
 	}>(client, foGql, { orderId });
+
+	if (!foData.order) {
+		throw new Error(
+			'Could not read fulfillment orders — the Shopify token is missing the read_merchant_managed_fulfillment_orders scope'
+		);
+	}
 
 	const pendingFo = foData.order.fulfillmentOrders.nodes.find(
 		(fo) => fo.status === 'OPEN' || fo.status === 'IN_PROGRESS'
@@ -212,8 +230,8 @@ export async function fulfillOrder(
 	if (!pendingFo) throw new Error('No open fulfillment order found');
 
 	const gql = `
-    mutation FulfillmentCreate($fulfillment: FulfillmentV2Input!) {
-      fulfillmentCreateV2(fulfillment: $fulfillment) {
+    mutation FulfillmentCreate($fulfillment: FulfillmentInput!) {
+      fulfillmentCreate(fulfillment: $fulfillment) {
         fulfillment { id status }
         userErrors { field message }
       }
@@ -231,16 +249,37 @@ export async function fulfillOrder(
 	}
 
 	const data = await shopifyRequest<{
-		fulfillmentCreateV2: {
+		fulfillmentCreate: {
 			fulfillment: { id: string; status: string };
 			userErrors: { field: string[]; message: string }[];
 		};
 	}>(client, gql, { fulfillment });
 
-	if (data.fulfillmentCreateV2.userErrors.length > 0) {
-		throw new Error(data.fulfillmentCreateV2.userErrors.map((e) => e.message).join(', '));
+	if (data.fulfillmentCreate.userErrors.length > 0) {
+		throw new Error(data.fulfillmentCreate.userErrors.map((e) => e.message).join(', '));
 	}
-	return data.fulfillmentCreateV2.fulfillment.id;
+	return data.fulfillmentCreate.fulfillment.id;
+}
+
+export async function cancelFulfillment(client: ShopifyClient, fulfillmentId: string): Promise<void> {
+	const gql = `
+    mutation FulfillmentCancel($id: ID!) {
+      fulfillmentCancel(id: $id) {
+        fulfillment { id status }
+        userErrors { field message }
+      }
+    }
+  `;
+	const data = await shopifyRequest<{
+		fulfillmentCancel: {
+			fulfillment: { id: string; status: string } | null;
+			userErrors: { field: string[]; message: string }[];
+		};
+	}>(client, gql, { id: fulfillmentId });
+
+	if (data.fulfillmentCancel.userErrors.length > 0) {
+		throw new Error(data.fulfillmentCancel.userErrors.map((e) => e.message).join(', '));
+	}
 }
 
 export async function refundOrder(

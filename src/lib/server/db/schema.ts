@@ -147,6 +147,8 @@ export const courierBookings = sqliteTable('courier_bookings', {
 	codAmount: text('cod_amount'),
 	fragile: integer('fragile', { mode: 'boolean' }).notNull().default(false),
 	note: text('note'),
+	status: text('status'),
+	statusUpdatedAt: integer('status_updated_at', { mode: 'timestamp' }),
 	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()
 		.$defaultFn(() => new Date())

@@ -1,17 +1,58 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { getOrder, cancelOrder, confirmOrder, unconfirmOrder, fulfillOrder, refundOrder, updateOrderShipping } from '$lib/server/shopify/orders';
+import { getOrder, cancelOrder, confirmOrder, unconfirmOrder, fulfillOrder, cancelFulfillment, refundOrder, updateOrderShipping } from '$lib/server/shopify/orders';
+import { cancelShipment, getCourierTrackingUrl } from '$lib/server/courier';
+import { decrypt } from '$lib/server/crypto';
 import { logAudit } from '$lib/server/audit';
 import { getAuthorizedStore } from '$lib/server/store-access';
+import { db } from '$lib/server/db';
+import { couriers, courierStoreAccess, courierBookings } from '$lib/server/db/schema';
+import { eq, and, or, ne, isNull, desc } from 'drizzle-orm';
 
 function toShopifyOrderId(orderId: string): string {
 	return orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`;
 }
 
+// Newest non-cancelled booking for this order. Orders can accumulate stale duplicate
+// rows (failed-then-retried bookings, old cancelled ones) — plain findFirst can land
+// on a cancelled row and wrongly report "no active booking".
+async function findActiveBooking(storeId: string, orderId: string) {
+	return db.query.courierBookings.findFirst({
+		where: and(
+			eq(courierBookings.storeId, storeId),
+			eq(courierBookings.orderId, orderId),
+			or(isNull(courierBookings.status), ne(courierBookings.status, 'Cancelled'))
+		),
+		orderBy: desc(courierBookings.createdAt)
+	});
+}
+
 export const load: PageServerLoad = async ({ parent, params, locals }) => {
 	const { currentStore } = await parent();
 	const client = getShopifyClient(currentStore);
+
+	const storeCouriers = await db
+		.select({ id: couriers.id, name: couriers.name })
+		.from(courierStoreAccess)
+		.innerJoin(couriers, eq(couriers.id, courierStoreAccess.courierId))
+		.where(and(eq(courierStoreAccess.storeId, params.storeId), eq(couriers.enabled, true)));
+
+	// Delivery status is NOT read from the booking row — the tracking card shows
+	// Shopify's fulfillment displayStatus (see the `delivery` derived in +page.svelte).
+	const booking = await findActiveBooking(params.storeId, params.orderId);
+	let activeBooking: { trackingId: string; courierName: string; trackingUrl: string | null } | null = null;
+	if (booking && booking.trackingId) {
+		const courier = booking.courierId
+			? await db.query.couriers.findFirst({ where: eq(couriers.id, booking.courierId) })
+			: null;
+		const provider = courier?.provider ?? booking.provider;
+		activeBooking = {
+			trackingId: booking.trackingId,
+			courierName: courier?.name ?? provider,
+			trackingUrl: getCourierTrackingUrl(provider, booking.trackingId)
+		};
+	}
 
 	try {
 		const order = await getOrder(client, toShopifyOrderId(params.orderId));
@@ -20,7 +61,7 @@ export const load: PageServerLoad = async ({ parent, params, locals }) => {
 				targetType: 'order', targetId: params.orderId, storeId: params.storeId
 			});
 		}
-		return { order };
+		return { order, couriers: storeCouriers, booking: activeBooking };
 	} catch (e) {
 		throw error(404, 'Order not found');
 	}
@@ -101,6 +142,58 @@ export const actions: Actions = {
 			return fail(400, { error: e instanceof Error ? e.message : 'Failed to fulfill order' });
 		}
 		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${params.orderId}`);
+	},
+
+	// Cancels the courier shipment (if a local booking exists) and always reverts
+	// the Shopify fulfillment. If there's no local booking (order fulfilled before
+	// this app tracked bookings, or fulfilled manually), it just unfulfills.
+	unbook: async ({ params, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+
+		const booking = await findActiveBooking(params.storeId, params.orderId);
+		const activeBooking = booking && booking.trackingId ? booking : null;
+
+		let courierName: string | null = null;
+		if (activeBooking) {
+			if (!activeBooking.courierId) return fail(400, { error: 'Booking has no linked courier — cannot cancel automatically' });
+
+			const courier = await db.query.couriers.findFirst({ where: eq(couriers.id, activeBooking.courierId) });
+			if (!courier || !courier.apiKey) return fail(400, { error: 'Courier not found or missing API key' });
+			courierName = courier.name;
+
+			try {
+				await cancelShipment(courier.provider, decrypt(courier.apiKey), activeBooking.trackingId);
+			} catch (e: unknown) {
+				return fail(400, { error: `Failed to cancel with courier: ${e instanceof Error ? e.message : 'Unknown error'}` });
+			}
+
+			await db
+				.update(courierBookings)
+				.set({ status: 'Cancelled', statusUpdatedAt: new Date() })
+				.where(eq(courierBookings.id, activeBooking.id));
+		}
+
+		let warning: string | null = null;
+		try {
+			const order = await getOrder(client, toShopifyOrderId(params.orderId));
+			const fulfillment = order.fulfillments.find((f: { id: string; status: string }) => f.status !== 'CANCELLED');
+			if (fulfillment) await cancelFulfillment(client, fulfillment.id);
+		} catch (e: unknown) {
+			warning = activeBooking
+				? `Courier shipment cancelled, but Shopify fulfillment could not be reverted: ${e instanceof Error ? e.message : 'Unknown error'}`
+				: `Failed to unfulfill order: ${e instanceof Error ? e.message : 'Unknown error'}`;
+			if (!activeBooking) return fail(400, { error: warning });
+		}
+
+		if (locals.session) {
+			await logAudit(locals.session.userId, 'dispatcher', 'order.unbook', {
+				targetType: 'order', targetId: params.orderId, storeId: params.storeId,
+				metadata: { courier: courierName, trackingId: activeBooking?.trackingId ?? null, warning }
+			});
+		}
+
+		return { unbooked: true, warning };
 	},
 
 	refund: async ({ params, request, locals }) => {
@@ -220,17 +313,17 @@ export const actions: Actions = {
 			}
 		`;
 
+		let newId: string | undefined;
 		try {
 			const result = await shopifyRequest(client, gql, { input }) as any;
 			const errors = result?.draftOrderCreate?.userErrors;
 			if (errors?.length) return fail(400, { error: errors[0].message });
-			const newId = result?.draftOrderCreate?.draftOrder?.legacyResourceId;
+			newId = result?.draftOrderCreate?.draftOrder?.legacyResourceId;
 			if (locals.session) await logAudit(locals.session.userId, 'dispatcher', 'order.duplicate', { targetType: 'order', targetId: params.orderId, storeId: params.storeId });
-			if (newId) throw redirect(303, `/dispatcher/stores/${params.storeId}/draft-orders/${newId}`);
 		} catch (e) {
-			if ((e as any)?.status === 303) throw e;
 			return fail(500, { error: e instanceof Error ? e.message : 'Failed to duplicate order' });
 		}
+		if (newId) throw redirect(303, `/dispatcher/stores/${params.storeId}/draft-orders/${newId}`);
 		return { success: true };
 	},
 

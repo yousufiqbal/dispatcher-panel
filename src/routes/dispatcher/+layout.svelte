@@ -52,7 +52,7 @@
 		</div>
 
 		<!-- Section links -->
-		<nav class="flex-1 p-2 pt-[100px] space-y-0.5 overflow-y-auto">
+		<nav class="flex-1 p-2 pt-3 space-y-0.5 overflow-y-auto">
 			{#each [
 				{ href: 'orders', label: 'Orders', d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
 				{ href: 'customers', label: 'Customers', d: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
@@ -61,7 +61,7 @@
 			] as item}
 				<a
 					href={tabHref(item.href)}
-					class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150
+					class="flex items-center gap-3 mx-1 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150
 						{!currentStoreId ? 'pointer-events-none opacity-40' : ''}
 						{isTabActive(item.href)
 							? 'bg-primary/10 text-primary font-medium'
@@ -98,9 +98,7 @@
 	<div class="flex-1 flex flex-col min-h-screen min-w-0 lg:ml-64">
 		<main class="flex-1 pb-16 lg:pb-0">
 			{#key $page.url.pathname}
-				<div class="animate-fade-in-up">
-					{@render children()}
-				</div>
+				{@render children()}
 			{/key}
 		</main>
 	</div>

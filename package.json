@@ -55,6 +55,7 @@
 		"clsx": "^2.1.1",
 		"oslo": "^1.2.1",
 		"otpauth": "^9.5.1",
+		"pdf-lib": "^1.17.1",
 		"qrcode": "^1.5.4",
 		"tailwind-merge": "^3.6.0",
 		"tailwind-variants": "^3.2.2",

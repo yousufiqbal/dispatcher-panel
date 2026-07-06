@@ -12,12 +12,14 @@
 		customers: 'Customers',
 		products: 'Products',
 		inventory: 'Inventory',
-		'draft-orders': 'Draft Orders'
+		'draft-orders': 'Draft Orders',
+		booking: 'Booking'
 	};
 
 	const currentSection = $derived.by(() => {
 		const segments = $page.url.pathname.split('/').filter(Boolean);
 		const idx = segments.indexOf(data.currentStore.id);
+		if (segments[idx + 1] === 'orders' && segments[idx + 2] === 'book') return 'booking';
 		return segments[idx + 1] ?? '';
 	});
 

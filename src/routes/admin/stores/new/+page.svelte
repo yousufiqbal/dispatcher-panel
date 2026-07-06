@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import ShopifyOAuthExchange from '$lib/components/ShopifyOAuthExchange.svelte';
-	import { SHOPIFY_SCOPE_STRING } from '$lib/shopify-scopes';
 	import type { ActionData } from './$types';
 
 	let { form }: { form: ActionData } = $props();
@@ -13,7 +12,6 @@
 	let oauthClientId = $state('');
 	let oauthClientSecret = $state('');
 	let oauthRedirectUri = $state('');
-	const scope = SHOPIFY_SCOPE_STRING;
 
 	let iconPreview = $state<string | null>(null);
 
@@ -171,7 +169,6 @@
 					shopifyDomain={testDomain}
 					clientId={oauthClientId}
 					redirectUri={oauthRedirectUri}
-					{scope}
 					exchange={async (code) => {
 						const res = await fetch('/api/admin/shopify/oauth-token', {
 							method: 'POST',

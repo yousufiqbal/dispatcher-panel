@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { listOrders, confirmOrder, CONFIRMED_TAG } from '$lib/server/shopify/orders';
+import { listOrders, getOrdersCount, confirmOrder, CONFIRMED_TAG } from '$lib/server/shopify/orders';
 import { db } from '$lib/server/db';
 import { couriers, courierStoreAccess } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -16,6 +16,13 @@ async function getStoreCouriers(storeId: string) {
 		.where(and(eq(courierStoreAccess.storeId, storeId), eq(couriers.enabled, true)));
 }
 
+// Shopify's Fulfillment.displayStatus — the same field the Shopify admin's
+// "Delivery status" column shows. The courier pushes status events to Shopify,
+// so reading it here costs nothing extra (already part of the orders query).
+function orderDisplayStatus(o: { fulfillments: { displayStatus: string | null }[] }): string | null {
+	return o.fulfillments.find((f) => f.displayStatus)?.displayStatus ?? null;
+}
+
 // `pending`/`confirmed` are NOT filtered by Shopify's tag: search (that's index-backed
 // and lags a few seconds behind tag mutations — an order just confirmed would still
 // show as pending). Instead we fetch all open+unfulfilled orders and split them by
@@ -24,6 +31,8 @@ const STATUS_QUERIES: Record<string, string> = {
 	pending: 'fulfillment_status:unfulfilled status:open',
 	confirmed: 'fulfillment_status:unfulfilled status:open',
 	fulfilled: 'fulfillment_status:shipped',
+	attempted: 'fulfillment_status:shipped',
+	failed: 'fulfillment_status:shipped',
 	cancelled: 'status:cancelled',
 	returned: 'financial_status:refunded',
 	all: ''
@@ -62,10 +71,16 @@ async function listDraftOrders(client: ReturnType<typeof getShopifyClient>, { fi
 	return data.draftOrders;
 }
 
+// Uses ordersCount (returns a number, not full order objects) instead of fetching
+// 100 full orders just to count them — much lighter request. Unlike the main list
+// (which splits by the live `tags` field to avoid index lag), this filters by
+// tag: in the search query, which is index-backed and can lag a few seconds behind
+// a tag mutation — acceptable here since it's just a badge count, not the list itself.
 async function getBadgeCounts(client: ReturnType<typeof getShopifyClient>) {
-	const openUnfulfilled = await listOrders(client, { first: 100, query: STATUS_QUERIES.pending });
-	const pendingCount = openUnfulfilled.nodes.filter((o) => !o.tags.includes(CONFIRMED_TAG)).length;
-	const confirmedCount = openUnfulfilled.nodes.filter((o) => o.tags.includes(CONFIRMED_TAG)).length;
+	const [pendingCount, confirmedCount] = await Promise.all([
+		getOrdersCount(client, `${STATUS_QUERIES.pending} AND -tag:${CONFIRMED_TAG}`),
+		getOrdersCount(client, `${STATUS_QUERIES.pending} AND tag:${CONFIRMED_TAG}`)
+	]);
 	return { pendingCount, confirmedCount };
 }
 
@@ -99,7 +114,7 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 		};
 	}
 
-	const isTagFiltered = status === 'pending' || status === 'confirmed';
+	const isTagFiltered = status === 'pending' || status === 'confirmed' || status === 'attempted' || status === 'failed';
 
 	let shopifyQuery = STATUS_QUERIES[status] ?? '';
 	if (searchQ) {
@@ -119,6 +134,15 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 	let orders = result.nodes;
 	if (status === 'pending') orders = orders.filter((o) => !o.tags.includes(CONFIRMED_TAG));
 	else if (status === 'confirmed') orders = orders.filter((o) => o.tags.includes(CONFIRMED_TAG));
+
+	// "Attempted"/"Failed" filter on Shopify's fulfillment displayStatus (no search
+	// syntax exists for it, so filter client-side after fetching shipped orders).
+	if (status === 'attempted') {
+		orders = orders.filter((o) => orderDisplayStatus(o) === 'ATTEMPTED_DELIVERY');
+	} else if (status === 'failed') {
+		const failed = new Set(['FAILURE', 'NOT_DELIVERED']);
+		orders = orders.filter((o) => failed.has(orderDisplayStatus(o) ?? ''));
+	}
 
 	return {
 		orders,

@@ -5,6 +5,7 @@
 	import { addToast } from '$lib/toast.svelte';
 	import Checkbox from '$lib/components/Checkbox.svelte';
 	import { formatCurrency, formatDate, formatRelativeDate } from '$lib/utils';
+	import { deliveryPill } from '$lib/delivery-status';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -32,15 +33,41 @@
 		goto(`/dispatcher/stores/${storeId}/orders/book/${courierId}?ids=${ids}`);
 	}
 
-	const selectableStatuses = ['pending', 'confirmed'];
+	const selectableStatuses = ['pending', 'confirmed', 'fulfilled', 'attempted', 'failed'];
 	let showBulkConfirmDialog = $state(false);
 	let bulkConfirming = $state(false);
+
+	function printLabels() {
+		const ids = [...selectedIds].map((gid) => gid.split('/').pop()).join(',');
+		window.open(`/dispatcher/stores/${storeId}/orders/labels?ids=${ids}`, '_blank');
+	}
+
+	// After booking, the redirect lands here with ?labels=<orderIds> — auto-download
+	// the airway-bill PDF for the just-booked orders, then drop the param so a page
+	// refresh doesn't re-download.
+	$effect(() => {
+		const labelIds = $page.url.searchParams.get('labels');
+		if (!labelIds) return;
+		const a = document.createElement('a');
+		a.href = `/dispatcher/stores/${storeId}/orders/labels?ids=${labelIds}&download=1`;
+		// `download` keeps SvelteKit's router from intercepting the click as a page
+		// navigation (which would hang — the endpoint streams a PDF, not a page).
+		a.download = '';
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+		const sp = new URLSearchParams($page.url.searchParams);
+		sp.delete('labels');
+		goto(`?${sp}`, { replaceState: true, keepFocus: true, noScroll: true });
+	});
 
 	const tabs = [
 		{ key: 'all', label: 'All' },
 		{ key: 'pending', label: 'Pending' },
 		{ key: 'confirmed', label: 'Confirmed' },
 		{ key: 'fulfilled', label: 'Fulfilled' },
+		{ key: 'attempted', label: 'Attempted' },
+		{ key: 'failed', label: 'Failed' },
 		{ key: 'cancelled', label: 'Cancelled' },
 		{ key: 'returned', label: 'Returned' },
 		{ key: 'drafts', label: 'Drafts', separator: true }
@@ -60,6 +87,13 @@
 		if (fulfillment === 'PARTIALLY_FULFILLED') return 'Partial';
 		if (financial === 'PENDING') return 'Pending';
 		return fulfillment.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+	}
+
+	function deliveryStatusInfo(order: {
+		fulfillments: { displayStatus: string | null; trackingInfo: { number: string | null }[] }[];
+	}): { label: string; class: string } | null {
+		const hasTracking = order.fulfillments.some((f) => f.trackingInfo.some((t) => t.number));
+		return deliveryPill(order.fulfillments.find((f) => f.displayStatus)?.displayStatus, hasTracking);
 	}
 
 	function navigate(params: Record<string, string | null>) {
@@ -228,7 +262,7 @@
 				class="flex items-center gap-1.5 text-sm font-medium transition-colors duration-150 cursor-pointer whitespace-nowrap shrink-0 px-3.5 py-1.5 rounded-full
 					{(data.status ?? 'all') === tab.key
 						? 'bg-primary text-primary-foreground'
-						: 'bg-zinc-200/70 text-muted-foreground hover:bg-accent'}"
+						: 'bg-white border border-zinc-200 text-muted-foreground hover:bg-accent'}"
 			>
 				{tab.label}
 				{#if tab.key === 'pending' && data.pendingCount > 0}
@@ -257,12 +291,24 @@
 			<span class="text-sm font-medium">{selectedIds.size} selected</span>
 			<div class="flex items-center gap-2">
 				{#each data.couriers as courier}
-					<button class="btn-secondary btn-sm" onclick={() => bookSelected(courier.id)}>Book {courier.name}</button>
+					<button class="btn-secondary btn-sm" onclick={() => bookSelected(courier.id)}>Book with {courier.name}</button>
 				{/each}
 				{#if data.couriers.length === 0}
 					<span class="text-xs text-muted-foreground">No courier assigned to this store — set one up in Admin → Couriers</span>
 				{/if}
 			</div>
+		</div>
+	{/if}
+
+	{#if ['fulfilled', 'attempted', 'failed'].includes(data.status) && selectedIds.size > 0}
+		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
+			<span class="text-sm font-medium">{selectedIds.size} selected</span>
+			<button class="btn-primary btn-sm inline-flex items-center gap-1.5" onclick={printLabels}>
+				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+				</svg>
+				Print Labels
+			</button>
 		</div>
 	{/if}
 
@@ -390,12 +436,14 @@
 							<th class="text-right px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Total</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Payment</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Fulfillment</th>
+							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Delivery Status</th>
 							<th class="text-center px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Items</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Destination</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-border">
 						{#each data.orders as order}
+							{@const delivery = deliveryStatusInfo(order)}
 							<tr
 								class="hover:bg-muted/40 transition-colors cursor-pointer"
 								onclick={() => goto(`/dispatcher/stores/${storeId}/orders/${order.id.split('/').pop()}`)}
@@ -454,6 +502,16 @@
 										{order.displayFulfillmentStatus.replace(/_/g,' ')}
 									</span>
 								</td>
+								<td class="px-3 py-1.5 whitespace-nowrap">
+									{#if delivery}
+										<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
+											<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+											{delivery.label}
+										</span>
+									{:else}
+										<span class="text-foreground/40">—</span>
+									{/if}
+								</td>
 								<td class="px-3 py-1.5 text-center text-foreground/70">
 									{order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)}
 								</td>
@@ -477,6 +535,7 @@
 		<div class="md:hidden card overflow-hidden">
 			<div class="divide-y divide-border">
 				{#each data.orders as order}
+					{@const delivery = deliveryStatusInfo(order)}
 					<div class="flex items-stretch">
 						{#if selectableStatuses.includes(data.status)}
 							<div class="flex items-center pl-4 pr-1">
@@ -500,6 +559,14 @@
 									<div class="text-xs text-muted-foreground mt-0.5">
 										{formatDate(order.createdAt)} · {order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)} item{order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0) === 1 ? '' : 's'}
 									</div>
+									{#if delivery}
+										<div class="mt-1">
+											<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
+												<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+												{delivery.label}
+											</span>
+										</div>
+									{/if}
 								</div>
 								<span class="font-semibold text-foreground shrink-0">
 									{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
