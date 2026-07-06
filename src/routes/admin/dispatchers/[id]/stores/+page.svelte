@@ -62,11 +62,10 @@
 									class="rounded border-border size-4 shrink-0"
 								/>
 								<div class="size-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
-									{store.nickname[0].toUpperCase()}
+									{store.name[0].toUpperCase()}
 								</div>
 								<div class="flex-1 min-w-0">
-									<div class="font-medium text-sm text-foreground">{store.nickname}</div>
-									<div class="text-xs text-muted-foreground truncate">{store.name}</div>
+									<div class="font-medium text-sm text-foreground">{store.name}</div>
 								</div>
 								{#if !store.isActive}
 									<span class="badge-cancelled text-xs">Inactive</span>

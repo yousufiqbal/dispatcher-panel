@@ -74,10 +74,7 @@
 										onchange={() => toggleStore(store.id)}
 										class="rounded border-border text-primary"
 									/>
-									<div>
-										<div class="text-sm font-medium text-foreground">{store.nickname}</div>
-										<div class="text-xs text-muted-foreground">{store.name}</div>
-									</div>
+									<div class="text-sm font-medium text-foreground">{store.name}</div>
 								</label>
 							{/each}
 						</div>

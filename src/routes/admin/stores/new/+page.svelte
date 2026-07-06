@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import ShopifyOAuthExchange from '$lib/components/ShopifyOAuthExchange.svelte';
+	import { SHOPIFY_SCOPE_STRING } from '$lib/shopify-scopes';
 	import type { ActionData } from './$types';
 
 	let { form }: { form: ActionData } = $props();
@@ -7,6 +9,11 @@
 	let testResult = $state<'success' | 'fail' | null>(null);
 	let testDomain = $state('');
 	let testToken = $state('');
+
+	let oauthClientId = $state('');
+	let oauthClientSecret = $state('');
+	let oauthRedirectUri = $state('');
+	const scope = SHOPIFY_SCOPE_STRING;
 
 	async function testConnection() {
 		testing = true;
@@ -54,14 +61,9 @@
 		<div class="card-content pt-6">
 			<form method="POST" use:enhance class="space-y-5">
 				<div class="space-y-1.5">
-					<label class="label" for="nickname">Nickname <span class="text-destructive">*</span></label>
-					<input id="nickname" name="nickname" class="input" placeholder="Main Store" value={form?.values?.nickname ?? ''} required />
-					<p class="text-xs text-muted-foreground">Shown to dispatchers in the sidebar</p>
-				</div>
-
-				<div class="space-y-1.5">
-					<label class="label" for="name">Official Store Name <span class="text-destructive">*</span></label>
+					<label class="label" for="name">Store Name <span class="text-destructive">*</span></label>
 					<input id="name" name="name" class="input" placeholder="My Shopify Store" value={form?.values?.name ?? ''} required />
+					<p class="text-xs text-muted-foreground">Shown to dispatchers in the sidebar</p>
 				</div>
 
 				<div class="space-y-1.5">
@@ -103,11 +105,68 @@
 					</div>
 				{/if}
 
+				<input type="hidden" name="oauthClientId" value={oauthClientId} />
+				<input type="hidden" name="oauthClientSecret" value={oauthClientSecret} />
+				<input type="hidden" name="oauthRedirectUri" value={oauthRedirectUri} />
+
 				<div class="flex items-center gap-3 pt-2">
 					<button type="submit" class="btn-primary">Save Store</button>
 					<a href="/admin/stores" class="btn-secondary">Cancel</a>
 				</div>
 			</form>
+		</div>
+	</div>
+
+	<!-- OAuth app (optional, lets you refresh the token later without re-pasting it) -->
+	<div class="card mt-6">
+		<div class="card-header">
+			<h2 class="text-sm font-semibold">OAuth App (optional)</h2>
+			<p class="text-xs text-muted-foreground mt-1">
+				Set this up now to enable one-click token refresh later, instead of manually pasting a token.
+			</p>
+		</div>
+		<div class="card-content space-y-5">
+			<div class="space-y-1.5">
+				<label class="label" for="oauthClientIdInput">Client ID</label>
+				<input id="oauthClientIdInput" class="input font-mono" bind:value={oauthClientId} />
+			</div>
+			<div class="space-y-1.5">
+				<label class="label" for="oauthClientSecretInput">Client Secret</label>
+				<input id="oauthClientSecretInput" type="password" class="input font-mono" bind:value={oauthClientSecret} />
+			</div>
+			<div class="space-y-1.5">
+				<label class="label" for="oauthRedirectUriInput">Redirect URI</label>
+				<input id="oauthRedirectUriInput" class="input font-mono" bind:value={oauthRedirectUri} />
+			</div>
+
+			{#if oauthClientId && oauthClientSecret && oauthRedirectUri && testDomain}
+				<ShopifyOAuthExchange
+					shopifyDomain={testDomain}
+					clientId={oauthClientId}
+					redirectUri={oauthRedirectUri}
+					{scope}
+					exchange={async (code) => {
+						const res = await fetch('/api/admin/shopify/oauth-token', {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								shopifyDomain: testDomain,
+								clientId: oauthClientId,
+								clientSecret: oauthClientSecret,
+								code
+							})
+						});
+						if (!res.ok) throw new Error('Token exchange failed');
+						const body = await res.json();
+						return body.accessToken;
+					}}
+					onToken={(token) => (testToken = token)}
+				/>
+			{:else}
+				<p class="text-xs text-muted-foreground">
+					Fill in Shopify Domain above plus Client ID, Client Secret, and Redirect URI here to enable it.
+				</p>
+			{/if}
 		</div>
 	</div>
 
@@ -121,9 +180,7 @@
 				<li>Go to your Shopify Admin → <strong>Settings</strong> → <strong>Apps and sales channels</strong></li>
 				<li>Click <strong>Develop apps</strong> → <strong>Create an app</strong></li>
 				<li>Give it a name (e.g. "Dispatcher Panel")</li>
-				<li>Go to <strong>Configuration</strong> → enable these API scopes:
-					<code class="text-xs bg-muted px-1 py-0.5 rounded">read_orders, write_orders, read_customers, write_customers, read_draft_orders, write_draft_orders, read_fulfillments, write_fulfillments</code>
-				</li>
+				<li>Go to <strong>Configuration</strong> → enable the scopes listed on the <a href="/admin/settings" class="underline text-primary">Settings</a> page</li>
 				<li>Click <strong>Install app</strong> → copy the <strong>Admin API access token</strong></li>
 			</ol>
 		</div>

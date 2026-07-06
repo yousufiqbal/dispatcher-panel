@@ -15,9 +15,11 @@ export const actions: Actions = {
 		const fd = await request.formData();
 		const raw = {
 			name: fd.get('name') as string,
-			nickname: fd.get('nickname') as string,
 			shopifyDomain: fd.get('shopifyDomain') as string,
-			apiAccessToken: fd.get('apiAccessToken') as string
+			apiAccessToken: fd.get('apiAccessToken') as string,
+			oauthClientId: (fd.get('oauthClientId') as string) ?? '',
+			oauthClientSecret: (fd.get('oauthClientSecret') as string) ?? '',
+			oauthRedirectUri: (fd.get('oauthRedirectUri') as string) ?? ''
 		};
 
 		const result = safeParse(StoreSchema, raw);
@@ -39,15 +41,17 @@ export const actions: Actions = {
 		const encryptedToken = encrypt(result.output.apiAccessToken);
 		await db.insert(stores).values({
 			name: result.output.name,
-			nickname: result.output.nickname,
 			shopifyDomain: result.output.shopifyDomain,
-			apiAccessToken: encryptedToken
+			apiAccessToken: encryptedToken,
+			oauthClientId: raw.oauthClientId.trim() || null,
+			oauthClientSecret: raw.oauthClientSecret.trim() ? encrypt(raw.oauthClientSecret.trim()) : null,
+			oauthRedirectUri: raw.oauthRedirectUri.trim() || null
 		});
 
 		if (locals.session) {
 			await logAudit(locals.session.userId, 'admin', 'store.create', {
 				targetType: 'store',
-				metadata: { nickname: result.output.nickname }
+				metadata: { name: result.output.name }
 			});
 		}
 

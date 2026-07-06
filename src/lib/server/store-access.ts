@@ -10,7 +10,6 @@ export async function getAuthorizedStore(session: SessionData | null, storeId: s
 	const access = await db
 		.select({
 			storeId: dispatcherStoreAccess.storeId,
-			nickname: stores.nickname,
 			name: stores.name,
 			shopifyDomain: stores.shopifyDomain,
 			apiAccessToken: stores.apiAccessToken

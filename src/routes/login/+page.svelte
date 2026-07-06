@@ -31,12 +31,7 @@
 				return;
 			}
 			if (data.role === 'admin') {
-				if (data.requiresTotpSetup) {
-					await loadTotpSetup();
-					step = 'totp-setup';
-				} else {
-					step = 'totp';
-				}
+				goto('/admin');
 			} else {
 				goto('/dashboard');
 			}

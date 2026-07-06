@@ -12,7 +12,7 @@ import { logAudit } from '$lib/server/audit';
 export const load: PageServerLoad = async ({ params }) => {
 	const store = await db.query.stores.findFirst({ where: eq(stores.id, params.id) });
 	if (!store) throw error(404, 'Store not found');
-	return { store: { ...store, apiAccessToken: '' } }; // never send token to client
+	return { store: { ...store, apiAccessToken: '', oauthClientSecret: '' } }; // never send secrets to client
 };
 
 export const actions: Actions = {
@@ -20,16 +20,21 @@ export const actions: Actions = {
 		const fd = await request.formData();
 		const raw = {
 			name: fd.get('name') as string,
-			nickname: fd.get('nickname') as string,
 			shopifyDomain: fd.get('shopifyDomain') as string,
-			apiAccessToken: fd.get('apiAccessToken') as string
+			apiAccessToken: (fd.get('apiAccessToken') as string) ?? '',
+			oauthClientId: (fd.get('oauthClientId') as string) ?? '',
+			oauthClientSecret: (fd.get('oauthClientSecret') as string) ?? '',
+			oauthRedirectUri: (fd.get('oauthRedirectUri') as string) ?? ''
 		};
 
 		const existing = await db.query.stores.findFirst({ where: eq(stores.id, params.id) });
 		if (!existing) throw error(404, 'Store not found');
 
-		// If token blank, keep existing
+		// If token/secret blank, keep existing
 		const tokenToUse = raw.apiAccessToken.trim() || decrypt(existing.apiAccessToken);
+		const clientSecretToUse =
+			raw.oauthClientSecret.trim() ||
+			(existing.oauthClientSecret ? decrypt(existing.oauthClientSecret) : '');
 		const dataToValidate = { ...raw, apiAccessToken: tokenToUse };
 
 		const result = safeParse(StoreSchema, dataToValidate);
@@ -41,9 +46,11 @@ export const actions: Actions = {
 
 		await db.update(stores).set({
 			name: result.output.name,
-			nickname: result.output.nickname,
 			shopifyDomain: result.output.shopifyDomain,
 			apiAccessToken: encrypt(tokenToUse),
+			oauthClientId: raw.oauthClientId.trim() || null,
+			oauthClientSecret: clientSecretToUse ? encrypt(clientSecretToUse) : null,
+			oauthRedirectUri: raw.oauthRedirectUri.trim() || null,
 			updatedAt: new Date()
 		}).where(eq(stores.id, params.id));
 

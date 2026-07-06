@@ -11,8 +11,8 @@ export const load: PageServerLoad = async () => {
 		.select({ dispatcherId: dispatcherStoreAccess.dispatcherId, storeId: dispatcherStoreAccess.storeId })
 		.from(dispatcherStoreAccess);
 
-	const allStores = await db.select({ id: stores.id, nickname: stores.nickname }).from(stores);
-	const storeMap = new Map(allStores.map((s) => [s.id, s.nickname]));
+	const allStores = await db.select({ id: stores.id, name: stores.name }).from(stores);
+	const storeMap = new Map(allStores.map((s) => [s.id, s.name]));
 
 	const dispatchersWithStores = allDispatchers.map((d) => ({
 		...d,

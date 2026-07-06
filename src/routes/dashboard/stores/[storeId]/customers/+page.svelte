@@ -29,7 +29,7 @@
 	<title>Customers — Dispatcher Panel</title>
 </svelte:head>
 
-<div class="p-6">
+<div class="p-3 sm:p-6">
 	<div class="flex items-center justify-between gap-4 mb-5">
 		<div class="flex-1 max-w-sm relative">
 			<svg class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -43,11 +43,11 @@
 				oninput={onSearch}
 			/>
 		</div>
-		<a href="/dashboard/stores/{storeId}/customers/new" class="btn-primary shrink-0">
+		<a href="/dashboard/stores/{storeId}/customers/new" class="btn-primary shrink-0 size-9 p-0 sm:size-auto sm:px-4 sm:py-2">
 			<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 				<path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
 			</svg>
-			New Customer
+			<span class="hidden sm:inline">New Customer</span>
 		</a>
 	</div>
 

@@ -8,6 +8,7 @@ export interface OrderNode {
 	displayFinancialStatus: string;
 	displayFulfillmentStatus: string;
 	totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+	phone: string | null;
 	customer: { id: string; displayName: string; phone: string | null; email: string | null } | null;
 	lineItems: { nodes: { quantity: number }[] };
 	shippingAddress: {
@@ -32,6 +33,7 @@ export interface PageInfo {
 const ORDER_FIELDS = `
   id name createdAt displayFinancialStatus displayFulfillmentStatus
   totalPriceSet { shopMoney { amount currencyCode } }
+  phone
   customer { id displayName phone email }
   shippingAddress { name address1 city province country zip phone }
   lineItems(first: 50) { nodes { quantity } }
@@ -145,6 +147,42 @@ export async function cancelOrder(
 
 	if (data.orderCancel.orderCancelUserErrors.length > 0) {
 		throw new Error(data.orderCancel.orderCancelUserErrors.map((e) => e.message).join(', '));
+	}
+}
+
+export const CONFIRMED_TAG = 'Confirmed';
+
+export async function confirmOrder(client: ShopifyClient, orderId: string): Promise<void> {
+	const gql = `
+    mutation TagsAdd($id: ID!, $tags: [String!]!) {
+      tagsAdd(id: $id, tags: $tags) {
+        userErrors { field message }
+      }
+    }
+  `;
+	const data = await shopifyRequest<{
+		tagsAdd: { userErrors: { field: string[]; message: string }[] };
+	}>(client, gql, { id: orderId, tags: [CONFIRMED_TAG] });
+
+	if (data.tagsAdd.userErrors.length > 0) {
+		throw new Error(data.tagsAdd.userErrors.map((e) => e.message).join(', '));
+	}
+}
+
+export async function unconfirmOrder(client: ShopifyClient, orderId: string): Promise<void> {
+	const gql = `
+    mutation TagsRemove($id: ID!, $tags: [String!]!) {
+      tagsRemove(id: $id, tags: $tags) {
+        userErrors { field message }
+      }
+    }
+  `;
+	const data = await shopifyRequest<{
+		tagsRemove: { userErrors: { field: string[]; message: string }[] };
+	}>(client, gql, { id: orderId, tags: [CONFIRMED_TAG] });
+
+	if (data.tagsRemove.userErrors.length > 0) {
+		throw new Error(data.tagsRemove.userErrors.map((e) => e.message).join(', '));
 	}
 }
 

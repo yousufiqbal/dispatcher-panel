@@ -11,7 +11,6 @@ export const load: LayoutServerLoad = async ({ locals, params }) => {
 	const access = await db
 		.select({
 			storeId: dispatcherStoreAccess.storeId,
-			nickname: stores.nickname,
 			name: stores.name,
 			shopifyDomain: stores.shopifyDomain,
 			apiAccessToken: stores.apiAccessToken,
@@ -35,7 +34,6 @@ export const load: LayoutServerLoad = async ({ locals, params }) => {
 	return {
 		currentStore: {
 			id: store.storeId,
-			nickname: store.nickname,
 			name: store.name,
 			shopifyDomain: store.shopifyDomain,
 			apiAccessToken: store.apiAccessToken // encrypted, will be decrypted in client factory

@@ -8,8 +8,8 @@
  *   ADMIN_PASSWORD (required)
  */
 import 'dotenv/config';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import postgres from 'postgres';
+import { drizzle } from 'drizzle-orm/libsql';
+import { createClient } from '@libsql/client';
 import { admin } from '../src/lib/server/db/schema.js';
 import { hash } from 'argon2';
 import { eq } from 'drizzle-orm';
@@ -27,7 +27,7 @@ if (!ADMIN_PASSWORD) {
 	process.exit(1);
 }
 
-const client = postgres(DATABASE_URL);
+const client = createClient({ url: DATABASE_URL, authToken: process.env.DATABASE_AUTH_TOKEN });
 const db = drizzle(client);
 
 async function main() {
@@ -51,7 +51,7 @@ async function main() {
 	console.log(`3. Log in at http://localhost:5173/login with ${ADMIN_EMAIL}`);
 	console.log('4. Complete 2FA setup on first login');
 
-	await client.end();
+	client.close();
 }
 
 main().catch((e) => {

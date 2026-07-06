@@ -10,7 +10,7 @@ import { logAudit } from '$lib/server/audit';
 
 export const load: PageServerLoad = async () => {
 	const allStores = await db
-		.select({ id: stores.id, nickname: stores.nickname, name: stores.name })
+		.select({ id: stores.id, name: stores.name })
 		.from(stores)
 		.where(eq(stores.isActive, true));
 	return { stores: allStores };

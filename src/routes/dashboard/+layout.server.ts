@@ -14,7 +14,6 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 	const access = await db
 		.select({
 			storeId: dispatcherStoreAccess.storeId,
-			nickname: stores.nickname,
 			name: stores.name,
 			shopifyDomain: stores.shopifyDomain,
 			isActive: stores.isActive
@@ -33,7 +32,6 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 		dispatcher: dispatcherUser,
 		assignedStores: access.map((a) => ({
 			id: a.storeId,
-			nickname: a.nickname,
 			name: a.name,
 			shopifyDomain: a.shopifyDomain
 		}))

@@ -9,7 +9,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	const dispatcher = await db.query.dispatchers.findFirst({ where: eq(dispatchers.id, params.id) });
 	if (!dispatcher) throw error(404, 'Dispatcher not found');
 
-	const allStores = await db.select({ id: stores.id, nickname: stores.nickname, name: stores.name, isActive: stores.isActive }).from(stores);
+	const allStores = await db.select({ id: stores.id, name: stores.name, isActive: stores.isActive }).from(stores);
 
 	const access = await db
 		.select({ storeId: dispatcherStoreAccess.storeId })

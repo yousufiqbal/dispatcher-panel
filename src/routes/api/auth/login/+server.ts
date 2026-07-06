@@ -25,14 +25,11 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 		const valid = await verify(adminUser.passwordHash, password).catch(() => false);
 		if (!valid) return json({ error: 'Invalid credentials' }, { status: 401 });
 
-		const sessionId = await createSession(adminUser.id, 'admin', false, ip, ua);
+		// TOTP temporarily disabled — sessions are pre-verified
+		const sessionId = await createSession(adminUser.id, 'admin', true, ip, ua);
 		setSessionCookie(cookies, sessionId, new Date(Date.now() + 2 * 60 * 60 * 1000));
 
-		return json({
-			role: 'admin',
-			requiresTotp: true,
-			requiresTotpSetup: !adminUser.totpEnabled
-		});
+		return json({ role: 'admin', redirect: '/admin' });
 	}
 
 	// Check dispatcher

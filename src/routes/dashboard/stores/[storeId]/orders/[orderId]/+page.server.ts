@@ -1,7 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { getOrder, cancelOrder, fulfillOrder, refundOrder, updateOrderShipping } from '$lib/server/shopify/orders';
+import { getOrder, cancelOrder, confirmOrder, unconfirmOrder, fulfillOrder, refundOrder, updateOrderShipping } from '$lib/server/shopify/orders';
 import { logAudit } from '$lib/server/audit';
 import { getAuthorizedStore } from '$lib/server/store-access';
 
@@ -41,6 +41,40 @@ export const actions: Actions = {
 			}
 		} catch (e: unknown) {
 			return fail(400, { error: e instanceof Error ? e.message : 'Failed to cancel order' });
+		}
+		throw redirect(303, `/dashboard/stores/${params.storeId}/orders/${params.orderId}`);
+	},
+
+	confirm: async ({ params, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+
+		try {
+			await confirmOrder(client, toShopifyOrderId(params.orderId));
+			if (locals.session) {
+				await logAudit(locals.session.userId, 'dispatcher', 'order.confirm', {
+					targetType: 'order', targetId: params.orderId, storeId: params.storeId
+				});
+			}
+		} catch (e: unknown) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Failed to confirm order' });
+		}
+		throw redirect(303, `/dashboard/stores/${params.storeId}/orders/${params.orderId}`);
+	},
+
+	unconfirm: async ({ params, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+
+		try {
+			await unconfirmOrder(client, toShopifyOrderId(params.orderId));
+			if (locals.session) {
+				await logAudit(locals.session.userId, 'dispatcher', 'order.unconfirm', {
+					targetType: 'order', targetId: params.orderId, storeId: params.storeId
+				});
+			}
+		} catch (e: unknown) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Failed to unconfirm order' });
 		}
 		throw redirect(303, `/dashboard/stores/${params.storeId}/orders/${params.orderId}`);
 	},
@@ -145,23 +179,79 @@ export const actions: Actions = {
 		throw redirect(303, `/dashboard/stores/${params.storeId}/orders/${params.orderId}`);
 	},
 
-	resendInvoice: async ({ params, locals }) => {
+	duplicateOrder: async ({ params, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const order = await getOrder(client, toShopifyOrderId(params.orderId));
+
+		const lineItems = order.lineItems.nodes
+			.filter(item => item.variant?.id)
+			.map(item => ({ variantId: item.variant!.id, quantity: item.quantity }));
+
+		if (!lineItems.length) return fail(400, { error: 'No duplicatable line items found' });
+
+		const input: Record<string, unknown> = { lineItems };
+
+		if (order.customer?.id) input.customerId = order.customer.id;
+
+		if (order.shippingAddress) {
+			const [firstName, ...rest] = order.shippingAddress.name.split(' ');
+			input.shippingAddress = {
+				firstName,
+				lastName: rest.join(' '),
+				address1: order.shippingAddress.address1,
+				city: order.shippingAddress.city,
+				province: order.shippingAddress.province,
+				country: order.shippingAddress.country,
+				zip: order.shippingAddress.zip,
+				phone: order.shippingAddress.phone ?? undefined
+			};
+		}
+
+		const gql = `
+			mutation draftOrderCreate($input: DraftOrderInput!) {
+				draftOrderCreate(input: $input) {
+					draftOrder { id legacyResourceId }
+					userErrors { field message }
+				}
+			}
+		`;
+
+		try {
+			const result = await shopifyRequest(client, gql, { input }) as any;
+			const errors = result?.draftOrderCreate?.userErrors;
+			if (errors?.length) return fail(400, { error: errors[0].message });
+			const newId = result?.draftOrderCreate?.draftOrder?.legacyResourceId;
+			if (locals.session) await logAudit(locals.session.userId, 'dispatcher', 'order.duplicate', { targetType: 'order', targetId: params.orderId, storeId: params.storeId });
+			if (newId) throw redirect(303, `/dashboard/stores/${params.storeId}/draft-orders/${newId}`);
+		} catch (e) {
+			if ((e as any)?.status === 303) throw e;
+			return fail(500, { error: e instanceof Error ? e.message : 'Failed to duplicate order' });
+		}
+		return { success: true };
+	},
+
+	resendInvoice: async ({ params, locals, request }) => {
 		const store = await getAuthorizedStore(locals.session, params.storeId);
 		const client = getShopifyClient(store);
 		const orderId = toShopifyOrderId(params.orderId);
+		const formData = await request.formData();
+		const email = formData.get('email')?.toString() ?? '';
 		const gql = `
-			mutation draftOrderInvoiceSend($id: ID!) {
-				draftOrderInvoiceSend(id: $id) {
-					draftOrder { id }
+			mutation orderInvoiceSend($id: ID!, $email: EmailInput) {
+				orderInvoiceSend(id: $id, email: $email) {
+					order { id }
 					userErrors { field message }
 				}
 			}
 		`;
 		try {
-			await shopifyRequest(client, gql, { id: orderId });
+			const result = await shopifyRequest(client, gql, { id: orderId, email: { to: email } }) as any;
+			const errors = result?.orderInvoiceSend?.userErrors;
+			if (errors?.length) return fail(400, { error: errors[0].message });
 			if (locals.session) await logAudit(locals.session.userId, 'dispatcher', 'order.resendInvoice', { targetType: 'order', targetId: params.orderId, storeId: params.storeId });
-		} catch {
-			// non-critical — invoice send may not apply to all order types
+		} catch (e) {
+			return fail(500, { error: 'Failed to send invoice' });
 		}
 		return { success: true };
 	}
