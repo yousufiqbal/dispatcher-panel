@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { addToast } from '$lib/toast.svelte';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -31,13 +32,20 @@
 			</ul>
 		</div>
 	{/if}
-	{#if form?.success}
-		<div class="rounded-md bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800 mb-6">Changes saved.</div>
-	{/if}
 
 	<div class="card mb-4">
 		<div class="card-content pt-6">
-			<form method="POST" action="?/update" use:enhance class="space-y-5">
+			<form
+				method="POST"
+				action="?/update"
+				use:enhance={() => {
+					return async ({ update, result }) => {
+						await update({ reset: false });
+						if (result.type === 'success') addToast('Courier updated');
+					};
+				}}
+				class="space-y-5"
+			>
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div class="space-y-1.5">
 						<label class="label" for="name">Courier Name</label>

@@ -25,15 +25,15 @@
 				</div>
 			{/if}
 			<div>
-				<div class="flex items-center gap-2">
-					<h1 class="text-2xl font-bold">{data.store.name}</h1>
+				<h1 class="text-2xl font-bold">{data.store.name}</h1>
+				<div class="flex items-center gap-2 mt-1">
 					{#if data.store.isActive}
 						<span class="badge badge-fulfilled">Active</span>
 					{:else}
 						<span class="badge badge-cancelled">Inactive</span>
 					{/if}
+					<p class="text-sm text-muted-foreground">{data.store.shopifyDomain}</p>
 				</div>
-				<p class="text-sm text-muted-foreground">{data.store.shopifyDomain}</p>
 			</div>
 		</div>
 	</div>

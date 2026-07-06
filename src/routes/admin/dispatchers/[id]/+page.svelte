@@ -17,19 +17,19 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
 				</svg>
 			</a>
-			<div class="size-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
+			<div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
 				{data.dispatcher.name[0].toUpperCase()}
 			</div>
 			<div>
-				<div class="flex items-center gap-2">
-					<h1 class="text-2xl font-bold">{data.dispatcher.name}</h1>
+				<h1 class="text-2xl font-bold">{data.dispatcher.name}</h1>
+				<div class="flex items-center gap-2 mt-1">
 					{#if data.dispatcher.isActive}
 						<span class="badge badge-fulfilled">Active</span>
 					{:else}
 						<span class="badge badge-cancelled">Disabled</span>
 					{/if}
+					<p class="text-sm text-muted-foreground">{data.dispatcher.email}</p>
 				</div>
-				<p class="text-sm text-muted-foreground">{data.dispatcher.email}</p>
 			</div>
 		</div>
 	</div>

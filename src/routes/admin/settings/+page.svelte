@@ -46,57 +46,60 @@
 	</div>
 
 	{#if activeTab === 'account'}
-		<!-- Email -->
-		<a href="/admin/settings/email" class="card block hover:bg-muted/30 transition-colors">
-			<div class="card-content pt-6 flex items-center justify-between">
-				<div>
-					<h2 class="text-base font-semibold">Email Address</h2>
-					<p class="text-sm text-muted-foreground">Current: <strong>{data.email}</strong></p>
-				</div>
-				<svg class="size-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-				</svg>
-			</div>
-		</a>
+		<!-- Grouped nav rows -->
+		<div class="card overflow-hidden">
+			<div class="divide-y divide-border">
+				<a href="/admin/settings/email" class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
+					<div>
+						<h2 class="text-base font-semibold">Email Address</h2>
+						<p class="text-sm text-muted-foreground">Current: <strong>{data.email}</strong></p>
+					</div>
+					<svg class="size-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+					</svg>
+				</a>
 
-		<!-- Password -->
-		<a href="/admin/settings/password" class="card block hover:bg-muted/30 transition-colors">
-			<div class="card-content pt-6 flex items-center justify-between">
-				<div>
-					<h2 class="text-base font-semibold">Password</h2>
-					<p class="text-sm text-muted-foreground">Change your account password</p>
-				</div>
-				<svg class="size-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-				</svg>
-			</div>
-		</a>
+				<a href="/admin/settings/password" class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
+					<div>
+						<h2 class="text-base font-semibold">Password</h2>
+						<p class="text-sm text-muted-foreground">Change your account password</p>
+					</div>
+					<svg class="size-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+					</svg>
+				</a>
 
-		<!-- Activity Log -->
-		<a href="/admin/settings/activity-log" class="card block hover:bg-muted/30 transition-colors">
-			<div class="card-content pt-6 flex items-center justify-between">
-				<div>
-					<h2 class="text-base font-semibold">Activity Log</h2>
-					<p class="text-sm text-muted-foreground">Choose which dispatcher activities get recorded</p>
-				</div>
-				<svg class="size-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-				</svg>
-			</div>
-		</a>
+				<a href="/admin/settings/activity-log" class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
+					<div>
+						<h2 class="text-base font-semibold">Activity Log</h2>
+						<p class="text-sm text-muted-foreground">Choose which dispatcher activities get recorded</p>
+					</div>
+					<svg class="size-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+					</svg>
+				</a>
 
-		<!-- Couriers -->
-		<a href="/admin/couriers" class="card block hover:bg-muted/30 transition-colors">
-			<div class="card-content pt-6 flex items-center justify-between">
-				<div>
-					<h2 class="text-base font-semibold">Couriers</h2>
-					<p class="text-sm text-muted-foreground">Manage courier accounts and which stores can use them</p>
-				</div>
-				<svg class="size-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-				</svg>
+				<a href="/admin/couriers" class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
+					<div>
+						<h2 class="text-base font-semibold">Couriers</h2>
+						<p class="text-sm text-muted-foreground">Manage courier accounts and which stores can use them</p>
+					</div>
+					<svg class="size-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+					</svg>
+				</a>
+
+				<button
+					onclick={() => openLogoutConfirm()}
+					class="lg:hidden w-full flex items-center justify-between px-6 py-4 hover:bg-destructive/5 transition-colors text-left"
+				>
+					<span class="text-base font-semibold text-destructive">Sign Out</span>
+					<svg class="size-4 text-destructive shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+					</svg>
+				</button>
 			</div>
-		</a>
+		</div>
 
 		<!-- 2FA -->
 		<div class="card">
@@ -120,17 +123,6 @@
 				{/if}
 			</div>
 		</div>
-
-		<!-- Logout (mobile only — desktop has it in the sidebar) -->
-		<button
-			onclick={() => openLogoutConfirm()}
-			class="lg:hidden card w-full flex items-center justify-between px-6 py-4 hover:bg-destructive/5 transition-colors text-left"
-		>
-			<span class="text-sm font-semibold text-destructive">Sign Out</span>
-			<svg class="size-4 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-			</svg>
-		</button>
 	{:else if activeTab === 'scopes'}
 		<!-- Shopify Scopes -->
 		<div class="card">

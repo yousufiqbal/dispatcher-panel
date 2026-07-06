@@ -38,7 +38,7 @@
 				{#each data.dispatchers as d}
 					<a href="/admin/dispatchers/{d.id}" class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
 						<div class="flex items-center gap-4">
-							<div class="size-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
+							<div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
 								{d.name[0].toUpperCase()}
 							</div>
 							<div>
