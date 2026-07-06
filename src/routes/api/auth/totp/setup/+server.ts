@@ -21,7 +21,7 @@ export const GET: RequestHandler = async ({ locals }) => {
 
 	const secret = new Secret({ size: 20 });
 	const totp = new TOTP({
-		issuer: 'Dispatcher Panel',
+		issuer: 'Pro Shipper',
 		label: adminUser.email,
 		secret,
 		digits: 6,

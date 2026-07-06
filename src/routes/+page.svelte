@@ -8,7 +8,7 @@
 		if (data.session?.role === 'admin' && data.session.totpVerified) {
 			goto('/admin');
 		} else if (data.session?.role === 'dispatcher') {
-			goto('/dashboard');
+			goto('/dispatcher');
 		} else {
 			goto('/login');
 		}

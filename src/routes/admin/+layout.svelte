@@ -48,9 +48,9 @@
 	<!-- Sidebar (desktop only) -->
 	<aside class="fixed inset-y-0 left-0 z-50 hidden lg:flex flex-col bg-card border-r border-border w-60 shadow-sm">
 		<div class="flex items-center gap-3 px-5 py-4 border-b border-border">
-			<div class="flex items-center justify-center size-8 rounded-lg bg-primary text-primary-foreground text-xs font-bold">D</div>
+			<div class="flex items-center justify-center size-8 rounded-lg bg-primary text-primary-foreground text-xs font-bold">PS</div>
 			<div class="flex-1 min-w-0">
-				<div class="text-sm font-semibold text-foreground">Dispatcher Panel</div>
+				<div class="text-sm font-semibold text-foreground">Pro Shipper</div>
 				<div class="text-xs text-muted-foreground">Admin</div>
 			</div>
 		</div>

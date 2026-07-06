@@ -206,7 +206,7 @@
 			<ol class="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
 				<li>Go to your Shopify Admin → <strong>Settings</strong> → <strong>Apps and sales channels</strong></li>
 				<li>Click <strong>Develop apps</strong> → <strong>Create an app</strong></li>
-				<li>Give it a name (e.g. "Dispatcher Panel")</li>
+				<li>Give it a name (e.g. "Pro Shipper")</li>
 				<li>Go to <strong>Configuration</strong> → enable the scopes listed on the <a href="/admin/settings" class="underline text-primary">Settings</a> page</li>
 				<li>Click <strong>Install app</strong> → copy the <strong>Admin API access token</strong></li>
 			</ol>

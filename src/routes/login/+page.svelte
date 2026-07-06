@@ -33,7 +33,7 @@
 			if (data.role === 'admin') {
 				goto('/admin');
 			} else {
-				goto('/dashboard');
+				goto('/dispatcher');
 			}
 		} catch {
 			error = 'Network error. Please try again.';
@@ -108,7 +108,7 @@
 </script>
 
 <svelte:head>
-	<title>Sign In — Dispatcher Panel</title>
+	<title>Sign In — Pro Shipper</title>
 </svelte:head>
 
 <div class="min-h-screen bg-zinc-50 flex items-center justify-center p-4">
@@ -120,7 +120,7 @@
 					<path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7" />
 				</svg>
 			</div>
-			<h1 class="text-2xl font-bold text-foreground">Dispatcher Panel</h1>
+			<h1 class="text-2xl font-bold text-foreground">Pro Shipper</h1>
 			<p class="text-sm text-muted-foreground mt-1">Shopify Order Management</p>
 		</div>
 

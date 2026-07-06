@@ -27,6 +27,13 @@
 
 <div class="p-3 sm:p-6 max-w-2xl">
 	<div class="mb-6">
+		<nav class="flex items-center gap-1.5 text-xs text-muted-foreground mb-4">
+			<a href="/admin/settings" class="hover:text-foreground transition-colors">Settings</a>
+			<svg class="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+			</svg>
+			<span class="text-foreground font-medium">Activity Log</span>
+		</nav>
 		<div class="flex items-center gap-3">
 			<a href="/admin/settings" class="btn-secondary btn-icon shrink-0" title="Back to Settings">
 				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">

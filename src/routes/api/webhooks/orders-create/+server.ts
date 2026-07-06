@@ -42,7 +42,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		title: `New order ${order.name}`,
 		body: `${customerName} — ${order.total_price ?? ''} ${order.currency ?? ''}`.trim(),
 		tag: order.name,
-		url: `/dashboard/stores/${store.id}/orders`
+		url: `/dispatcher/stores/${store.id}/orders`
 	});
 
 	return text('ok');

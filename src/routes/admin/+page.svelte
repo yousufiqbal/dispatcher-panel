@@ -6,7 +6,7 @@
 </script>
 
 <svelte:head>
-	<title>Admin Overview — Dispatcher Panel</title>
+	<title>Admin Overview — Pro Shipper</title>
 </svelte:head>
 
 <div class="p-3 sm:p-6">

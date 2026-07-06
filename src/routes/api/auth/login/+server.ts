@@ -46,7 +46,7 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 		const sessionId = await createSession(dispatcher.id, 'dispatcher', true, ip, ua);
 		setSessionCookie(cookies, sessionId, new Date(Date.now() + 8 * 60 * 60 * 1000));
 
-		return json({ role: 'dispatcher', redirect: '/dashboard' });
+		return json({ role: 'dispatcher', redirect: '/dispatcher' });
 	}
 
 	return json({ error: 'Invalid credentials' }, { status: 401 });
