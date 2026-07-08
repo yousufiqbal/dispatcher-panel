@@ -3,9 +3,20 @@
 	import { enhance } from '$app/forms';
 	import { page, navigating } from '$app/stores';
 	import { addToast } from '$lib/toast.svelte';
-	import Checkbox from '$lib/components/Checkbox.svelte';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import { formatCurrency, formatDate, formatRelativeDate } from '$lib/utils';
 	import { deliveryPill } from '$lib/delivery-status';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import PlusIcon from '@lucide/svelte/icons/plus';
+	import PrinterIcon from '@lucide/svelte/icons/printer';
+	import Loader2Icon from '@lucide/svelte/icons/loader-2';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import CopyIcon from '@lucide/svelte/icons/copy';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -183,25 +194,24 @@
 	<div class="flex items-center justify-between px-4 py-2.5 border-t border-border">
 		<span class="text-xs text-muted-foreground">Page {currentPage}</span>
 		<div class="flex items-center gap-1">
-			<button class="btn-secondary btn-sm" disabled={currentPage <= 1} onclick={() => goToPage(currentPage - 1)}>←</button>
+			<Button variant="outline" size="sm" disabled={currentPage <= 1} onclick={() => goToPage(currentPage - 1)}>←</Button>
 			{#each pageButtons as n}
-				<button
-					class="btn-sm min-w-[2rem] {n === currentPage ? 'btn-primary' : 'btn-secondary'}"
+				<Button
+					size="sm"
+					variant={n === currentPage ? 'default' : 'outline'}
+					class="min-w-[2rem]"
 					onclick={() => goToPage(n)}
 				>
 					{n}
-				</button>
+				</Button>
 			{/each}
-			<button class="btn-secondary btn-sm" disabled={!data.pageInfo.hasNextPage || loadingMore} onclick={nextPage}>
+			<Button variant="outline" size="sm" disabled={!data.pageInfo.hasNextPage || loadingMore} onclick={nextPage}>
 				{#if loadingMore}
-					<svg class="size-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-						<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-						<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-					</svg>
+					<Loader2Icon class="size-3.5 animate-spin" />
 				{:else}
 					→
 				{/if}
-			</button>
+			</Button>
 		</div>
 	</div>
 {/snippet}
@@ -220,69 +230,62 @@
 	<!-- Toolbar -->
 	<div class="flex items-center justify-between gap-3 sm:gap-4 mb-5">
 		<div class="flex-1 min-w-0 sm:max-w-sm relative">
-			<svg class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-			</svg>
-			<input
+			<SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+			<Input
 				type="search"
-				class="input pl-9"
+				class="pl-9"
 				placeholder="Search Orders"
 				bind:value={searchInput}
 				oninput={onSearch}
 			/>
 		</div>
 		<div class="flex items-center gap-2 shrink-0">
-			<button
+			<Button
 				onclick={async () => { refreshing = true; await invalidateAll(); refreshing = false; }}
-				class="btn-secondary btn-icon"
+				variant="outline"
+				size="icon"
 				title="Refresh orders"
 				disabled={refreshing}
 			>
-				<svg class="size-4 {refreshing ? 'animate-spin' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-				</svg>
-			</button>
-			<a href="/dispatcher/stores/{storeId}/orders/new" class="btn-primary size-9 p-0 sm:size-auto sm:px-4 sm:py-2">
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-				</svg>
+				<RefreshCwIcon class="size-4 {refreshing ? 'animate-spin' : ''}" />
+			</Button>
+			<Button href="/dispatcher/stores/{storeId}/orders/new" class="size-9 p-0 sm:size-auto sm:px-4 sm:py-2">
+				<PlusIcon class="size-4" />
 				<span class="hidden sm:inline">New Order</span>
-			</a>
+			</Button>
 		</div>
 	</div>
 
 	<!-- Status tabs -->
-	<div class="flex items-center gap-2 mb-5 pb-1 overflow-x-auto overflow-y-hidden">
-		{#each tabs as tab}
-			{#if tab.separator}
-				<div class="w-px h-5 bg-border self-center mx-1 shrink-0"></div>
-			{/if}
-			<button
-				onclick={() => setStatus(tab.key)}
-				class="flex items-center gap-1.5 text-sm font-medium transition-colors duration-150 cursor-pointer whitespace-nowrap shrink-0 px-3.5 py-1.5 rounded-full
-					{(data.status ?? 'all') === tab.key
-						? 'bg-primary text-primary-foreground'
-						: 'bg-white border border-zinc-200 text-muted-foreground hover:bg-accent'}"
-			>
-				{tab.label}
-				{#if tab.key === 'pending' && data.pendingCount > 0}
-					<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
-						{data.pendingCount}
-					</span>
-				{/if}
-				{#if tab.key === 'confirmed' && data.confirmedCount > 0}
-					<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-						{data.confirmedCount}
-					</span>
-				{/if}
-			</button>
-		{/each}
+	<div class="mb-5 pb-1 overflow-x-auto overflow-y-hidden">
+		<Tabs.Root value={data.status ?? 'all'} onValueChange={setStatus}>
+			<Tabs.List class="h-auto flex-nowrap">
+				{#each tabs as tab}
+					{#if tab.separator}
+						<div class="w-px h-5 bg-border self-center mx-1 shrink-0"></div>
+					{/if}
+					<Tabs.Trigger value={tab.key} class="gap-1.5 shrink-0">
+						{tab.label}
+						{#if tab.key === 'pending' && data.pendingCount > 0}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+								{data.pendingCount}
+							</span>
+						{/if}
+						{#if tab.key === 'confirmed' && data.confirmedCount > 0}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+								{data.confirmedCount}
+							</span>
+						{/if}
+					</Tabs.Trigger>
+				{/each}
+			</Tabs.List>
+		</Tabs.Root>
 	</div>
 
 	{#if data.status === 'pending' && selectedIds.size > 0}
 		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
 			<span class="text-sm font-medium">{selectedIds.size} selected</span>
-			<button class="btn-primary btn-sm" onclick={() => showBulkConfirmDialog = true}>Confirm Selected</button>
+			<Button size="sm" onclick={() => showBulkConfirmDialog = true}>Confirm Selected</Button>
 		</div>
 	{/if}
 
@@ -291,7 +294,7 @@
 			<span class="text-sm font-medium">{selectedIds.size} selected</span>
 			<div class="flex items-center gap-2">
 				{#each data.couriers as courier}
-					<button class="btn-secondary btn-sm" onclick={() => bookSelected(courier.id)}>Book with {courier.name}</button>
+					<Button variant="outline" size="sm" onclick={() => bookSelected(courier.id)}>Book with {courier.name}</Button>
 				{/each}
 				{#if data.couriers.length === 0}
 					<span class="text-xs text-muted-foreground">No courier assigned to this store — set one up in Admin → Couriers</span>
@@ -303,12 +306,10 @@
 	{#if ['fulfilled', 'attempted', 'failed'].includes(data.status) && selectedIds.size > 0}
 		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
 			<span class="text-sm font-medium">{selectedIds.size} selected</span>
-			<button class="btn-primary btn-sm inline-flex items-center gap-1.5" onclick={printLabels}>
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-				</svg>
+			<Button size="sm" onclick={printLabels}>
+				<PrinterIcon class="size-4" />
 				Print Labels
-			</button>
+			</Button>
 		</div>
 	{/if}
 
@@ -470,9 +471,9 @@
 												onclick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(phone); copiedPhone = phone; setTimeout(() => copiedPhone === phone && (copiedPhone = null), 1200); }}
 											>
 												{#if copiedPhone === phone}
-													<svg class="size-3.5 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+													<CheckIcon class="size-3.5 text-green-600" />
 												{:else}
-													<svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+													<CopyIcon class="size-3.5" />
 												{/if}
 											</button>
 										</span>
@@ -578,15 +579,12 @@
 			</div>
 			{#if data.pageInfo.hasNextPage}
 				<div class="p-3 border-t border-border">
-					<button class="btn-secondary w-full inline-flex items-center justify-center gap-2" disabled={loadingMore} onclick={nextPage}>
+					<Button variant="outline" class="w-full" disabled={loadingMore} onclick={nextPage}>
 						{#if loadingMore}
-							<svg class="size-4 animate-spin" fill="none" viewBox="0 0 24 24">
-								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-							</svg>
+							<Loader2Icon class="size-4 animate-spin" />
 						{/if}
 						{loadingMore ? 'Loading…' : 'Load more'}
-					</button>
+					</Button>
 				</div>
 			{/if}
 		</div>
@@ -596,47 +594,38 @@
 </div>
 
 <!-- Bulk confirm dialog -->
-{#if showBulkConfirmDialog}
-	<div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-		<div class="card w-full max-w-md shadow-xl">
-			<div class="card-header">
-				<h2 class="text-lg font-semibold">Confirm {selectedIds.size} order{selectedIds.size !== 1 ? 's' : ''}?</h2>
-				<p class="text-sm text-muted-foreground">Marks these orders as confirmed with the customer. They can then be fulfilled.</p>
-			</div>
-			<div class="card-content">
-				<form
-					method="POST"
-					action="?/bulkConfirm"
-					use:enhance={() => {
-						bulkConfirming = true;
-						return async ({ result, update }) => {
-							await update();
-							bulkConfirming = false;
-							showBulkConfirmDialog = false;
-							if (result.type === 'redirect') {
-								selectedIds = new Set();
-								addToast('Orders confirmed');
-							} else {
-								addToast('Failed to confirm orders', 'error');
-							}
-						};
-					}}
-				>
-					<input type="hidden" name="ids" value={[...selectedIds].join(',')} />
-					<div class="flex gap-3">
-						<button type="submit" class="btn-primary" disabled={bulkConfirming}>
-							{#if bulkConfirming}
-								<svg class="size-4 animate-spin" fill="none" viewBox="0 0 24 24">
-									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
-								</svg>
-							{/if}
-							{bulkConfirming ? 'Confirming…' : 'Confirm Orders'}
-						</button>
-						<button type="button" class="btn-secondary" disabled={bulkConfirming} onclick={() => showBulkConfirmDialog = false}>Cancel</button>
-					</div>
-				</form>
-			</div>
-		</div>
-	</div>
-{/if}
+<Dialog.Root bind:open={showBulkConfirmDialog}>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>Confirm {selectedIds.size} order{selectedIds.size !== 1 ? 's' : ''}?</Dialog.Title>
+			<Dialog.Description>Marks these orders as confirmed with the customer. They can then be fulfilled.</Dialog.Description>
+		</Dialog.Header>
+		<form
+			method="POST"
+			action="?/bulkConfirm"
+			use:enhance={() => {
+				bulkConfirming = true;
+				return async ({ result, update }) => {
+					await update();
+					bulkConfirming = false;
+					showBulkConfirmDialog = false;
+					if (result.type === 'redirect') {
+						selectedIds = new Set();
+						addToast('Orders confirmed');
+					} else {
+						addToast('Failed to confirm orders', 'error');
+					}
+				};
+			}}
+		>
+			<input type="hidden" name="ids" value={[...selectedIds].join(',')} />
+			<Dialog.Footer>
+				<Button type="button" variant="outline" disabled={bulkConfirming} onclick={() => showBulkConfirmDialog = false}>Cancel</Button>
+				<Button type="submit" disabled={bulkConfirming}>
+					{#if bulkConfirming}<Loader2Icon class="size-4 animate-spin" />{/if}
+					{bulkConfirming ? 'Confirming…' : 'Confirm Orders'}
+				</Button>
+			</Dialog.Footer>
+		</form>
+	</Dialog.Content>
+</Dialog.Root>

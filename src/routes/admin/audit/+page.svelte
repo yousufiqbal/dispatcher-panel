@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { formatDate } from '$lib/utils';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -27,6 +29,14 @@
 		...data.dispatchers.map((d) => ({ label: d.name, role: 'dispatcher', actorId: d.id }))
 	]);
 
+	const pillKey = (role: string, actorId: string) => `${role}::${actorId}`;
+	const activeTab = $derived(pillKey(role, actorId));
+
+	function onTabChange(value: string) {
+		const [newRole, newActorId] = value.split('::');
+		selectActor(newRole, newActorId);
+	}
+
 	let selectedLog = $state<PageData['logs'][number] | null>(null);
 
 	function formatMetadata(metadata: string | null) {
@@ -49,18 +59,14 @@
 		<p class="text-sm text-muted-foreground mt-1">Last 100 actions</p>
 	</div>
 
-	<div class="flex flex-wrap items-center gap-2 mb-4">
-		{#each pills as pill}
-			<button
-				onclick={() => selectActor(pill.role, pill.actorId)}
-				class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors duration-150 cursor-pointer whitespace-nowrap
-					{role === pill.role && actorId === pill.actorId
-						? 'bg-primary text-primary-foreground'
-						: 'bg-zinc-200/70 text-muted-foreground hover:bg-accent'}"
-			>
-				{pill.label}
-			</button>
-		{/each}
+	<div class="mb-4">
+		<Tabs.Root value={activeTab} onValueChange={onTabChange}>
+			<Tabs.List class="h-auto flex-wrap">
+				{#each pills as pill}
+					<Tabs.Trigger value={pillKey(pill.role, pill.actorId)}>{pill.label}</Tabs.Trigger>
+				{/each}
+			</Tabs.List>
+		</Tabs.Root>
 	</div>
 
 	{#if data.logs.length === 0}
@@ -122,25 +128,13 @@
 	{/if}
 </div>
 
-{#if selectedLog}
-	<div
-		class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-		role="dialog"
-		aria-modal="true"
-		onclick={() => selectedLog = null}
-		onkeydown={(e) => e.key === 'Escape' && (selectedLog = null)}
-		tabindex="-1"
-	>
-		<div class="card w-full max-w-lg shadow-xl" onclick={(e) => e.stopPropagation()}>
-			<div class="card-header flex items-center justify-between">
-				<h2 class="text-lg font-semibold">Audit Entry</h2>
-				<button class="btn-icon text-muted-foreground" onclick={() => selectedLog = null}>
-					<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-					</svg>
-				</button>
-			</div>
-			<div class="card-content space-y-3 text-sm">
+<Dialog.Root open={!!selectedLog} onOpenChange={(o) => { if (!o) selectedLog = null; }}>
+	<Dialog.Content class="max-w-lg">
+		{#if selectedLog}
+			<Dialog.Header>
+				<Dialog.Title>Audit Entry</Dialog.Title>
+			</Dialog.Header>
+			<div class="space-y-3 text-sm">
 				<div>
 					<div class="text-xs text-muted-foreground uppercase tracking-wide">When</div>
 					<div class="font-mono">{formatDate(selectedLog.createdAt.toISOString())}</div>
@@ -171,6 +165,6 @@
 					</div>
 				{/if}
 			</div>
-		</div>
-	</div>
-{/if}
+		{/if}
+	</Dialog.Content>
+</Dialog.Root>

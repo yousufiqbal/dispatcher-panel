@@ -2,6 +2,11 @@
 	import { enhance } from '$app/forms';
 	import { page } from '$app/stores';
 	import { formatCurrency, formatDateShort, shopifyIdToNumber } from '$lib/utils';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -18,23 +23,21 @@
 <div class="p-3 sm:p-6">
 	<div class="mb-6">
 		<div class="flex items-center gap-4">
-			<a href="/dispatcher/stores/{storeId}/customers" class="btn-secondary btn-icon shrink-0" title="Back to Customers">
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-				</svg>
-			</a>
+			<Button href="/dispatcher/stores/{storeId}/customers" variant="outline" size="icon" class="shrink-0" title="Back to Customers">
+				<ArrowLeftIcon class="size-4" />
+			</Button>
 			<div>
 				<h1 class="text-2xl font-bold">{customer.displayName}</h1>
 				<p class="text-sm text-muted-foreground">{customer.numberOfOrders} order{customer.numberOfOrders !== 1 ? 's' : ''}</p>
 			</div>
 		</div>
 		<div class="flex gap-2 mt-3">
-			<a href="/dispatcher/stores/{storeId}/orders/new?customerId={encodeURIComponent(customer.id)}" class="btn-primary">
+			<Button href="/dispatcher/stores/{storeId}/orders/new?customerId={encodeURIComponent(customer.id)}">
 				New Order
-			</a>
-			<button class="btn-secondary" onclick={() => editing = !editing}>
+			</Button>
+			<Button variant="outline" onclick={() => editing = !editing}>
 				{editing ? 'Cancel Edit' : 'Edit'}
-			</button>
+			</Button>
 		</div>
 	</div>
 
@@ -53,22 +56,22 @@
 					<h2 class="font-semibold mb-4">Edit Customer</h2>
 					<form method="POST" action="?/update" use:enhance class="space-y-3">
 						<div class="space-y-1.5">
-							<label class="label text-xs">First Name</label>
-							<input name="firstName" class="input" value={customer.firstName ?? ''} />
+							<Label class="text-xs">First Name</Label>
+							<Input name="firstName" value={customer.firstName ?? ''} />
 						</div>
 						<div class="space-y-1.5">
-							<label class="label text-xs">Last Name</label>
-							<input name="lastName" class="input" value={customer.lastName ?? ''} />
+							<Label class="text-xs">Last Name</Label>
+							<Input name="lastName" value={customer.lastName ?? ''} />
 						</div>
 						<div class="space-y-1.5">
-							<label class="label text-xs">Email</label>
-							<input name="email" type="email" class="input" value={customer.email ?? ''} />
+							<Label class="text-xs">Email</Label>
+							<Input name="email" type="email" value={customer.email ?? ''} />
 						</div>
 						<div class="space-y-1.5">
-							<label class="label text-xs">Phone</label>
-							<input name="phone" type="tel" class="input" value={customer.phone ?? ''} />
+							<Label class="text-xs">Phone</Label>
+							<Input name="phone" type="tel" value={customer.phone ?? ''} />
 						</div>
-						<button type="submit" class="btn-primary w-full">Save</button>
+						<Button type="submit" class="w-full">Save</Button>
 					</form>
 				</div>
 			{:else}
@@ -129,9 +132,7 @@
 								<div class="flex items-center gap-3">
 									<span class="badge badge-partial text-xs">{order.displayFinancialStatus}</span>
 									<span class="font-medium text-sm">{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}</span>
-									<svg class="size-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-										<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-									</svg>
+									<ChevronRightIcon class="size-4 text-muted-foreground" />
 								</div>
 							</a>
 						{/each}

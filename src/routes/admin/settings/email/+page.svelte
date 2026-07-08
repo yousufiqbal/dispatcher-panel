@@ -1,5 +1,9 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -13,17 +17,13 @@
 	<div class="mb-6">
 		<nav class="flex items-center gap-1.5 text-xs text-muted-foreground mb-4">
 			<a href="/admin/settings" class="hover:text-foreground transition-colors">Settings</a>
-			<svg class="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-			</svg>
+			<ChevronRightIcon class="size-3" />
 			<span class="text-foreground font-medium">Email Address</span>
 		</nav>
 		<div class="flex items-center gap-3">
-			<a href="/admin/settings" class="btn-secondary btn-icon shrink-0" title="Back to Settings">
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-				</svg>
-			</a>
+			<Button href="/admin/settings" variant="outline" size="icon" class="shrink-0" title="Back to Settings">
+				<ArrowLeftIcon class="size-4" />
+			</Button>
 			<h1 class="text-2xl font-bold">Email Address</h1>
 		</div>
 		<p class="text-sm text-muted-foreground mt-1">Current: <strong>{form?.email ?? data.email}</strong></p>
@@ -38,8 +38,8 @@
 				<div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive mb-4">{form.emailError}</div>
 			{/if}
 			<form method="POST" use:enhance class="flex gap-3">
-				<input name="email" type="email" class="input flex-1" placeholder="new@email.com" required />
-				<button type="submit" class="btn-primary shrink-0">Update Email</button>
+				<Input name="email" type="email" class="flex-1" placeholder="new@email.com" required />
+				<Button type="submit" class="shrink-0">Update Email</Button>
 			</form>
 		</div>
 	</div>

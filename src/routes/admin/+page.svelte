@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { formatDate } from '$lib/utils';
+	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
+	import PlusIcon from '@lucide/svelte/icons/plus';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -32,9 +34,7 @@
 		<a href="/admin/dispatchers/new" class="card p-5 hover:shadow-md transition-shadow duration-150 group">
 			<div class="flex items-center gap-3">
 				<div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-150">
-					<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-					</svg>
+					<UserPlusIcon class="size-5" />
 				</div>
 				<div>
 					<div class="font-semibold text-sm text-foreground">Add Dispatcher</div>
@@ -46,9 +46,7 @@
 		<a href="/admin/stores/new" class="card p-5 hover:shadow-md transition-shadow duration-150 group">
 			<div class="flex items-center gap-3">
 				<div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-colors duration-150">
-					<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-					</svg>
+					<PlusIcon class="size-5" />
 				</div>
 				<div>
 					<div class="font-semibold text-sm text-foreground">Add Store</div>

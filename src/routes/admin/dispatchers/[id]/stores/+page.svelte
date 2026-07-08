@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import PageHeaderBack from '$lib/components/PageHeaderBack.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -19,19 +22,12 @@
 </svelte:head>
 
 <div class="p-3 sm:p-6 max-w-2xl">
-	<div class="mb-6">
-		<div class="flex items-center gap-3">
-			<a href="/admin/dispatchers/{data.dispatcher.id}" class="btn-secondary btn-icon shrink-0" title="Back to {data.dispatcher.name}">
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-				</svg>
-			</a>
-			<h1 class="text-2xl font-bold">Store Access</h1>
-		</div>
-		<p class="text-sm text-muted-foreground mt-1">
-			{data.dispatcher.name} · {data.dispatcher.email}
-		</p>
-	</div>
+	<PageHeaderBack
+		href="/admin/dispatchers/{data.dispatcher.id}"
+		backTitle="Back to {data.dispatcher.name}"
+		title="Store Access"
+		subtitle="{data.dispatcher.name} · {data.dispatcher.email}"
+	/>
 
 	<form method="POST" action="?/save" use:enhance>
 		<div class="card mb-5">
@@ -39,8 +35,8 @@
 				<div class="flex items-center justify-between">
 					<h2 class="text-base font-semibold">Assign Stores</h2>
 					<div class="flex gap-2">
-						<button type="button" onclick={selectAll} class="btn-ghost btn-sm text-xs">Select all</button>
-						<button type="button" onclick={clearAll} class="btn-ghost btn-sm text-xs">Clear</button>
+						<Button type="button" variant="ghost" size="sm" class="text-xs" onclick={selectAll}>Select all</Button>
+						<Button type="button" variant="ghost" size="sm" class="text-xs" onclick={clearAll}>Clear</Button>
 					</div>
 				</div>
 				<p class="text-sm text-muted-foreground">{selected.length} of {data.stores.length} selected</p>
@@ -54,13 +50,11 @@
 					<div class="space-y-2">
 						{#each data.stores as store}
 							<label class="flex items-center gap-4 border border-border rounded-lg px-4 py-3 cursor-pointer hover:bg-muted/40 transition-colors {selected.includes(store.id) ? 'border-primary/50 bg-primary/5' : ''}">
-								<input
-									type="checkbox"
+								<Checkbox
 									name="storeIds"
 									value={store.id}
 									checked={selected.includes(store.id)}
-									onchange={() => toggle(store.id)}
-									class="rounded border-border size-4 shrink-0"
+									onCheckedChange={() => toggle(store.id)}
 								/>
 								<div class="size-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
 									{store.name[0].toUpperCase()}
@@ -79,8 +73,8 @@
 		</div>
 
 		<div class="flex gap-3">
-			<button type="submit" class="btn-primary">Save Access</button>
-			<a href="/admin/dispatchers/{data.dispatcher.id}" class="btn-secondary">Cancel</a>
+			<Button type="submit">Save Access</Button>
+			<Button href="/admin/dispatchers/{data.dispatcher.id}" variant="secondary">Cancel</Button>
 		</div>
 	</form>
 </div>

@@ -40,9 +40,9 @@
 </script>
 
 {#if visible}
-	<div class="fixed top-0 left-0 right-0 z-[100] h-0.5 bg-transparent">
+	<div class="fixed top-0 left-0 right-0 z-[100] h-1 bg-transparent">
 		<div
-			class="h-full bg-primary"
+			class="h-full bg-blue-500"
 			style="width: {width}%; opacity: {fading ? 0 : 1}; transition-property: width, opacity; transition-duration: {fading ? '250ms' : '200ms'}; transition-timing-function: ease-out;"
 		></div>
 	</div>

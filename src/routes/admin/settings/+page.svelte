@@ -2,6 +2,9 @@
 	import { enhance } from '$app/forms';
 	import { SHOPIFY_SCOPES, SHOPIFY_SCOPE_STRING } from '$lib/shopify-scopes';
 	import { openLogoutConfirm } from '$lib/adminLogoutConfirm.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -54,9 +57,7 @@
 						<h2 class="text-base font-semibold">Email Address</h2>
 						<p class="text-sm text-muted-foreground">Current: <strong>{data.email}</strong></p>
 					</div>
-					<svg class="size-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-					</svg>
+					<ChevronRightIcon class="size-4 text-muted-foreground shrink-0" />
 				</a>
 
 				<a href="/admin/settings/password" class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
@@ -64,9 +65,7 @@
 						<h2 class="text-base font-semibold">Password</h2>
 						<p class="text-sm text-muted-foreground">Change your account password</p>
 					</div>
-					<svg class="size-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-					</svg>
+					<ChevronRightIcon class="size-4 text-muted-foreground shrink-0" />
 				</a>
 
 				<a href="/admin/settings/activity-log" class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
@@ -74,9 +73,7 @@
 						<h2 class="text-base font-semibold">Activity Log</h2>
 						<p class="text-sm text-muted-foreground">Choose which dispatcher activities get recorded</p>
 					</div>
-					<svg class="size-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-					</svg>
+					<ChevronRightIcon class="size-4 text-muted-foreground shrink-0" />
 				</a>
 
 				<a href="/admin/couriers" class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
@@ -84,20 +81,8 @@
 						<h2 class="text-base font-semibold">Couriers</h2>
 						<p class="text-sm text-muted-foreground">Manage courier accounts and which stores can use them</p>
 					</div>
-					<svg class="size-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-					</svg>
+					<ChevronRightIcon class="size-4 text-muted-foreground shrink-0" />
 				</a>
-
-				<button
-					onclick={() => openLogoutConfirm()}
-					class="lg:hidden w-full flex items-center justify-between px-6 py-4 hover:bg-destructive/5 transition-colors text-left"
-				>
-					<span class="text-base font-semibold text-destructive">Sign Out</span>
-					<svg class="size-4 text-destructive shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-					</svg>
-				</button>
 			</div>
 		</div>
 
@@ -116,7 +101,7 @@
 				{#if data.totpEnabled}
 					<p class="text-sm text-muted-foreground mb-4">Disabling 2FA will require you to set it up again on next login.</p>
 					<form method="POST" action="?/disableTotp" use:enhance>
-						<button type="submit" class="btn-destructive">Disable 2FA</button>
+						<Button type="submit" variant="destructive">Disable 2FA</Button>
 					</form>
 				{:else}
 					<p class="text-sm text-muted-foreground">2FA is not active. Log out and log back in to trigger setup.</p>
@@ -135,9 +120,9 @@
 			<div class="card-content space-y-4">
 				<div class="flex items-center gap-2">
 					<code class="input font-mono text-xs flex-1 overflow-x-auto whitespace-nowrap py-2.5">{SHOPIFY_SCOPE_STRING}</code>
-					<button type="button" class="btn-secondary btn-sm shrink-0" onclick={copyScopes}>
+					<Button type="button" variant="secondary" size="sm" class="shrink-0" onclick={copyScopes}>
 						{copied ? 'Copied!' : 'Copy'}
-					</button>
+					</Button>
 				</div>
 				<div class="rounded-md border border-border divide-y divide-border">
 					{#each SHOPIFY_SCOPES as s (s.scope)}
@@ -150,4 +135,15 @@
 			</div>
 		</div>
 	{/if}
+
+	<!-- Logout -->
+	<div class="card overflow-hidden lg:hidden">
+		<button
+			onclick={() => openLogoutConfirm()}
+			class="w-full flex items-center justify-between px-6 py-4 hover:bg-destructive/5 transition-colors text-left"
+		>
+			<span class="text-base font-semibold text-destructive">Logout</span>
+			<LogOutIcon class="size-4 text-destructive shrink-0" />
+		</button>
+	</div>
 </div>

@@ -1,5 +1,11 @@
 <script lang="ts">
 	import { formatDateShort } from '$lib/utils';
+	import AvatarInitial from '$lib/components/AvatarInitial.svelte';
+	import EmptyStateCard from '$lib/components/EmptyStateCard.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
+	import UsersIcon from '@lucide/svelte/icons/users';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -15,32 +21,27 @@
 			<h1 class="text-2xl font-bold">Dispatchers</h1>
 			<p class="text-sm text-muted-foreground mt-1">{data.dispatchers.length} dispatcher{data.dispatchers.length !== 1 ? 's' : ''}</p>
 		</div>
-		<a href="/admin/dispatchers/new" class="btn-primary">
-			<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-			</svg>
+		<Button href="/admin/dispatchers/new">
+			<UserPlusIcon class="size-4" />
 			Add Dispatcher
-		</a>
+		</Button>
 	</div>
 
 	{#if data.dispatchers.length === 0}
-		<div class="card p-12 text-center">
-			<svg class="size-12 mx-auto text-muted-foreground/40 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-			</svg>
-			<h3 class="font-semibold text-foreground mb-1">No dispatchers yet</h3>
-			<p class="text-sm text-muted-foreground mb-4">Add your first dispatcher to give them store access.</p>
-			<a href="/admin/dispatchers/new" class="btn-primary">Add Dispatcher</a>
-		</div>
+		<EmptyStateCard
+			icon={UsersIcon}
+			title="No dispatchers yet"
+			description="Add your first dispatcher to give them store access."
+			ctaLabel="Add Dispatcher"
+			ctaHref="/admin/dispatchers/new"
+		/>
 	{:else}
 		<div class="card">
 			<div class="divide-y divide-border">
 				{#each data.dispatchers as d}
 					<a href="/admin/dispatchers/{d.id}" class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
 						<div class="flex items-center gap-4">
-							<div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm">
-								{d.name[0].toUpperCase()}
-							</div>
+							<AvatarInitial name={d.name} />
 							<div>
 								<div class="flex items-center gap-2">
 									<span class="font-semibold text-sm text-foreground">{d.name}</span>
@@ -62,9 +63,7 @@
 						</div>
 						<div class="flex items-center gap-3">
 							<span class="text-xs text-muted-foreground hidden sm:block">Since {formatDateShort(d.createdAt.toISOString())}</span>
-							<svg class="size-4 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-							</svg>
+							<ChevronRightIcon class="size-4 text-muted-foreground shrink-0" />
 						</div>
 					</a>
 				{/each}

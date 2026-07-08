@@ -74,13 +74,14 @@ export const actions: Actions = {
 		const fd = await request.formData();
 		const reason = (fd.get('reason') as string) || 'OTHER';
 		const refund = fd.get('refund') === 'true';
-
+		const restock = fd.get('restock') === 'true';
+		const notify = fd.get('notify') === 'true';
 		try {
-			await cancelOrder(client, toShopifyOrderId(params.orderId), reason, refund);
+			await cancelOrder(client, toShopifyOrderId(params.orderId), reason, refund, restock, notify);
 			if (locals.session) {
 				await logAudit(locals.session.userId, 'dispatcher', 'order.cancel', {
 					targetType: 'order', targetId: params.orderId, storeId: params.storeId,
-					metadata: { reason, refund }
+					metadata: { reason, refund, restock, notify }
 				});
 			}
 		} catch (e: unknown) {

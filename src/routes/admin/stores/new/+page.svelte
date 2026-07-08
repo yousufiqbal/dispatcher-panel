@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import ShopifyOAuthExchange from '$lib/components/ShopifyOAuthExchange.svelte';
+	import PageHeaderBack from '$lib/components/PageHeaderBack.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
 	import type { ActionData } from './$types';
 
 	let { form }: { form: ActionData } = $props();
@@ -49,17 +53,12 @@
 </svelte:head>
 
 <div class="p-3 sm:p-6 max-w-2xl">
-	<div class="mb-6">
-		<div class="flex items-center gap-3">
-			<a href="/admin/stores" class="btn-secondary btn-icon shrink-0" title="Back to Stores">
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-				</svg>
-			</a>
-			<h1 class="text-2xl font-bold">Add Store</h1>
-		</div>
-		<p class="text-sm text-muted-foreground mt-1">Connect a Shopify store using its Admin API token</p>
-	</div>
+	<PageHeaderBack
+		href="/admin/stores"
+		backTitle="Back to Stores"
+		title="Add Store"
+		subtitle="Connect a Shopify store using its Admin API token"
+	/>
 
 	{#if form?.errors}
 		<div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive mb-6">
@@ -73,30 +72,30 @@
 		<div class="card-content pt-6">
 			<form method="POST" use:enhance enctype="multipart/form-data" class="space-y-5">
 				<div class="space-y-1.5">
-					<label class="label" for="name">Store Name <span class="text-destructive">*</span></label>
-					<input id="name" name="name" class="input" placeholder="My Shopify Store" value={form?.values?.name ?? ''} required />
+					<Label for="name">Store Name <span class="text-destructive">*</span></Label>
+					<Input id="name" name="name" placeholder="My Shopify Store" value={form?.values?.name ?? ''} required />
 					<p class="text-xs text-muted-foreground">Shown to dispatchers in the sidebar</p>
 				</div>
 
 				<div class="space-y-1.5">
-					<label class="label" for="icon">Store Icon</label>
+					<Label for="icon">Store Icon</Label>
 					<div class="flex items-center gap-3">
 						{#if iconPreview}
 							<img src={iconPreview} alt="" class="size-10 rounded-lg object-contain border border-border shrink-0" />
 						{:else}
 							<div class="size-10 rounded-lg bg-muted border border-border shrink-0"></div>
 						{/if}
-						<input id="icon" name="icon" type="file" accept="image/*" class="input" onchange={onIconChange} />
+						<Input id="icon" name="icon" type="file" accept="image/*" onchange={onIconChange} />
 					</div>
 					<p class="text-xs text-muted-foreground">Shown in the dispatcher sidebar and mobile nav instead of the Shopify logo</p>
 				</div>
 
 				<div class="space-y-1.5">
-					<label class="label" for="shopifyDomain">Shopify Domain <span class="text-destructive">*</span></label>
-					<input
+					<Label for="shopifyDomain">Shopify Domain <span class="text-destructive">*</span></Label>
+					<Input
 						id="shopifyDomain"
 						name="shopifyDomain"
-						class="input font-mono"
+						class="font-mono"
 						placeholder="your-store.myshopify.com"
 						required
 						bind:value={testDomain}
@@ -105,12 +104,12 @@
 				</div>
 
 				<div class="space-y-1.5">
-					<label class="label" for="apiAccessToken">Admin API Access Token <span class="text-destructive">*</span></label>
-					<input
+					<Label for="apiAccessToken">Admin API Access Token <span class="text-destructive">*</span></Label>
+					<Input
 						id="apiAccessToken"
 						name="apiAccessToken"
 						type="password"
-						class="input font-mono"
+						class="font-mono"
 						placeholder="shpat_..."
 						required
 						bind:value={testToken}
@@ -135,8 +134,8 @@
 				<input type="hidden" name="oauthRedirectUri" value={oauthRedirectUri} />
 
 				<div class="flex items-center gap-3 pt-2">
-					<button type="submit" class="btn-primary">Save Store</button>
-					<a href="/admin/stores" class="btn-secondary">Cancel</a>
+					<Button type="submit">Save Store</Button>
+					<Button href="/admin/stores" variant="secondary">Cancel</Button>
 				</div>
 			</form>
 		</div>
@@ -152,16 +151,16 @@
 		</div>
 		<div class="card-content space-y-5">
 			<div class="space-y-1.5">
-				<label class="label" for="oauthClientIdInput">Client ID</label>
-				<input id="oauthClientIdInput" class="input font-mono" bind:value={oauthClientId} />
+				<Label for="oauthClientIdInput">Client ID</Label>
+				<Input id="oauthClientIdInput" class="font-mono" bind:value={oauthClientId} />
 			</div>
 			<div class="space-y-1.5">
-				<label class="label" for="oauthClientSecretInput">Client Secret</label>
-				<input id="oauthClientSecretInput" type="password" class="input font-mono" bind:value={oauthClientSecret} />
+				<Label for="oauthClientSecretInput">Client Secret</Label>
+				<Input id="oauthClientSecretInput" type="password" class="font-mono" bind:value={oauthClientSecret} />
 			</div>
 			<div class="space-y-1.5">
-				<label class="label" for="oauthRedirectUriInput">Redirect URI</label>
-				<input id="oauthRedirectUriInput" class="input font-mono" bind:value={oauthRedirectUri} />
+				<Label for="oauthRedirectUriInput">Redirect URI</Label>
+				<Input id="oauthRedirectUriInput" class="font-mono" bind:value={oauthRedirectUri} />
 			</div>
 
 			{#if oauthClientId && oauthClientSecret && oauthRedirectUri && testDomain}

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import './layout.css';
 	import favicon from '$lib/assets/favicon.svg';
-	import Toaster from '$lib/components/Toaster.svelte';
+	import { Toaster } from '$lib/components/ui/sonner';
 	import NavProgress from '$lib/components/NavProgress.svelte';
 
 	let { children } = $props();
@@ -10,4 +10,4 @@
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 <NavProgress />
 {@render children()}
-<Toaster />
+<Toaster richColors closeButton />

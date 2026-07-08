@@ -11,10 +11,12 @@ export interface CustomerNode {
 	numberOfOrders: number;
 	defaultAddress: {
 		address1: string | null;
+		address2: string | null;
 		city: string | null;
 		province: string | null;
 		country: string | null;
 		zip: string | null;
+		phone: string | null;
 	} | null;
 }
 
@@ -28,7 +30,7 @@ export async function listCustomers(
         pageInfo { hasNextPage endCursor }
         nodes {
           id displayName firstName lastName email phone numberOfOrders
-          defaultAddress { address1 city province country zip }
+          defaultAddress { address1 address2 city province country zip phone }
         }
       }
     }
@@ -104,6 +106,7 @@ export async function updateCustomer(
 		lastName?: string;
 		email?: string;
 		phone?: string;
+		addresses?: { address1: string; city: string; province: string; country: string; zip: string }[];
 	}
 ): Promise<void> {
 	const gql = `

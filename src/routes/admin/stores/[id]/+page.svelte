@@ -1,5 +1,9 @@
 <script lang="ts">
 	import { formatDateShort } from '$lib/utils';
+	import PageHeaderBack from '$lib/components/PageHeaderBack.svelte';
+	import AvatarInitial from '$lib/components/AvatarInitial.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -10,33 +14,19 @@
 </svelte:head>
 
 <div class="p-3 sm:p-6 max-w-2xl">
-	<div class="mb-6">
-		<div class="flex items-center gap-3">
-			<a href="/admin/stores" class="btn-secondary btn-icon shrink-0" title="Back to Stores">
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-				</svg>
-			</a>
-			{#if data.store.iconUrl}
-				<img src={data.store.iconUrl} alt="" class="size-10 rounded-lg object-contain border border-border shrink-0" />
+	<PageHeaderBack href="/admin/stores" backTitle="Back to Stores" title={data.store.name}>
+		{#snippet leading()}
+			<AvatarInitial name={data.store.name} src={data.store.iconUrl} />
+		{/snippet}
+		{#snippet meta()}
+			{#if data.store.isActive}
+				<span class="badge badge-fulfilled">Active</span>
 			{:else}
-				<div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
-					{data.store.name[0].toUpperCase()}
-				</div>
+				<span class="badge badge-cancelled">Inactive</span>
 			{/if}
-			<div>
-				<h1 class="text-2xl font-bold">{data.store.name}</h1>
-				<div class="flex items-center gap-2 mt-1">
-					{#if data.store.isActive}
-						<span class="badge badge-fulfilled">Active</span>
-					{:else}
-						<span class="badge badge-cancelled">Inactive</span>
-					{/if}
-					<p class="text-sm text-muted-foreground">{data.store.shopifyDomain}</p>
-				</div>
-			</div>
-		</div>
-	</div>
+			<p class="text-sm text-muted-foreground">{data.store.shopifyDomain}</p>
+		{/snippet}
+	</PageHeaderBack>
 
 	<div class="card mb-4">
 		<div class="card-header">
@@ -83,10 +73,8 @@
 		</div>
 	</div>
 
-	<a href="/admin/stores/{data.store.id}/edit" class="btn-primary">
-		<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-			<path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-		</svg>
+	<Button href="/admin/stores/{data.store.id}/edit">
+		<PencilIcon class="size-4" />
 		Edit Store
-	</a>
+	</Button>
 </div>

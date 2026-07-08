@@ -3,6 +3,9 @@
 	import { page } from '$app/stores';
 	import { formatCurrency, formatDate } from '$lib/utils';
 	import { addToast } from '$lib/toast.svelte';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -30,7 +33,7 @@
 	<div class="flex items-start justify-between gap-4 flex-wrap">
 		<div>
 			<a href="/dispatcher/stores/{storeId}/orders?status=drafts" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-3 w-fit">
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+				<ArrowLeftIcon class="size-4" />
 				Drafts
 			</a>
 			<div class="flex items-center gap-3 flex-wrap">
@@ -45,8 +48,8 @@
 
 		{#if draft.status !== 'COMPLETED'}
 			<div class="flex items-center gap-2">
-				<button class="btn-primary" onclick={() => showCompleteDialog = true}>Complete Order</button>
-				<button class="btn-destructive" onclick={() => showDeleteDialog = true}>Delete Draft</button>
+				<Button onclick={() => showCompleteDialog = true}>Complete Order</Button>
+				<Button variant="destructive" onclick={() => showDeleteDialog = true}>Delete Draft</Button>
 			</div>
 		{/if}
 	</div>
@@ -149,41 +152,33 @@
 </div>
 
 <!-- Complete dialog -->
-{#if showCompleteDialog}
-	<div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-		<div class="card w-full max-w-md shadow-xl">
-			<div class="card-header">
-				<h2 class="text-lg font-semibold">Complete {draft.name}?</h2>
-				<p class="text-sm text-muted-foreground">Converts this draft into a real order. Cannot be undone.</p>
-			</div>
-			<div class="card-content">
-				<form method="POST" action="?/complete" use:enhance={() => { showCompleteDialog = false; return async ({ result, update }) => { await update(); if (result.type === 'failure') addToast((result.data as any)?.error || 'Failed to complete order', 'error'); }; }}>
-					<div class="flex gap-3">
-						<button type="submit" class="btn-primary">Complete Order</button>
-						<button type="button" class="btn-secondary" onclick={() => showCompleteDialog = false}>Cancel</button>
-					</div>
-				</form>
-			</div>
-		</div>
-	</div>
-{/if}
+<Dialog.Root bind:open={showCompleteDialog}>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>Complete {draft.name}?</Dialog.Title>
+			<Dialog.Description>Converts this draft into a real order. Cannot be undone.</Dialog.Description>
+		</Dialog.Header>
+		<form method="POST" action="?/complete" use:enhance={() => { showCompleteDialog = false; return async ({ result, update }) => { await update(); if (result.type === 'failure') addToast((result.data as any)?.error || 'Failed to complete order', 'error'); }; }}>
+			<Dialog.Footer>
+				<Button type="button" variant="outline" onclick={() => showCompleteDialog = false}>Cancel</Button>
+				<Button type="submit">Complete Order</Button>
+			</Dialog.Footer>
+		</form>
+	</Dialog.Content>
+</Dialog.Root>
 
 <!-- Delete dialog -->
-{#if showDeleteDialog}
-	<div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-		<div class="card w-full max-w-md shadow-xl">
-			<div class="card-header">
-				<h2 class="text-lg font-semibold">Delete {draft.name}?</h2>
-				<p class="text-sm text-muted-foreground">This draft will be permanently deleted.</p>
-			</div>
-			<div class="card-content">
-				<form method="POST" action="?/delete" use:enhance={() => { showDeleteDialog = false; return async ({ result, update }) => { await update(); if (result.type === 'failure') addToast((result.data as any)?.error || 'Failed to delete draft', 'error'); }; }}>
-					<div class="flex gap-3">
-						<button type="submit" class="btn-destructive">Delete Draft</button>
-						<button type="button" class="btn-secondary" onclick={() => showDeleteDialog = false}>Cancel</button>
-					</div>
-				</form>
-			</div>
-		</div>
-	</div>
-{/if}
+<Dialog.Root bind:open={showDeleteDialog}>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>Delete {draft.name}?</Dialog.Title>
+			<Dialog.Description>This draft will be permanently deleted.</Dialog.Description>
+		</Dialog.Header>
+		<form method="POST" action="?/delete" use:enhance={() => { showDeleteDialog = false; return async ({ result, update }) => { await update(); if (result.type === 'failure') addToast((result.data as any)?.error || 'Failed to delete draft', 'error'); }; }}>
+			<Dialog.Footer>
+				<Button type="button" variant="outline" onclick={() => showDeleteDialog = false}>Cancel</Button>
+				<Button type="submit" variant="destructive">Delete Draft</Button>
+			</Dialog.Footer>
+		</form>
+	</Dialog.Content>
+</Dialog.Root>

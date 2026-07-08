@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { listOrders, getOrdersCount, confirmOrder, CONFIRMED_TAG } from '$lib/server/shopify/orders';
+import { listOrders, getTagSplitCounts, confirmOrder, CONFIRMED_TAG } from '$lib/server/shopify/orders';
 import { db } from '$lib/server/db';
 import { couriers, courierStoreAccess } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
@@ -71,17 +71,12 @@ async function listDraftOrders(client: ReturnType<typeof getShopifyClient>, { fi
 	return data.draftOrders;
 }
 
-// Uses ordersCount (returns a number, not full order objects) instead of fetching
-// 100 full orders just to count them — much lighter request. Unlike the main list
-// (which splits by the live `tags` field to avoid index lag), this filters by
-// tag: in the search query, which is index-backed and can lag a few seconds behind
-// a tag mutation — acceptable here since it's just a badge count, not the list itself.
+// Splits by the live `tags` field (getTagSplitCounts), not a `tag:` search clause —
+// the search index lags a few seconds behind a tagsAdd mutation, which made these
+// badges show stale numbers right after a bulk-confirm.
 async function getBadgeCounts(client: ReturnType<typeof getShopifyClient>) {
-	const [pendingCount, confirmedCount] = await Promise.all([
-		getOrdersCount(client, `${STATUS_QUERIES.pending} AND -tag:${CONFIRMED_TAG}`),
-		getOrdersCount(client, `${STATUS_QUERIES.pending} AND tag:${CONFIRMED_TAG}`)
-	]);
-	return { pendingCount, confirmedCount };
+	const { withTag, withoutTag } = await getTagSplitCounts(client, STATUS_QUERIES.pending, CONFIRMED_TAG);
+	return { pendingCount: withoutTag, confirmedCount: withTag };
 }
 
 export const load: PageServerLoad = async ({ parent, url, params, locals }) => {

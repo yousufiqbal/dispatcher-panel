@@ -1,5 +1,10 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { ActionData } from './$types';
 
 	let { form }: { form: ActionData } = $props();
@@ -13,17 +18,13 @@
 	<div class="mb-6">
 		<nav class="flex items-center gap-1.5 text-xs text-muted-foreground mb-4">
 			<a href="/admin/settings" class="hover:text-foreground transition-colors">Settings</a>
-			<svg class="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-			</svg>
+			<ChevronRightIcon class="size-3" />
 			<span class="text-foreground font-medium">Password</span>
 		</nav>
 		<div class="flex items-center gap-3">
-			<a href="/admin/settings" class="btn-secondary btn-icon shrink-0" title="Back to Settings">
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-				</svg>
-			</a>
+			<Button href="/admin/settings" variant="outline" size="icon" class="shrink-0" title="Back to Settings">
+				<ArrowLeftIcon class="size-4" />
+			</Button>
 			<h1 class="text-2xl font-bold">Password</h1>
 		</div>
 	</div>
@@ -38,18 +39,18 @@
 			{/if}
 			<form method="POST" use:enhance class="space-y-4">
 				<div class="space-y-1.5">
-					<label class="label" for="currentPassword">Current Password</label>
-					<input id="currentPassword" name="currentPassword" type="password" class="input" required />
+					<Label for="currentPassword">Current Password</Label>
+					<Input id="currentPassword" name="currentPassword" type="password" required />
 				</div>
 				<div class="space-y-1.5">
-					<label class="label" for="newPassword">New Password</label>
-					<input id="newPassword" name="newPassword" type="password" class="input" minlength="10" required />
+					<Label for="newPassword">New Password</Label>
+					<Input id="newPassword" name="newPassword" type="password" minlength={10} required />
 				</div>
 				<div class="space-y-1.5">
-					<label class="label" for="confirmPassword">Confirm New Password</label>
-					<input id="confirmPassword" name="confirmPassword" type="password" class="input" required />
+					<Label for="confirmPassword">Confirm New Password</Label>
+					<Input id="confirmPassword" name="confirmPassword" type="password" required />
 				</div>
-				<button type="submit" class="btn-primary">Update Password</button>
+				<Button type="submit">Update Password</Button>
 			</form>
 		</div>
 	</div>

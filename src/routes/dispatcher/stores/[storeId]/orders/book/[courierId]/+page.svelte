@@ -1,6 +1,13 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { page } from '$app/stores';
+	import * as Select from '$lib/components/ui/select/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import CheckCheckIcon from '@lucide/svelte/icons/check-check';
+	import XIcon from '@lucide/svelte/icons/x';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -19,7 +26,7 @@
 
 <div class="p-3 sm:p-6">
 	<a href="/dispatcher/stores/{storeId}/orders?status=confirmed" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-4 w-fit">
-		<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+		<ArrowLeftIcon class="size-4" />
 		Back to Confirmed
 	</a>
 
@@ -43,16 +50,21 @@
 	{/if}
 
 	{#if data.pickupAddresses.length > 0}
+		{@const pickupLabels = Object.fromEntries(data.pickupAddresses.map((a) => [a.addressCode, `${a.cityName} — ${a.address}${a.addressType ? ` · ${a.addressType}` : ''} (${a.contactPersonName})`]))}
 		<div class="space-y-1.5 mb-5 max-w-md">
-			<label class="label" for="pickupAddressCode">Pickup Address <span class="text-destructive">*</span></label>
-			<select id="pickupAddressCode" bind:value={pickupAddressCode} class="input" required>
-				<option value="" disabled>Select pickup address…</option>
-				{#each data.pickupAddresses as addr}
-					<option value={addr.addressCode}>
-						{addr.cityName} — {addr.address}{addr.addressType ? ` · ${addr.addressType}` : ''} ({addr.contactPersonName})
-					</option>
-				{/each}
-			</select>
+			<Label for="pickupAddressCode">Pickup Address <span class="text-destructive">*</span></Label>
+			<Select.Root type="single" bind:value={pickupAddressCode}>
+				<Select.Trigger id="pickupAddressCode" class="w-full">
+					{pickupAddressCode ? pickupLabels[pickupAddressCode] : 'Select pickup address…'}
+				</Select.Trigger>
+				<Select.Content>
+					{#each data.pickupAddresses as addr}
+						<Select.Item value={addr.addressCode} label={pickupLabels[addr.addressCode]}>
+							{pickupLabels[addr.addressCode]}
+						</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
 			<p class="text-xs text-muted-foreground">
 				Pick the one marked "Pickup" or "Pickup/Return" — a plain "Return" or "Default" address will be rejected by PostEx.
 			</p>
@@ -90,35 +102,31 @@
 								<td class="px-2 py-1 font-medium text-foreground whitespace-nowrap">{row.orderName}</td>
 								<td class="px-2 py-1 text-center">
 									{#if row.confirmed}
-										<svg class="size-4 text-green-600 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-											<path stroke-linecap="round" stroke-linejoin="round" d="M1.5 12.75l4 4L14 8m-4.5 4.75l4 4L23 8" />
-										</svg>
+										<CheckCheckIcon class="size-4 text-green-600 inline-block" />
 									{:else}
-										<svg class="size-4 text-destructive inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-											<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-										</svg>
+										<XIcon class="size-4 text-destructive inline-block" />
 									{/if}
 								</td>
 								<td class="px-2 py-1">
-									<input name="customerName_{row.id}" bind:value={rows[i].customerName} class="input !h-8 text-xs py-1 min-w-[8rem]" />
+									<Input name="customerName_{row.id}" bind:value={rows[i].customerName} class="!h-8 text-xs py-1 min-w-[8rem]" />
 								</td>
 								<td class="px-2 py-1">
-									<input name="customerPhone_{row.id}" bind:value={rows[i].customerPhone} maxlength="11" class="input !h-8 text-xs py-1 w-[6.5rem]" />
+									<Input name="customerPhone_{row.id}" bind:value={rows[i].customerPhone} maxlength={11} class="!h-8 text-xs py-1 w-[6.5rem]" />
 								</td>
 								<td class="px-2 py-1">
 									<textarea name="address1_{row.id}" bind:value={rows[i].address1} rows="2" class="input !h-auto text-xs py-1 min-w-[18rem] w-full resize-y"></textarea>
 								</td>
 								<td class="px-2 py-1">
-									<input name="city_{row.id}" bind:value={rows[i].city} class="input !h-8 text-xs py-1 w-20" />
+									<Input name="city_{row.id}" bind:value={rows[i].city} class="!h-8 text-xs py-1 w-20" />
 								</td>
 								<td class="px-2 py-1">
-									<input name="codAmount_{row.id}" bind:value={rows[i].codAmount} class="input !h-8 text-xs py-1 w-20" />
+									<Input name="codAmount_{row.id}" bind:value={rows[i].codAmount} class="!h-8 text-xs py-1 w-20" />
 								</td>
 								<td class="px-2 py-1">
-									<input name="weight_{row.id}" bind:value={rows[i].weight} class="input !h-8 text-xs py-1 w-14" />
+									<Input name="weight_{row.id}" bind:value={rows[i].weight} class="!h-8 text-xs py-1 w-14" />
 								</td>
 								<td class="px-2 py-1">
-									<input name="note_{row.id}" bind:value={rows[i].note} class="input !h-8 text-xs py-1 min-w-[8rem]" />
+									<Input name="note_{row.id}" bind:value={rows[i].note} class="!h-8 text-xs py-1 min-w-[8rem]" />
 									<input type="hidden" name="itemsCount_{row.id}" value={rows[i].itemsCount} />
 									<input type="hidden" name="itemsDetail_{row.id}" value={rows[i].itemsDetail} />
 									<input type="hidden" name="fragile_{row.id}" value={rows[i].fragile ? 'true' : 'false'} />
@@ -137,54 +145,50 @@
 					<div class="flex items-center justify-between">
 						<span class="font-medium text-sm text-foreground">{row.orderName}</span>
 						{#if row.confirmed}
-							<svg class="size-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M1.5 12.75l4 4L14 8m-4.5 4.75l4 4L23 8" />
-							</svg>
+							<CheckCheckIcon class="size-4 text-green-600" />
 						{:else}
-							<svg class="size-4 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-								<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
-							</svg>
+							<XIcon class="size-4 text-destructive" />
 						{/if}
 					</div>
 
 					<div class="space-y-1.5">
-						<label class="text-xs text-muted-foreground" for="m-customerName_{row.id}">Customer</label>
-						<input id="m-customerName_{row.id}" bind:value={rows[i].customerName} class="input text-sm" />
+						<Label class="text-xs text-muted-foreground" for="m-customerName_{row.id}">Customer</Label>
+						<Input id="m-customerName_{row.id}" bind:value={rows[i].customerName} />
 					</div>
 					<div class="grid grid-cols-2 gap-2">
 						<div class="space-y-1.5">
-							<label class="text-xs text-muted-foreground" for="m-customerPhone_{row.id}">Phone</label>
-							<input id="m-customerPhone_{row.id}" bind:value={rows[i].customerPhone} maxlength="11" class="input text-sm" />
+							<Label class="text-xs text-muted-foreground" for="m-customerPhone_{row.id}">Phone</Label>
+							<Input id="m-customerPhone_{row.id}" bind:value={rows[i].customerPhone} maxlength={11} />
 						</div>
 						<div class="space-y-1.5">
-							<label class="text-xs text-muted-foreground" for="m-city_{row.id}">City</label>
-							<input id="m-city_{row.id}" bind:value={rows[i].city} class="input text-sm" />
+							<Label class="text-xs text-muted-foreground" for="m-city_{row.id}">City</Label>
+							<Input id="m-city_{row.id}" bind:value={rows[i].city} />
 						</div>
 					</div>
 					<div class="space-y-1.5">
-						<label class="text-xs text-muted-foreground" for="m-address1_{row.id}">Address</label>
+						<Label class="text-xs text-muted-foreground" for="m-address1_{row.id}">Address</Label>
 						<textarea id="m-address1_{row.id}" bind:value={rows[i].address1} rows="2" class="input !h-auto text-sm resize-y"></textarea>
 					</div>
 					<div class="grid grid-cols-2 gap-2">
 						<div class="space-y-1.5">
-							<label class="text-xs text-muted-foreground" for="m-codAmount_{row.id}">COD</label>
-							<input id="m-codAmount_{row.id}" bind:value={rows[i].codAmount} class="input text-sm" />
+							<Label class="text-xs text-muted-foreground" for="m-codAmount_{row.id}">COD</Label>
+							<Input id="m-codAmount_{row.id}" bind:value={rows[i].codAmount} />
 						</div>
 						<div class="space-y-1.5">
-							<label class="text-xs text-muted-foreground" for="m-weight_{row.id}">Weight (g)</label>
-							<input id="m-weight_{row.id}" bind:value={rows[i].weight} class="input text-sm" />
+							<Label class="text-xs text-muted-foreground" for="m-weight_{row.id}">Weight (g)</Label>
+							<Input id="m-weight_{row.id}" bind:value={rows[i].weight} />
 						</div>
 					</div>
 					<div class="space-y-1.5">
-						<label class="text-xs text-muted-foreground" for="m-note_{row.id}">Note</label>
-						<input id="m-note_{row.id}" bind:value={rows[i].note} class="input text-sm" />
+						<Label class="text-xs text-muted-foreground" for="m-note_{row.id}">Note</Label>
+						<Input id="m-note_{row.id}" bind:value={rows[i].note} />
 					</div>
 				</div>
 			{/each}
 		</div>
 
-		<button type="submit" class="btn-primary" disabled={submitting || (data.pickupAddresses.length > 0 && !pickupAddressCode)}>
+		<Button type="submit" disabled={submitting || (data.pickupAddresses.length > 0 && !pickupAddressCode)}>
 			{submitting ? 'Booking…' : `Book ${rows.length} Order${rows.length !== 1 ? 's' : ''} with ${data.courierLabel}`}
-		</button>
+		</Button>
 	</form>
 </div>

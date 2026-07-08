@@ -1,5 +1,10 @@
 <script lang="ts">
 	import { formatDateShort } from '$lib/utils';
+	import PageHeaderBack from '$lib/components/PageHeaderBack.svelte';
+	import AvatarInitial from '$lib/components/AvatarInitial.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -10,29 +15,19 @@
 </svelte:head>
 
 <div class="p-3 sm:p-6 max-w-2xl">
-	<div class="mb-6">
-		<div class="flex items-center gap-3">
-			<a href="/admin/couriers" class="btn-secondary btn-icon shrink-0" title="Back to Couriers">
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-				</svg>
-			</a>
-			<div class="size-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-sm shrink-0">
-				{data.courier.name[0].toUpperCase()}
-			</div>
-			<div>
-				<h1 class="text-2xl font-bold">{data.courier.name}</h1>
-				<div class="flex items-center gap-2 mt-1">
-					<span class="badge-partial text-xs">{data.courier.providerLabel}</span>
-					{#if data.courier.enabled}
-						<span class="badge badge-fulfilled">Enabled</span>
-					{:else}
-						<span class="badge badge-cancelled">Disabled</span>
-					{/if}
-				</div>
-			</div>
-		</div>
-	</div>
+	<PageHeaderBack href="/admin/couriers" backTitle="Back to Couriers" title={data.courier.name}>
+		{#snippet leading()}
+			<AvatarInitial name={data.courier.name} />
+		{/snippet}
+		{#snippet meta()}
+			<span class="badge-partial text-xs">{data.courier.providerLabel}</span>
+			{#if data.courier.enabled}
+				<span class="badge badge-fulfilled">Enabled</span>
+			{:else}
+				<span class="badge badge-cancelled">Disabled</span>
+			{/if}
+		{/snippet}
+	</PageHeaderBack>
 
 	<div class="card mb-4">
 		<div class="card-header">
@@ -80,15 +75,11 @@
 				</div>
 			{/if}
 		</div>
-		<svg class="size-5 text-muted-foreground shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-			<path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
-		</svg>
+		<ChevronRightIcon class="size-5 text-muted-foreground shrink-0" />
 	</a>
 
-	<a href="/admin/couriers/{data.courier.id}/edit" class="btn-primary">
-		<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-			<path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-		</svg>
+	<Button href="/admin/couriers/{data.courier.id}/edit">
+		<PencilIcon class="size-4" />
 		Edit Courier
-	</a>
+	</Button>
 </div>

@@ -2,6 +2,17 @@
 	import { enhance } from '$app/forms';
 	import { page } from '$app/stores';
 	import { formatCurrency } from '$lib/utils';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as Select from '$lib/components/ui/select/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import XIcon from '@lucide/svelte/icons/x';
+	import Loader2Icon from '@lucide/svelte/icons/loader-2';
+	import ImageIcon from '@lucide/svelte/icons/image';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -122,7 +133,7 @@
 	<div class="flex items-center justify-between mb-6">
 		<div>
 			<a href="/dispatcher/stores/{storeId}/orders/{orderId}" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-2 w-fit">
-				<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+				<ArrowLeftIcon class="size-4" />
 				Back to {order.name}
 			</a>
 			<h1 class="text-xl font-bold">Edit Items</h1>
@@ -153,7 +164,7 @@
 							<img src={img} alt={item.title} class="size-14 rounded-lg object-cover border border-border shrink-0" />
 						{:else}
 							<div class="size-14 rounded-lg bg-muted border border-border flex items-center justify-center shrink-0">
-								<svg class="size-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5M4.5 3h15A1.5 1.5 0 0121 4.5v15a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 19.5v-15A1.5 1.5 0 014.5 3z"/></svg>
+								<ImageIcon class="size-5 text-muted-foreground" />
 							</div>
 						{/if}
 
@@ -176,7 +187,7 @@
 							<button
 								type="button"
 								onclick={() => openDiscount(item)}
-								class="text-sm font-medium text-primary hover:underline text-right min-w-[80px]"
+								class="text-sm font-medium text-primary hover:underline text-right min-w-[80px] cursor-pointer"
 								title="Click to add discount"
 							>
 								{#if appliedDiscounts[item.id]}
@@ -189,16 +200,13 @@
 								{/if}
 							</button>
 							<div class="flex items-center gap-1">
-								<button type="button" onclick={() => quantities[item.id] = Math.max(0, (quantities[item.id] ?? 1) - 1)}
-									class="size-8 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors text-lg font-light">−</button>
-								<input type="number" name="quantity" bind:value={quantities[item.id]} min="0" max="999"
-									class="input w-14 text-center h-8 text-sm font-medium" />
-								<button type="button" onclick={() => quantities[item.id] = (quantities[item.id] ?? 0) + 1}
-									class="size-8 rounded-lg border border-border text-muted-foreground hover:bg-muted transition-colors text-lg font-light">+</button>
+								<Button type="button" variant="outline" size="icon" class="size-8" onclick={() => quantities[item.id] = Math.max(0, (quantities[item.id] ?? 1) - 1)}>−</Button>
+								<Input type="number" name="quantity" bind:value={quantities[item.id]} min="0" max="999" class="w-14 text-center h-8 text-sm font-medium" />
+								<Button type="button" variant="outline" size="icon" class="size-8" onclick={() => quantities[item.id] = (quantities[item.id] ?? 0) + 1}>+</Button>
 							</div>
-							<button type="button" onclick={() => quantities[item.id] = 0} class="text-muted-foreground hover:text-destructive transition-colors" title="Remove">
-								<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-							</button>
+							<Button type="button" variant="ghost" size="icon" class="size-8 text-muted-foreground hover:text-destructive" onclick={() => quantities[item.id] = 0} title="Remove">
+								<XIcon class="size-4" />
+							</Button>
 						</div>
 					</div>
 				{/each}
@@ -212,27 +220,22 @@
 			</div>
 			<div class="px-5 py-4 space-y-3">
 				<div class="relative">
-					<svg class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-					</svg>
-					<input type="text" class="input pl-9" placeholder="Search products by name…"
+					<SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+					<Input type="text" class="pl-9" placeholder="Search products by name…"
 						bind:value={productSearch} oninput={onSearchInput} />
 					{#if searching}
-						<svg class="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground animate-spin" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-						</svg>
+						<Loader2Icon class="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground animate-spin" />
 					{/if}
 
 					{#if productResults.length > 0}
-						<div class="absolute top-full left-0 right-0 mt-1 bg-card border border-border rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto">
+						<div class="absolute top-full left-0 right-0 mt-1 bg-popover border border-border rounded-xl shadow-xl z-50 max-h-64 overflow-y-auto">
 							{#each productResults as product}
 								<div class="border-b border-border last:border-0">
 									<div class="px-4 py-2 text-xs font-semibold text-muted-foreground bg-muted/30">{product.title}</div>
 									{#each product.variants.nodes as variant}
 										<button type="button"
 											onclick={() => addVariant(variant, product.title, product.featuredImage?.url)}
-											class="w-full text-left px-4 py-2.5 text-sm hover:bg-muted transition-colors flex items-center justify-between gap-3"
+											class="w-full text-left px-4 py-2.5 text-sm hover:bg-muted transition-colors flex items-center justify-between gap-3 cursor-pointer"
 										>
 											<div class="flex items-center gap-2">
 												{#if product.featuredImage?.url}
@@ -266,15 +269,13 @@
 										{formatCurrency((parseFloat(item.price) * item.qty).toFixed(2), 'PKR')}
 									</span>
 									<div class="flex items-center gap-1">
-										<button type="button" onclick={() => item.qty > 1 ? item.qty-- : removeNewItem(i)}
-											class="size-7 rounded-lg border border-border text-muted-foreground hover:bg-muted text-sm">−</button>
-										<input type="number" name="newQty" bind:value={item.qty} min="1" class="input w-14 text-center h-8 text-sm" />
-										<button type="button" onclick={() => item.qty++}
-											class="size-7 rounded-lg border border-border text-muted-foreground hover:bg-muted text-sm">+</button>
+										<Button type="button" variant="outline" size="icon" class="size-7" onclick={() => item.qty > 1 ? item.qty-- : removeNewItem(i)}>−</Button>
+										<Input type="number" name="newQty" bind:value={item.qty} min="1" class="w-14 text-center h-8 text-sm" />
+										<Button type="button" variant="outline" size="icon" class="size-7" onclick={() => item.qty++}>+</Button>
 									</div>
-									<button type="button" onclick={() => removeNewItem(i)} class="text-muted-foreground hover:text-destructive transition-colors">
-										<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-									</button>
+									<Button type="button" variant="ghost" size="icon" class="size-7 text-muted-foreground hover:text-destructive" onclick={() => removeNewItem(i)}>
+										<XIcon class="size-4" />
+									</Button>
 								</div>
 							</div>
 						{/each}
@@ -314,12 +315,12 @@
 				</div>
 
 				<label class="flex items-center gap-3 cursor-pointer select-none">
-					<input type="checkbox" name="notifyCustomer" value="true" bind:checked={notifyCustomer} class="rounded size-4" />
+					<Checkbox name="notifyCustomer" value="true" bind:checked={notifyCustomer} />
 					<span class="text-sm">Send invoice to customer</span>
 				</label>
 
-				<button type="submit" class="btn-primary w-full">Update Order</button>
-				<a href="/dispatcher/stores/{storeId}/orders/{orderId}" class="btn-secondary w-full text-center block">Cancel</a>
+				<Button type="submit" class="w-full">Update Order</Button>
+				<Button href="/dispatcher/stores/{storeId}/orders/{orderId}" variant="outline" class="w-full">Cancel</Button>
 			</div>
 		</div>
 
@@ -327,64 +328,57 @@
 </div>
 
 <!-- Discount modal -->
-{#if discountModal}
-	<div class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-		<div class="card w-full max-w-sm shadow-xl">
-			<div class="card-header border-b border-border pb-4">
-				<h2 class="font-semibold">Discount</h2>
-				<p class="text-xs text-muted-foreground mt-0.5 truncate">{discountModal.title}</p>
+<Dialog.Root open={!!discountModal} onOpenChange={(open) => { if (!open) discountModal = null; }}>
+	<Dialog.Content class="sm:max-w-sm p-0 gap-0 overflow-hidden">
+		<div class="px-6 pt-6 pb-4 border-b border-border">
+			<h2 class="font-semibold">Discount</h2>
+			<p class="text-xs text-muted-foreground mt-0.5 truncate">{discountModal?.title}</p>
+		</div>
+		<div class="p-6 space-y-4">
+			<div class="space-y-1.5">
+				<Label class="text-xs">Discount type</Label>
+				<Select.Root type="single" bind:value={discountType}>
+					<Select.Trigger class="w-full">{discountType === 'PERCENTAGE' ? 'Percentage' : 'Amount'}</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="FIXED_AMOUNT" label="Amount">Amount</Select.Item>
+						<Select.Item value="PERCENTAGE" label="Percentage">Percentage</Select.Item>
+					</Select.Content>
+				</Select.Root>
 			</div>
-			<div class="card-content space-y-4">
-				<div class="space-y-1.5">
-					<label class="label text-xs">Discount type</label>
-					<select class="input" bind:value={discountType}>
-						<option value="FIXED_AMOUNT">Amount</option>
-						<option value="PERCENTAGE">Percentage</option>
-					</select>
-				</div>
 
-				<div class="space-y-1.5">
-					<label class="label text-xs">
-						Discount value {discountType === 'PERCENTAGE' ? '(%)' : `(per unit)`}
-					</label>
-					<div class="relative">
-						{#if discountType === 'FIXED_AMOUNT'}
-							<span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rs</span>
-						{/if}
-						<input
-							type="number"
-							min="0"
-							step="0.01"
-							class="input {discountType === 'FIXED_AMOUNT' ? 'pl-9 pr-16' : 'pr-10'}"
-							placeholder="0.00"
-							bind:value={discountValue}
-							autofocus
-						/>
-						<span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-							{discountType === 'PERCENTAGE' ? '%' : order.totalPriceSet.shopMoney.currencyCode}
-						</span>
-					</div>
-					<p class="text-xs text-muted-foreground">Visible to customer</p>
+			<div class="space-y-1.5">
+				<Label class="text-xs">
+					Discount value {discountType === 'PERCENTAGE' ? '(%)' : `(per unit)`}
+				</Label>
+				<div class="relative">
+					{#if discountType === 'FIXED_AMOUNT'}
+						<span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rs</span>
+					{/if}
+					<Input
+						type="number"
+						min="0"
+						step="0.01"
+						class="{discountType === 'FIXED_AMOUNT' ? 'pl-9 pr-16' : 'pr-10'}"
+						placeholder="0.00"
+						bind:value={discountValue}
+						autofocus
+					/>
+					<span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+						{discountType === 'PERCENTAGE' ? '%' : order.totalPriceSet.shopMoney.currencyCode}
+					</span>
 				</div>
+				<p class="text-xs text-muted-foreground">Visible to customer</p>
+			</div>
 
-				<div class="space-y-1.5">
-					<label class="label text-xs">Reason for discount</label>
-					<input type="text" class="input" placeholder="Optional" bind:value={discountDesc} />
-				</div>
+			<div class="space-y-1.5">
+				<Label class="text-xs">Reason for discount</Label>
+				<Input type="text" placeholder="Optional" bind:value={discountDesc} />
+			</div>
 
-				<div class="flex gap-3">
-					<button
-						type="button"
-						class="btn-primary flex-1"
-						onclick={applyDiscount}
-					>Done</button>
-					<button
-						type="button"
-						class="btn-secondary"
-						onclick={() => discountModal = null}
-					>Cancel</button>
-				</div>
+			<div class="flex gap-3">
+				<Button type="button" class="flex-1" onclick={applyDiscount}>Done</Button>
+				<Button type="button" variant="outline" onclick={() => discountModal = null}>Cancel</Button>
 			</div>
 		</div>
-	</div>
-{/if}
+	</Dialog.Content>
+</Dialog.Root>

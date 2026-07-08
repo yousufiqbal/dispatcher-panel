@@ -51,6 +51,26 @@ export async function getOrdersCount(client: ShopifyClient, query?: string): Pro
 	return data.ordersCount.count;
 }
 
+// Splits orders matching `query` by whether their live `tags` field includes `tag`.
+// Unlike ordersCount with a `tag:` search clause, `tags` isn't index-backed and
+// reflects a tagsAdd/tagsRemove mutation instantly — used for badge counts right
+// after bulk-confirm, where the search index would still show stale numbers.
+export async function getTagSplitCounts(client: ShopifyClient, query: string, tag: string): Promise<{ withTag: number; withoutTag: number }> {
+	const gql = `
+		query TagSplit($query: String) {
+			orders(first: 250, query: $query) {
+				nodes { tags }
+			}
+		}
+	`;
+	const data = await shopifyRequest<{ orders: { nodes: { tags: string[] }[] } }>(client, gql, { query });
+	let withTag = 0;
+	for (const node of data.orders.nodes) {
+		if (node.tags.includes(tag)) withTag++;
+	}
+	return { withTag, withoutTag: data.orders.nodes.length - withTag };
+}
+
 export async function listOrders(
 	client: ShopifyClient,
 	opts: { first?: number; after?: string; before?: string; query?: string }
@@ -77,6 +97,9 @@ export interface OrderDetail extends OrderNode {
 			id: string;
 			title: string;
 			quantity: number;
+			// Quantity remaining after order edits/removals — 0 means the item was
+			// fully removed from the order (Shopify shows these in a "Removed" card).
+			currentQuantity: number;
 			originalUnitPriceSet: { shopMoney: { amount: string; currencyCode: string } };
 			variant: { id: string; title: string; sku: string | null; image: { url: string; altText: string | null } | null } | null;
 			image: { url: string; altText: string | null } | null;
@@ -110,7 +133,7 @@ export async function getOrder(client: ShopifyClient, orderId: string): Promise<
         note
         lineItems(first: 50) {
           nodes {
-            id title quantity
+            id title quantity currentQuantity
             originalUnitPriceSet { shopMoney { amount currencyCode } }
             variant { id title sku image { url altText } }
             image { url altText }
@@ -144,18 +167,20 @@ export async function cancelOrder(
 	client: ShopifyClient,
 	orderId: string,
 	reason: string,
-	refund: boolean
+	refund: boolean,
+	restock = true,
+	notify = false
 ): Promise<void> {
 	const gql = `
-    mutation CancelOrder($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $notify: Boolean!) {
-      orderCancel(orderId: $orderId, reason: $reason, refund: $refund, notifyCustomer: $notify) {
+    mutation CancelOrder($orderId: ID!, $reason: OrderCancelReason!, $refund: Boolean!, $restock: Boolean!, $notify: Boolean!) {
+      orderCancel(orderId: $orderId, reason: $reason, refund: $refund, restock: $restock, notifyCustomer: $notify) {
         orderCancelUserErrors { field message }
       }
     }
   `;
 	const data = await shopifyRequest<{
 		orderCancel: { orderCancelUserErrors: { field: string[]; message: string }[] };
-	}>(client, gql, { orderId, reason, refund, notify: false });
+	}>(client, gql, { orderId, reason, refund, restock, notify });
 
 	if (data.orderCancel.orderCancelUserErrors.length > 0) {
 		throw new Error(data.orderCancel.orderCancelUserErrors.map((e) => e.message).join(', '));

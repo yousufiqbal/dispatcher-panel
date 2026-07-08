@@ -2,6 +2,9 @@
 	import { page } from '$app/stores';
 	import { formatCurrency } from '$lib/utils';
 	import Lightbox from '$lib/components/Lightbox.svelte';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import ImageIcon from '@lucide/svelte/icons/image';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -23,11 +26,9 @@
 
 <div class="p-3 sm:p-6 max-w-4xl">
 	<div class="mb-6">
-		<a href="/dispatcher/stores/{storeId}/products" class="btn-secondary btn-icon mb-3" title="Back to Products">
-			<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-			</svg>
-		</a>
+		<Button href="/dispatcher/stores/{storeId}/products" variant="outline" size="icon" class="mb-3" title="Back to Products">
+			<ArrowLeftIcon class="size-4" />
+		</Button>
 		<h1 class="text-2xl font-bold">{product.title}</h1>
 		<p class="text-sm text-muted-foreground">{product.totalInventory} total in stock</p>
 	</div>
@@ -61,9 +62,7 @@
 				{/if}
 			{:else}
 				<div class="w-full aspect-square rounded-md bg-muted flex items-center justify-center border border-border">
-					<svg class="size-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
-						<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5M4.5 3h15A1.5 1.5 0 0121 4.5v15a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 19.5v-15A1.5 1.5 0 014.5 3z" />
-					</svg>
+					<ImageIcon class="size-12 text-muted-foreground" />
 				</div>
 			{/if}
 		</div>

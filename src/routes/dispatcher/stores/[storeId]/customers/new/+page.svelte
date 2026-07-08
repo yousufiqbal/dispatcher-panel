@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { page } from '$app/stores';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import type { ActionData } from './$types';
 
 	let { form }: { form: ActionData } = $props();
@@ -13,11 +17,9 @@
 
 <div class="p-3 sm:p-6">
 	<div class="mb-6 flex items-center gap-3">
-		<a href="/dispatcher/stores/{storeId}/customers" class="btn-secondary btn-icon shrink-0" title="Back to Customers">
-			<svg class="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7" />
-			</svg>
-		</a>
+		<Button href="/dispatcher/stores/{storeId}/customers" variant="outline" size="icon" class="shrink-0" title="Back to Customers">
+			<ArrowLeftIcon class="size-4" />
+		</Button>
 		<h1 class="text-2xl font-bold">New Customer</h1>
 	</div>
 
@@ -30,25 +32,25 @@
 			<form method="POST" use:enhance class="space-y-4">
 				<div class="grid grid-cols-2 gap-4">
 					<div class="space-y-1.5">
-						<label class="label" for="firstName">First Name <span class="text-destructive">*</span></label>
-						<input id="firstName" name="firstName" class="input" required />
+						<Label for="firstName">First Name <span class="text-destructive">*</span></Label>
+						<Input id="firstName" name="firstName" required />
 					</div>
 					<div class="space-y-1.5">
-						<label class="label" for="lastName">Last Name <span class="text-destructive">*</span></label>
-						<input id="lastName" name="lastName" class="input" required />
+						<Label for="lastName">Last Name <span class="text-destructive">*</span></Label>
+						<Input id="lastName" name="lastName" required />
 					</div>
 				</div>
 				<div class="space-y-1.5">
-					<label class="label" for="email">Email</label>
-					<input id="email" name="email" type="email" class="input" />
+					<Label for="email">Email</Label>
+					<Input id="email" name="email" type="email" />
 				</div>
 				<div class="space-y-1.5">
-					<label class="label" for="phone">Phone</label>
-					<input id="phone" name="phone" type="tel" class="input" />
+					<Label for="phone">Phone</Label>
+					<Input id="phone" name="phone" type="tel" />
 				</div>
 				<div class="flex gap-3 pt-2">
-					<button type="submit" class="btn-primary">Create Customer</button>
-					<a href="/dispatcher/stores/{storeId}/customers" class="btn-secondary">Cancel</a>
+					<Button type="submit">Create Customer</Button>
+					<Button href="/dispatcher/stores/{storeId}/customers" variant="outline">Cancel</Button>
 				</div>
 			</form>
 		</div>

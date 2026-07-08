@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { formatCurrency, formatDate } from '$lib/utils';
+	import { Button } from '$lib/components/ui/button/index.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -17,13 +18,9 @@
 
 <div class="max-w-2xl mx-auto p-8 print:p-0 text-sm text-zinc-900">
 	<div class="flex items-start justify-between mb-8 print:hidden">
-		<button
-			type="button"
-			class="btn-primary"
-			onclick={() => window.print()}
-		>
+		<Button onclick={() => window.print()}>
 			Print / Save as PDF
-		</button>
+		</Button>
 	</div>
 
 	<div class="flex items-start justify-between mb-8">

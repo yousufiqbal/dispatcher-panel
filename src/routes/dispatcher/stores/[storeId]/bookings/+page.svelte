@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { formatDate } from '$lib/utils';
+	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -29,51 +30,39 @@
 <div class="p-3 sm:p-6">
 	<p class="text-sm text-muted-foreground mb-5">{data.bookings.length} booking{data.bookings.length !== 1 ? 's' : ''}</p>
 
-	<!-- Courier pills -->
-	<div class="flex flex-wrap items-center gap-2 mb-3">
-		{#each data.couriers as c}
-			<button
-				onclick={() => applyFilters(data.period, c.id, data.status)}
-				class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors duration-150 cursor-pointer whitespace-nowrap
-					{data.courierId === c.id ? 'bg-primary text-primary-foreground' : 'bg-white border border-zinc-200 text-muted-foreground hover:bg-accent'}"
-			>
-				{c.name}
-			</button>
-		{/each}
+	<!-- Courier tabs -->
+	<div class="mb-3">
+		<Tabs.Root value={data.courierId} onValueChange={(v) => applyFilters(data.period, v, data.status)}>
+			<Tabs.List class="h-auto flex-wrap">
+				{#each data.couriers as c}
+					<Tabs.Trigger value={c.id}>{c.name}</Tabs.Trigger>
+				{/each}
+			</Tabs.List>
+		</Tabs.Root>
 	</div>
 
-	<!-- Period pills -->
-	<div class="flex flex-wrap items-center gap-2 mb-3">
-		{#each periods as p}
-			<button
-				onclick={() => applyFilters(p.key, data.courierId, data.status)}
-				class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors duration-150 cursor-pointer whitespace-nowrap
-					{data.period === p.key ? 'bg-primary text-primary-foreground' : 'bg-white border border-zinc-200 text-muted-foreground hover:bg-accent'}"
-			>
-				{p.label}
-			</button>
-		{/each}
+	<!-- Period tabs -->
+	<div class="mb-3">
+		<Tabs.Root value={data.period} onValueChange={(v) => applyFilters(v, data.courierId, data.status)}>
+			<Tabs.List class="h-auto flex-wrap">
+				{#each periods as p}
+					<Tabs.Trigger value={p.key}>{p.label}</Tabs.Trigger>
+				{/each}
+			</Tabs.List>
+		</Tabs.Root>
 	</div>
 
 	<!-- Status tabs -->
 	{#if data.statuses.length > 0}
-		<div class="flex flex-wrap items-center gap-2 mb-5">
-			<button
-				onclick={() => applyFilters(data.period, data.courierId, '')}
-				class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors duration-150 cursor-pointer whitespace-nowrap
-					{data.status === '' ? 'bg-primary text-primary-foreground' : 'bg-white border border-zinc-200 text-muted-foreground hover:bg-accent'}"
-			>
-				All Statuses
-			</button>
-			{#each data.statuses as s}
-				<button
-					onclick={() => applyFilters(data.period, data.courierId, s)}
-					class="px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors duration-150 cursor-pointer whitespace-nowrap
-						{data.status === s ? 'bg-primary text-primary-foreground' : 'bg-white border border-zinc-200 text-muted-foreground hover:bg-accent'}"
-				>
-					{s}
-				</button>
-			{/each}
+		<div class="mb-5">
+			<Tabs.Root value={data.status} onValueChange={(v) => applyFilters(data.period, data.courierId, v)}>
+				<Tabs.List class="h-auto flex-wrap">
+					<Tabs.Trigger value="">All Statuses</Tabs.Trigger>
+					{#each data.statuses as s}
+						<Tabs.Trigger value={s}>{s}</Tabs.Trigger>
+					{/each}
+				</Tabs.List>
+			</Tabs.Root>
 		</div>
 	{/if}
 

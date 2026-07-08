@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import PackageIcon from '@lucide/svelte/icons/package';
+	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 
 	let email = $state('');
 	let password = $state('');
@@ -116,9 +121,7 @@
 		<!-- Logo / Branding -->
 		<div class="text-center mb-8">
 			<div class="inline-flex items-center justify-center size-12 rounded-xl bg-primary text-primary-foreground mb-4 shadow-sm">
-				<svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7" />
-				</svg>
+				<PackageIcon class="size-6" />
 			</div>
 			<h1 class="text-2xl font-bold text-foreground">Pro Shipper</h1>
 			<p class="text-sm text-muted-foreground mt-1">Shopify Order Management</p>
@@ -139,11 +142,10 @@
 						{/if}
 
 						<div class="space-y-1.5">
-							<label class="label" for="email">Email</label>
-							<input
+							<Label for="email">Email</Label>
+							<Input
 								id="email"
 								type="email"
-								class="input"
 								placeholder="you@example.com"
 								bind:value={email}
 								required
@@ -152,11 +154,10 @@
 						</div>
 
 						<div class="space-y-1.5">
-							<label class="label" for="password">Password</label>
-							<input
+							<Label for="password">Password</Label>
+							<Input
 								id="password"
 								type="password"
-								class="input"
 								placeholder="••••••••••"
 								bind:value={password}
 								required
@@ -164,17 +165,14 @@
 							/>
 						</div>
 
-						<button type="submit" class="btn-primary w-full" disabled={loading}>
+						<Button type="submit" class="w-full" disabled={loading}>
 							{#if loading}
-								<svg class="animate-spin size-4" fill="none" viewBox="0 0 24 24">
-									<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-									<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-								</svg>
+								<Loader2Icon class="animate-spin size-4" />
 								Signing in...
 							{:else}
 								Sign in
 							{/if}
-						</button>
+						</Button>
 					</form>
 				</div>
 
@@ -191,14 +189,14 @@
 					{/if}
 
 					<div class="space-y-1.5">
-						<label class="label" for="totp">Authentication code</label>
-						<input
+						<Label for="totp">Authentication code</Label>
+						<Input
 							id="totp"
 							type="text"
 							inputmode="numeric"
 							pattern="[0-9]*"
-							maxlength="6"
-							class="input text-center text-2xl tracking-[0.5em] font-mono"
+							maxlength={6}
+							class="text-center text-2xl tracking-[0.5em] font-mono"
 							placeholder="000000"
 							value={totpCode}
 							oninput={onTotpInput}
@@ -208,17 +206,14 @@
 
 					{#if loading}
 						<div class="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-							<svg class="animate-spin size-4" fill="none" viewBox="0 0 24 24">
-								<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-								<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-							</svg>
+							<Loader2Icon class="animate-spin size-4" />
 							Verifying...
 						</div>
 					{/if}
 
-					<button class="btn-ghost w-full text-sm" onclick={() => { step = 'credentials'; error = ''; totpCode = ''; }}>
+					<Button variant="ghost" class="w-full text-sm" onclick={() => { step = 'credentials'; error = ''; totpCode = ''; }}>
 						← Back to login
-					</button>
+					</Button>
 				</div>
 
 			{:else if step === 'totp-setup'}
@@ -247,9 +242,9 @@
 							</div>
 						{/if}
 
-						<button class="btn-primary w-full" onclick={() => setupStep = 'confirm'}>
+						<Button class="w-full" onclick={() => setupStep = 'confirm'}>
 							I've scanned the code →
-						</button>
+						</Button>
 
 					{:else}
 						<p class="text-sm text-muted-foreground">
@@ -263,14 +258,14 @@
 						{/if}
 
 						<div class="space-y-1.5">
-							<label class="label" for="setup-totp">Verification code</label>
-							<input
+							<Label for="setup-totp">Verification code</Label>
+							<Input
 								id="setup-totp"
 								type="text"
 								inputmode="numeric"
 								pattern="[0-9]*"
-								maxlength="6"
-								class="input text-center text-2xl tracking-[0.5em] font-mono"
+								maxlength={6}
+								class="text-center text-2xl tracking-[0.5em] font-mono"
 								placeholder="000000"
 								value={totpCode}
 								oninput={onTotpInput}
@@ -278,17 +273,17 @@
 							/>
 						</div>
 
-						<button
-							class="btn-primary w-full"
+						<Button
+							class="w-full"
 							onclick={handleTotpSetupConfirm}
 							disabled={loading || totpCode.length !== 6}
 						>
 							{loading ? 'Verifying...' : 'Confirm & enable 2FA'}
-						</button>
+						</Button>
 
-						<button class="btn-ghost w-full text-sm" onclick={() => setupStep = 'scan'}>
+						<Button variant="ghost" class="w-full text-sm" onclick={() => setupStep = 'scan'}>
 							← Back to QR code
-						</button>
+						</Button>
 					{/if}
 				</div>
 			{/if}
