@@ -8,12 +8,13 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 	const q = url.searchParams.get('q') ?? '';
 	const cursor = url.searchParams.get('after') ?? undefined;
 
-	// Only show live products — hide drafts and archived ones.
-	const query = q ? `status:active (${q})` : 'status:active';
+	// Show live and draft products — hide only archived ones.
+	const statusFilter = '(status:active OR status:draft)';
+	const query = q ? `${statusFilter} (${q})` : statusFilter;
 
 	const [result, totalCount] = await Promise.all([
 		listProducts(client, { first: 30, after: cursor, query }),
-		getProductsCount(client, { query: 'status:active' })
+		getProductsCount(client, { query: statusFilter })
 	]);
 	return { products: result.nodes, pageInfo: result.pageInfo, q, totalCount };
 };
