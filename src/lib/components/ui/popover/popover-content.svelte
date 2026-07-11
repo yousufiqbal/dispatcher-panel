@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Popover as PopoverPrimitive } from "bits-ui";
 	import PopoverPortal from "./popover-portal.svelte";
+	import PopoverArrow from "./popover-arrow.svelte";
 	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
 	import type { ComponentProps } from "svelte";
 
@@ -10,9 +11,12 @@
 		sideOffset = 4,
 		align = "center",
 		portalProps,
+		children,
+		showArrow = true,
 		...restProps
 	}: PopoverPrimitive.ContentProps & {
 		portalProps?: WithoutChildrenOrChild<ComponentProps<typeof PopoverPortal>>;
+		showArrow?: boolean;
 	} = $props();
 </script>
 
@@ -27,5 +31,10 @@
 			className
 		)}
 		{...restProps}
-	/>
+	>
+		{@render children?.()}
+		{#if showArrow}
+			<PopoverArrow />
+		{/if}
+	</PopoverPrimitive.Content>
 </PopoverPortal>

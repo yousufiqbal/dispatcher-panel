@@ -14,7 +14,7 @@
 	let searchInput = $state(data.q ?? '');
 	let searchTimeout: ReturnType<typeof setTimeout>;
 	let loadingMore = $state(false);
-	let compact = $state(false);
+	let compact = $state(true);
 
 	$effect(() => {
 		data;

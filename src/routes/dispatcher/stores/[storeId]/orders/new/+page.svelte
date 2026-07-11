@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { clickOutside } from '$lib/actions/clickOutside';
+	import { shopifyIdToNumber } from '$lib/utils';
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Select from '$lib/components/ui/select/index.js';
@@ -497,6 +499,78 @@
 			savingCustomer = false;
 		}
 	}
+
+	// Order submission
+	let submittingOrder = $state(false);
+	let orderSubmitError = $state('');
+
+	function buildShippingAddress() {
+		const addr = selectedCustomer?.defaultAddress;
+		if (!addr?.address1 || !selectedCustomer) return undefined;
+		const [firstName, ...rest] = selectedCustomer.displayName.split(' ');
+		return {
+			firstName: selectedCustomer.firstName ?? firstName ?? '',
+			lastName: selectedCustomer.lastName ?? rest.join(' '),
+			address1: addr.address1,
+			address2: addr.address2 ?? undefined,
+			city: addr.city ?? '',
+			province: addr.province ?? '',
+			country: addr.country ?? '',
+			zip: addr.zip ?? '',
+			phone: addr.phone ?? selectedCustomer.phone ?? undefined
+		};
+	}
+
+	async function submitOrder(complete: boolean, paymentPending: boolean) {
+		if (lineItems.length === 0) {
+			orderSubmitError = 'Add at least one product before creating the order.';
+			return;
+		}
+		submittingOrder = true;
+		orderSubmitError = '';
+		try {
+			const res = await fetch(`/api/shopify/${storeId}/draft-orders`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					lineItems: lineItems.map((i) => ({
+						variantId: i.variantId.startsWith('custom-') ? undefined : i.variantId,
+						title: i.variantId.startsWith('custom-') ? i.productTitle : undefined,
+						originalUnitPrice: i.variantId.startsWith('custom-') ? i.price : undefined,
+						quantity: i.quantity,
+						appliedDiscount: i.discountType && i.discountValue
+							? { value: i.discountValue, valueType: i.discountType, title: i.discountReason || undefined }
+							: undefined
+					})),
+					customerId: selectedCustomer?.id,
+					shippingAddress: buildShippingAddress(),
+					shippingLine: appliedShippingTitle
+						? { title: appliedShippingTitle, price: appliedShippingPrice.toFixed(2) }
+						: undefined,
+					appliedDiscount: appliedOrderDiscountType && appliedOrderDiscountValue
+						? { value: appliedOrderDiscountValue, valueType: appliedOrderDiscountType, title: appliedOrderDiscountReason || 'Discount' }
+						: undefined,
+					complete,
+					paymentPending
+				})
+			});
+			if (!res.ok) {
+				const body = await res.json().catch(() => null);
+				orderSubmitError = body?.message ?? 'Failed to create order';
+				return;
+			}
+			const body = await res.json();
+			if (body.orderId) {
+				goto(`/dispatcher/stores/${storeId}/orders/${shopifyIdToNumber(body.orderId)}`);
+			} else {
+				goto(`/dispatcher/stores/${storeId}/draft-orders/${shopifyIdToNumber(body.draftOrderId)}`);
+			}
+		} catch {
+			orderSubmitError = 'Failed to create order';
+		} finally {
+			submittingOrder = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -628,13 +702,20 @@
 							</p>
 						{/if}
 					</Card.Content>
+					{#if orderSubmitError}
+						<div class="px-6 pb-3">
+							<div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{orderSubmitError}</div>
+						</div>
+					{/if}
 					<div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-border">
 						{#if paymentDueLater}
-							<Button variant="outline">Send invoice</Button>
+							<Button variant="outline" disabled={submittingOrder} onclick={() => submitOrder(false, false)}>Send invoice</Button>
 						{:else}
-							<Button variant="outline">Mark as paid</Button>
+							<Button variant="outline" disabled={submittingOrder} onclick={() => submitOrder(true, false)}>Mark as paid</Button>
 						{/if}
-						<Button>Create order</Button>
+						<Button disabled={submittingOrder} onclick={() => submitOrder(true, true)}>
+							{submittingOrder ? 'Creating…' : 'Create order'}
+						</Button>
 					</div>
 				{/if}
 			</Card.Root>

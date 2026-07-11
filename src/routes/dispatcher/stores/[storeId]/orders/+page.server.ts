@@ -42,14 +42,15 @@ const STATUS_QUERIES: Record<string, string> = {
 // how it was typed (leading 0, country code 92, +92, with/without dashes or spaces).
 function phoneQueryVariants(raw: string): string[] {
 	const digits = raw.replace(/\D/g, '');
-	if (digits.length < 5) return [`phone:*${raw}*`];
+	if (digits.length < 5) return [`phone:${raw}*`];
 
 	let national = digits; // number without leading 0 or country code, e.g. 3001234567
 	if (digits.startsWith('0')) national = digits.slice(1);
 	else if (digits.startsWith('92')) national = digits.slice(2);
 
 	const variants = new Set([digits, national, `0${national}`, `92${national}`, `+92${national}`]);
-	return [...variants].map((v) => `phone:*${v}*`);
+	// Shopify search only supports a trailing wildcard, not a leading one.
+	return [...variants].map((v) => `phone:${v}*`);
 }
 
 async function listDraftOrders(client: ReturnType<typeof getShopifyClient>, { first = 50, after, query }: { first?: number; after?: string; query?: string } = {}) {
@@ -71,12 +72,32 @@ async function listDraftOrders(client: ReturnType<typeof getShopifyClient>, { fi
 	return data.draftOrders;
 }
 
+// No search syntax exists for fulfillment displayStatus (courier-pushed field), so
+// count client-side over shipped orders — same reasoning as the attempted/failed
+// filter below, kept light by only requesting the displayStatus field.
+async function getAttemptedCount(client: ReturnType<typeof getShopifyClient>): Promise<number> {
+	const gql = `
+		query AttemptedCount($query: String) {
+			orders(first: 250, query: $query) {
+				nodes { fulfillments(first: 5) { displayStatus } }
+			}
+		}
+	`;
+	const data = await shopifyRequest<{ orders: { nodes: { fulfillments: { displayStatus: string | null }[] }[] } }>(
+		client, gql, { query: STATUS_QUERIES.attempted }
+	);
+	return data.orders.nodes.filter((o) => orderDisplayStatus(o) === 'ATTEMPTED_DELIVERY').length;
+}
+
 // Splits by the live `tags` field (getTagSplitCounts), not a `tag:` search clause —
 // the search index lags a few seconds behind a tagsAdd mutation, which made these
 // badges show stale numbers right after a bulk-confirm.
 async function getBadgeCounts(client: ReturnType<typeof getShopifyClient>) {
-	const { withTag, withoutTag } = await getTagSplitCounts(client, STATUS_QUERIES.pending, CONFIRMED_TAG);
-	return { pendingCount: withoutTag, confirmedCount: withTag };
+	const [{ withTag, withoutTag }, attemptedCount] = await Promise.all([
+		getTagSplitCounts(client, STATUS_QUERIES.pending, CONFIRMED_TAG),
+		getAttemptedCount(client)
+	]);
+	return { pendingCount: withoutTag, confirmedCount: withTag, attemptedCount };
 }
 
 export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
@@ -92,7 +113,9 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 	}
 
 	if (status === 'drafts') {
-		const query = searchQ ? `name:*${searchQ}* OR customer_name:*${searchQ}*` : undefined;
+		// customer_name isn't a valid draft-order search field — the bare/default
+		// term is what matches customer name (same as Shopify admin's search box).
+		const query = searchQ ? `name:${searchQ}* OR ${searchQ}*` : undefined;
 		const [result, badgeCounts, couriers] = await Promise.all([
 			listDraftOrders(client, { first: 30, after: cursor, query }),
 			getBadgeCounts(client),
@@ -114,14 +137,20 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 	let shopifyQuery = STATUS_QUERIES[status] ?? '';
 	if (searchQ) {
 		const phoneClauses = phoneQueryVariants(searchQ).join(' OR ');
-		const searchPart = `(name:*${searchQ}* OR customer_name:*${searchQ}* OR ${phoneClauses} OR tag:*${searchQ}*)`;
+		// customer_name isn't a valid order search field (confirmed against Shopify's
+		// orders query field list) — the bare/default term matches customer name
+		// instead, the same way Shopify admin's own order search box does.
+		const searchPart = `(name:${searchQ}* OR ${searchQ}* OR ${phoneClauses} OR tag:${searchQ}*)`;
 		shopifyQuery = shopifyQuery ? `${shopifyQuery} AND ${searchPart}` : searchPart;
 	}
 
 	// Fetch extra when tag-filtering client-side, since some fetched orders get
 	// dropped by the tag split below (pagination becomes approximate as a result).
+	// attempted/failed fetch as many as the badge count scans (getAttemptedCount
+	// below), otherwise the visible list and its own badge count disagree.
+	const isDisplayStatusFiltered = status === 'attempted' || status === 'failed';
 	const [result, badgeCounts, couriers] = await Promise.all([
-		listOrders(client, { first: isTagFiltered ? 60 : 30, after: cursor, query: shopifyQuery || undefined }),
+		listOrders(client, { first: isDisplayStatusFiltered ? 250 : isTagFiltered ? 60 : 30, after: cursor, query: shopifyQuery || undefined }),
 		getBadgeCounts(client),
 		getStoreCouriers(params.storeId)
 	]);

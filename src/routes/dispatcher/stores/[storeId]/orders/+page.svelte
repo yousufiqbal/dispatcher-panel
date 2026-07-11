@@ -7,7 +7,9 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { formatCurrency, formatDate, formatRelativeDate } from '$lib/utils';
 	import { deliveryPill } from '$lib/delivery-status';
 	import SearchIcon from '@lucide/svelte/icons/search';
@@ -17,6 +19,8 @@
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import CopyIcon from '@lucide/svelte/icons/copy';
+	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -80,11 +84,11 @@
 		{ key: 'attempted', label: 'Attempted' },
 		{ key: 'failed', label: 'Failed' },
 		{ key: 'cancelled', label: 'Cancelled' },
-		{ key: 'returned', label: 'Returned' },
-		{ key: 'drafts', label: 'Drafts', separator: true }
+		{ key: 'returned', label: 'Returned' }
 	];
 
 	function getStatusClass(financial: string, fulfillment: string): string {
+		if (financial === 'VOIDED') return 'badge-cancelled';
 		if (financial === 'REFUNDED') return 'badge-returned';
 		if (fulfillment === 'FULFILLED') return 'badge-fulfilled';
 		if (financial === 'PENDING') return 'badge-pending';
@@ -93,6 +97,7 @@
 	}
 
 	function getStatusLabel(financial: string, fulfillment: string): string {
+		if (financial === 'VOIDED') return 'Voided';
 		if (financial === 'REFUNDED') return 'Refunded';
 		if (fulfillment === 'FULFILLED') return 'Fulfilled';
 		if (fulfillment === 'PARTIALLY_FULFILLED') return 'Partial';
@@ -123,7 +128,9 @@
 	function onSearch() {
 		clearTimeout(searchTimeout);
 		searchTimeout = setTimeout(() => {
-			navigate({ q: searchInput || null });
+			// Search should look across all orders, not just the currently
+			// selected status tab — reset to "all" whenever a search runs.
+			navigate({ q: searchInput || null, status: null });
 		}, 350);
 	}
 
@@ -253,33 +260,49 @@
 				<PlusIcon class="size-4" />
 				<span class="hidden sm:inline">New Order</span>
 			</Button>
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					{#snippet child({ props })}
+						<Button {...props} variant="outline" size="icon" title="More">
+							<MoreHorizontalIcon class="size-4" />
+						</Button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content align="end" class="w-36">
+					<DropdownMenu.Item onclick={() => setStatus('drafts')}>Drafts</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
 		</div>
 	</div>
 
 	<!-- Status tabs -->
-	<div class="mb-5 pb-1 overflow-x-auto overflow-y-hidden">
-		<Tabs.Root value={data.status ?? 'all'} onValueChange={setStatus}>
-			<Tabs.List class="h-auto flex-nowrap">
-				{#each tabs as tab}
-					{#if tab.separator}
-						<div class="w-px h-5 bg-border self-center mx-1 shrink-0"></div>
-					{/if}
-					<Tabs.Trigger value={tab.key} class="gap-1.5 shrink-0">
-						{tab.label}
-						{#if tab.key === 'pending' && data.pendingCount > 0}
-							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
-								{data.pendingCount}
-							</span>
-						{/if}
-						{#if tab.key === 'confirmed' && data.confirmedCount > 0}
-							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-								{data.confirmedCount}
-							</span>
-						{/if}
-					</Tabs.Trigger>
-				{/each}
-			</Tabs.List>
-		</Tabs.Root>
+	<div class="mb-5 pb-1 flex items-center gap-2">
+		<div class="overflow-x-auto overflow-y-hidden">
+			<Tabs.Root value={data.status ?? 'all'} onValueChange={setStatus}>
+				<Tabs.List class="h-auto flex-nowrap">
+					{#each tabs as tab}
+						<Tabs.Trigger value={tab.key} class="gap-1.5 shrink-0">
+							{tab.label}
+							{#if tab.key === 'pending' && data.pendingCount > 0}
+								<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+									{data.pendingCount}
+								</span>
+							{/if}
+							{#if tab.key === 'confirmed' && data.confirmedCount > 0}
+								<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+									{data.confirmedCount}
+								</span>
+							{/if}
+							{#if tab.key === 'attempted' && data.attemptedCount > 0}
+								<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+									{data.attemptedCount}
+								</span>
+							{/if}
+						</Tabs.Trigger>
+					{/each}
+				</Tabs.List>
+			</Tabs.Root>
+		</div>
 	</div>
 
 	{#if data.status === 'pending' && selectedIds.size > 0}
@@ -434,19 +457,20 @@
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Date</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Customer</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Phone</th>
+							<th class="text-center px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Items</th>
 							<th class="text-right px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Total</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Payment</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Fulfillment</th>
-							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Delivery Status</th>
-							<th class="text-center px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Items</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Destination</th>
+							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Delivery Status</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-border">
 						{#each data.orders as order}
 							{@const delivery = deliveryStatusInfo(order)}
+							{@const isCancelled = !!order.cancelledAt}
 							<tr
-								class="hover:bg-muted/40 transition-colors cursor-pointer"
+								class="hover:bg-muted/40 transition-colors cursor-pointer {isCancelled ? 'opacity-60 bg-muted/30' : ''}"
 								onclick={() => goto(`/dispatcher/stores/${storeId}/orders/${order.id.split('/').pop()}`)}
 							>
 								{#if selectableStatuses.includes(data.status)}
@@ -454,10 +478,10 @@
 										<Checkbox checked={selectedIds.has(order.id)} onCheckedChange={() => toggleSelect(order.id)} />
 									</td>
 								{/if}
-								<td class="px-3 py-1.5 font-bold text-foreground whitespace-nowrap">{order.name}</td>
-								<td class="px-3 py-1.5 text-foreground/70 whitespace-nowrap">{formatRelativeDate(order.createdAt)}</td>
+								<td class="px-3 py-1.5 font-bold text-foreground whitespace-nowrap {isCancelled ? 'line-through' : ''}">{order.name}</td>
+								<td class="px-3 py-1.5 text-foreground/70 whitespace-nowrap {isCancelled ? 'line-through' : ''}">{formatRelativeDate(order.createdAt)}</td>
 								<td class="px-3 py-1.5">
-									<div class="font-medium text-foreground">{order.customer?.displayName ?? 'Guest'}</div>
+									<div class="font-medium text-foreground {isCancelled ? 'line-through' : ''}">{order.customer?.displayName ?? 'Guest'}</div>
 								</td>
 								<td class="px-3 py-1.5 text-foreground/70 whitespace-nowrap font-mono text-xs">
 									{#if order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}
@@ -481,7 +505,40 @@
 										—
 									{/if}
 								</td>
-								<td class="px-3 py-1.5 text-right font-semibold text-foreground whitespace-nowrap">
+								<td class="px-3 py-1.5 text-center text-foreground/70" onclick={(e) => e.stopPropagation()}>
+									<Popover.Root>
+										<Popover.Trigger>
+											{#snippet child({ props })}
+												<button type="button" {...props} class="inline-flex items-center gap-1 hover:text-primary rounded-md px-1.5 -mx-1.5 data-[state=open]:ring-2 data-[state=open]:ring-primary/40 data-[state=open]:bg-primary/5 {isCancelled ? 'line-through' : ''}">
+													{order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)}
+													<ChevronDownIcon class="size-3.5" />
+												</button>
+											{/snippet}
+										</Popover.Trigger>
+										<Popover.Content class="w-80 p-0 gap-0 overflow-hidden" align="center">
+											<div class="divide-y divide-border overflow-y-auto" style="max-height: min(60vh, var(--bits-floating-available-height, 60vh));">
+												{#each order.lineItems.nodes as item}
+													{@const img = item.variant?.image ?? item.image}
+													<div class="flex items-center gap-3 px-3 py-2.5">
+														{#if img}
+															<img src={img.url} alt={img.altText ?? item.title} class="size-10 rounded-md object-cover border border-border shrink-0" />
+														{:else}
+															<div class="size-10 rounded-md bg-muted border border-border shrink-0"></div>
+														{/if}
+														<div class="min-w-0 flex-1">
+															<div class="text-sm font-medium text-foreground leading-snug">{item.title}</div>
+															{#if item.variant?.title && item.variant.title !== 'Default Title'}
+																<span class="inline-flex items-center mt-1 px-1.5 py-0.5 rounded bg-muted text-xs text-muted-foreground">{item.variant.title}</span>
+															{/if}
+														</div>
+														<span class="text-sm text-muted-foreground shrink-0">×{item.quantity}</span>
+													</div>
+												{/each}
+											</div>
+										</Popover.Content>
+									</Popover.Root>
+								</td>
+								<td class="px-3 py-1.5 text-right font-semibold text-foreground whitespace-nowrap {isCancelled ? 'line-through' : ''}">
 									{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
 								</td>
 								<td class="px-3 py-1.5">
@@ -495,31 +552,68 @@
 									</span>
 								</td>
 								<td class="px-3 py-1.5">
-									<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full
-										{order.displayFulfillmentStatus === 'FULFILLED' ? 'bg-green-100 text-green-800' :
-										 order.displayFulfillmentStatus === 'UNFULFILLED' ? 'bg-amber-100 text-amber-800' :
-										 'bg-zinc-100 text-zinc-700'}">
-										<span class="size-1.5 rounded-full bg-current shrink-0"></span>
-										{order.displayFulfillmentStatus.replace(/_/g,' ')}
-									</span>
-								</td>
-								<td class="px-3 py-1.5 whitespace-nowrap">
-									{#if delivery}
-										<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
+									{#if isCancelled}
+										<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700">
 											<span class="size-1.5 rounded-full bg-current shrink-0"></span>
-											{delivery.label}
+											Not required
 										</span>
+									{:else}
+										<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full
+											{order.displayFulfillmentStatus === 'FULFILLED' ? 'bg-green-100 text-green-800' :
+											 order.displayFulfillmentStatus === 'UNFULFILLED' ? 'bg-amber-100 text-amber-800' :
+											 'bg-zinc-100 text-zinc-700'}">
+											<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+											{order.displayFulfillmentStatus.replace(/_/g,' ')}
+										</span>
+									{/if}
+								</td>
+								<td class="px-3 py-1.5 whitespace-nowrap {isCancelled ? 'line-through' : ''}">
+									{#if order.shippingAddress}
+										<div class="font-medium text-foreground">{order.shippingAddress.city}</div>
+										<div class="text-xs text-foreground/60">{order.shippingAddress.country}</div>
 									{:else}
 										<span class="text-foreground/40">—</span>
 									{/if}
 								</td>
-								<td class="px-3 py-1.5 text-center text-foreground/70">
-									{order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)}
-								</td>
-								<td class="px-3 py-1.5 whitespace-nowrap">
-									{#if order.shippingAddress}
-										<div class="font-medium text-foreground">{order.shippingAddress.city}</div>
-										<div class="text-xs text-foreground/60">{order.shippingAddress.country}</div>
+								<td class="px-3 py-1.5 whitespace-nowrap" onclick={(e) => e.stopPropagation()}>
+									{#if delivery}
+										{@const tracking = order.fulfillments.flatMap((f) => f.trackingInfo).find((t) => t.number || t.company)}
+										<Popover.Root>
+											<Popover.Trigger>
+												{#snippet child({ props })}
+													<button type="button" {...props} class="inline-flex items-center gap-1 hover:opacity-80 rounded-md px-1 -mx-1 data-[state=open]:ring-2 data-[state=open]:ring-primary/40 data-[state=open]:bg-primary/5">
+														<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
+															<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+															{delivery.label}
+														</span>
+														<ChevronDownIcon class="size-3.5 text-muted-foreground" />
+													</button>
+												{/snippet}
+											</Popover.Trigger>
+											<Popover.Content class="w-64 p-3" align="end">
+												<div class="text-sm font-semibold mb-2">Delivery</div>
+												{#if tracking}
+													<div class="space-y-2 text-sm">
+														<div>
+															<div class="text-xs text-muted-foreground uppercase tracking-wide">Courier</div>
+															<div class="font-medium text-foreground">{tracking.company ?? 'Unknown courier'}</div>
+														</div>
+														<div>
+															<div class="text-xs text-muted-foreground uppercase tracking-wide">Tracking</div>
+															{#if tracking.url}
+																<a href={tracking.url} target="_blank" rel="noopener" class="font-mono text-primary hover:underline">
+																	{tracking.number ?? tracking.url}
+																</a>
+															{:else}
+																<div class="font-mono text-foreground">{tracking.number ?? '—'}</div>
+															{/if}
+														</div>
+													</div>
+												{:else}
+													<p class="text-sm text-muted-foreground">No tracking information yet.</p>
+												{/if}
+											</Popover.Content>
+										</Popover.Root>
 									{:else}
 										<span class="text-foreground/40">—</span>
 									{/if}
@@ -537,7 +631,8 @@
 			<div class="divide-y divide-border">
 				{#each data.orders as order}
 					{@const delivery = deliveryStatusInfo(order)}
-					<div class="flex items-stretch">
+					{@const isCancelled = !!order.cancelledAt}
+					<div class="flex items-stretch {isCancelled ? 'opacity-60 bg-muted/30' : ''}">
 						{#if selectableStatuses.includes(data.status)}
 							<div class="flex items-center pl-4 pr-1">
 								<Checkbox checked={selectedIds.has(order.id)} onCheckedChange={() => toggleSelect(order.id)} />
@@ -548,19 +643,26 @@
 							onclick={() => goto(`/dispatcher/stores/${storeId}/orders/${order.id.split('/').pop()}`)}
 						>
 							<div class="flex items-start justify-between gap-2 mb-2">
-								<span class="font-bold text-foreground">{order.name}</span>
+								<span class="font-bold text-foreground {isCancelled ? 'line-through' : ''}">{order.name}</span>
 								<span class="{getStatusClass(order.displayFinancialStatus, order.displayFulfillmentStatus)} shrink-0">
 									{getStatusLabel(order.displayFinancialStatus, order.displayFulfillmentStatus)}
 								</span>
 							</div>
 							<div class="flex items-end justify-between gap-2">
 								<div>
-									<div class="text-sm text-muted-foreground">{order.customer?.displayName ?? 'Unknown'}</div>
+									<div class="text-sm text-muted-foreground {isCancelled ? 'line-through' : ''}">{order.customer?.displayName ?? 'Unknown'}</div>
 									{#if order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}<div class="text-xs text-muted-foreground">{order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}</div>{/if}
-									<div class="text-xs text-muted-foreground mt-0.5">
+									<div class="text-xs text-muted-foreground mt-0.5 {isCancelled ? 'line-through' : ''}">
 										{formatDate(order.createdAt)} · {order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)} item{order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0) === 1 ? '' : 's'}
 									</div>
-									{#if delivery}
+									{#if isCancelled}
+										<div class="mt-1">
+											<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700">
+												<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+												Not required
+											</span>
+										</div>
+									{:else if delivery}
 										<div class="mt-1">
 											<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
 												<span class="size-1.5 rounded-full bg-current shrink-0"></span>
@@ -569,7 +671,7 @@
 										</div>
 									{/if}
 								</div>
-								<span class="font-semibold text-foreground shrink-0">
+								<span class="font-semibold text-foreground shrink-0 {isCancelled ? 'line-through' : ''}">
 									{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
 								</span>
 							</div>

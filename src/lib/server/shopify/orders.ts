@@ -5,12 +5,20 @@ export interface OrderNode {
 	id: string;
 	name: string;
 	createdAt: string;
+	cancelledAt: string | null;
 	displayFinancialStatus: string;
 	displayFulfillmentStatus: string;
 	totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
 	phone: string | null;
 	customer: { id: string; displayName: string; phone: string | null; email: string | null } | null;
-	lineItems: { nodes: { quantity: number }[] };
+	lineItems: {
+		nodes: {
+			title: string;
+			quantity: number;
+			variant: { title: string; image: { url: string; altText: string | null } | null } | null;
+			image: { url: string; altText: string | null } | null;
+		}[];
+	};
 	shippingAddress: {
 		name: string;
 		address1: string;
@@ -32,12 +40,18 @@ export interface PageInfo {
 }
 
 const ORDER_FIELDS = `
-  id name createdAt displayFinancialStatus displayFulfillmentStatus
+  id name createdAt cancelledAt displayFinancialStatus displayFulfillmentStatus
   totalPriceSet { shopMoney { amount currencyCode } }
   phone
   customer { id displayName phone email }
   shippingAddress { name address1 city province country zip phone }
-  lineItems(first: 50) { nodes { quantity } }
+  lineItems(first: 50) {
+    nodes {
+      title quantity
+      variant { title image { url altText } }
+      image { url altText }
+    }
+  }
   tags
 `;
 

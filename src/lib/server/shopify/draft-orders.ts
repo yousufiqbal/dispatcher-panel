@@ -4,8 +4,13 @@ import type { ShopifyClient } from './client';
 export interface DraftOrderLineItem {
 	variantId?: string;
 	title?: string;
-	price?: string;
+	originalUnitPrice?: string;
 	quantity: number;
+	appliedDiscount?: {
+		value: number;
+		valueType: 'PERCENTAGE' | 'FIXED_AMOUNT';
+		title?: string;
+	};
 }
 
 export interface DraftOrderInput {
@@ -61,11 +66,12 @@ export async function createDraftOrder(
 
 export async function completeDraftOrder(
 	client: ShopifyClient,
-	draftOrderId: string
+	draftOrderId: string,
+	paymentPending = false
 ): Promise<{ orderId: string; orderName: string }> {
 	const gql = `
-    mutation DraftOrderComplete($id: ID!) {
-      draftOrderComplete(id: $id) {
+    mutation DraftOrderComplete($id: ID!, $paymentPending: Boolean) {
+      draftOrderComplete(id: $id, paymentPending: $paymentPending) {
         draftOrder { order { id name } }
         userErrors { field message }
       }
@@ -76,7 +82,7 @@ export async function completeDraftOrder(
 			draftOrder: { order: { id: string; name: string } };
 			userErrors: { field: string[]; message: string }[];
 		};
-	}>(client, gql, { id: draftOrderId });
+	}>(client, gql, { id: draftOrderId, paymentPending });
 
 	if (data.draftOrderComplete.userErrors.length > 0) {
 		throw new Error(data.draftOrderComplete.userErrors.map((e) => e.message).join(', '));

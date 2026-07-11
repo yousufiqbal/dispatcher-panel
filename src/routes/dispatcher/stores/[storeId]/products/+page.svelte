@@ -17,7 +17,7 @@
 	let searchTimeout: ReturnType<typeof setTimeout>;
 	const storeId = $derived($page.params.storeId);
 	let loadingMore = $state(false);
-	let compact = $state(false);
+	let compact = $state(true);
 
 	$effect(() => {
 		data;
