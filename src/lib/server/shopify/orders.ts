@@ -10,7 +10,7 @@ export interface OrderNode {
 	displayFulfillmentStatus: string;
 	totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
 	phone: string | null;
-	customer: { id: string; displayName: string; phone: string | null; email: string | null } | null;
+	customer: { id: string; displayName: string; phone: string | null; email: string | null; numberOfOrders: number } | null;
 	lineItems: {
 		nodes: {
 			title: string;
@@ -22,6 +22,7 @@ export interface OrderNode {
 	shippingAddress: {
 		name: string;
 		address1: string;
+		address2: string | null;
 		city: string;
 		province: string;
 		country: string;
@@ -43,8 +44,8 @@ const ORDER_FIELDS = `
   id name createdAt cancelledAt displayFinancialStatus displayFulfillmentStatus
   totalPriceSet { shopMoney { amount currencyCode } }
   phone
-  customer { id displayName phone email }
-  shippingAddress { name address1 city province country zip phone }
+  customer { id displayName phone email numberOfOrders }
+  shippingAddress { name address1 address2 city province country zip phone }
   lineItems(first: 50) {
     nodes {
       title quantity
@@ -123,6 +124,27 @@ export interface OrderDetail extends OrderNode {
 	shippingLines: {
 		nodes: { id: string; title: string; originalPriceSet: { shopMoney: { amount: string } } }[];
 	};
+	// Discounts applied to the order — filtered by targetType to find shipping
+	// discounts (e.g. a "Free Shipping" code/automatic discount) shown as their
+	// own line in the payment summary, same as Shopify admin.
+	discountApplications: {
+		nodes: {
+			targetType: string;
+			code: string | null;
+			title: string | null;
+			value: { amount: string | null; percentage: number | null };
+		}[];
+	};
+	billingAddress: {
+		name: string;
+		address1: string;
+		address2: string | null;
+		city: string;
+		province: string;
+		country: string;
+		zip: string;
+		phone: string | null;
+	} | null;
 	fulfillments: {
 		id: string;
 		status: string;
@@ -157,6 +179,20 @@ export async function getOrder(client: ShopifyClient, orderId: string): Promise<
         shippingLines(first: 10) {
           nodes { id title originalPriceSet { shopMoney { amount } } }
         }
+        discountApplications(first: 10) {
+          nodes {
+            targetType
+            value {
+              ... on MoneyV2 { amount }
+              ... on PricingPercentageValue { percentage }
+            }
+            ... on DiscountCodeApplication { code }
+            ... on AutomaticDiscountApplication { title }
+            ... on ScriptDiscountApplication { title }
+            ... on ManualDiscountApplication { title }
+          }
+        }
+        billingAddress { name address1 address2 city province country zip phone }
         fulfillments(first: 10) {
           id status displayStatus
           trackingInfo { company number url }
@@ -385,6 +421,60 @@ export async function updateOrderShipping(
 	const data = await shopifyRequest<{
 		orderUpdate: { userErrors: { field: string[]; message: string }[] };
 	}>(client, gql, { input: { id: orderId, shippingAddress: address } });
+
+	if (data.orderUpdate.userErrors.length > 0) {
+		throw new Error(data.orderUpdate.userErrors.map((e) => e.message).join(', '));
+	}
+}
+
+export async function updateOrderEmail(client: ShopifyClient, orderId: string, email: string): Promise<void> {
+	const gql = `
+    mutation OrderUpdate($input: OrderInput!) {
+      orderUpdate(input: $input) {
+        order { id }
+        userErrors { field message }
+      }
+    }
+  `;
+	const data = await shopifyRequest<{
+		orderUpdate: { userErrors: { field: string[]; message: string }[] };
+	}>(client, gql, { input: { id: orderId, email } });
+
+	if (data.orderUpdate.userErrors.length > 0) {
+		throw new Error(data.orderUpdate.userErrors.map((e) => e.message).join(', '));
+	}
+}
+
+export async function updateOrderNote(client: ShopifyClient, orderId: string, note: string): Promise<void> {
+	const gql = `
+    mutation OrderUpdate($input: OrderInput!) {
+      orderUpdate(input: $input) {
+        order { id }
+        userErrors { field message }
+      }
+    }
+  `;
+	const data = await shopifyRequest<{
+		orderUpdate: { userErrors: { field: string[]; message: string }[] };
+	}>(client, gql, { input: { id: orderId, note } });
+
+	if (data.orderUpdate.userErrors.length > 0) {
+		throw new Error(data.orderUpdate.userErrors.map((e) => e.message).join(', '));
+	}
+}
+
+export async function updateOrderTags(client: ShopifyClient, orderId: string, tags: string[]): Promise<void> {
+	const gql = `
+    mutation OrderUpdate($input: OrderInput!) {
+      orderUpdate(input: $input) {
+        order { id }
+        userErrors { field message }
+      }
+    }
+  `;
+	const data = await shopifyRequest<{
+		orderUpdate: { userErrors: { field: string[]; message: string }[] };
+	}>(client, gql, { input: { id: orderId, tags } });
 
 	if (data.orderUpdate.userErrors.length > 0) {
 		throw new Error(data.orderUpdate.userErrors.map((e) => e.message).join(', '));

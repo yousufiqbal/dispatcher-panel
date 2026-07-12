@@ -1,12 +1,17 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { listOrders, getTagSplitCounts, confirmOrder, CONFIRMED_TAG } from '$lib/server/shopify/orders';
+import { listOrders, getTagSplitCounts, confirmOrder, cancelOrder, getOrder, CONFIRMED_TAG } from '$lib/server/shopify/orders';
+import { orderEditBegin, orderEditAddVariant, orderEditAddCustomItem, orderEditCommit } from '$lib/server/shopify/order-edit';
 import { db } from '$lib/server/db';
 import { couriers, courierStoreAccess } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getAuthorizedStore } from '$lib/server/store-access';
 import { logAudit } from '$lib/server/audit';
+
+function toShopifyOrderId(orderId: string): string {
+	return orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`;
+}
 
 async function getStoreCouriers(storeId: string) {
 	return db
@@ -197,5 +202,90 @@ export const actions: Actions = {
 			return fail(400, { error: e instanceof Error ? e.message : 'Failed to confirm orders' });
 		}
 		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=pending`);
+	},
+
+	mergeOrders: async ({ params, request, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const fd = await request.formData();
+		const mainOrderId = fd.get('mainOrderId') as string;
+		// Defensive dedupe — never cancel the order we just merged everything into,
+		// even if the client somehow posted it in both fields.
+		const otherOrderIds = [...new Set((fd.get('otherOrderIds') as string).split(',').filter(Boolean))]
+			.filter((id) => id !== mainOrderId);
+
+		if (!mainOrderId || otherOrderIds.length === 0) {
+			return fail(400, { error: 'Select a main order and at least one other order to merge' });
+		}
+
+		// Step 1: move every item into the main order. If anything here throws,
+		// nothing is cancelled — the merge simply didn't happen.
+		let othersDetail: Awaited<ReturnType<typeof getOrder>>[];
+		try {
+			othersDetail = await Promise.all(otherOrderIds.map((id) => getOrder(client, toShopifyOrderId(id))));
+
+			const { calcOrderId } = await orderEditBegin(client, toShopifyOrderId(mainOrderId));
+			for (const other of othersDetail) {
+				for (const item of other.lineItems.nodes) {
+					if (item.currentQuantity <= 0) continue; // already removed on that order
+					if (item.variant?.id) {
+						await orderEditAddVariant(client, calcOrderId, item.variant.id, item.currentQuantity);
+					} else {
+						await orderEditAddCustomItem(
+							client,
+							calcOrderId,
+							item.title,
+							item.originalUnitPriceSet.shopMoney.amount,
+							item.originalUnitPriceSet.shopMoney.currencyCode,
+							item.currentQuantity
+						);
+					}
+				}
+			}
+			await orderEditCommit(
+				client,
+				calcOrderId,
+				false,
+				`Merged from ${othersDetail.map((o) => o.name).join(', ')}`
+			);
+		} catch (e) {
+			return fail(400, { error: e instanceof Error ? `Merge failed, nothing was cancelled: ${e.message}` : 'Failed to merge orders' });
+		}
+
+		// Step 2: only now that the merge is confirmed committed, cancel the other
+		// orders — one at a time, so a single failure doesn't stop the rest. If some
+		// fail to cancel, the merge itself already succeeded and can't be rolled
+		// back, so we report exactly which ones still need manual cancellation
+		// instead of silently leaving them active (which would risk double-fulfillment).
+		// restock: true — orderEditAddVariant already committed fresh inventory for
+		// these items against the main order, independently of the commitment this
+		// order's own creation made. Restocking here releases that original
+		// commitment so the merged quantity is only deducted once, not twice.
+		const cancelResults = await Promise.allSettled(
+			otherOrderIds.map((id) => cancelOrder(client, toShopifyOrderId(id), 'OTHER', false, true, false))
+		);
+		const failedCancels = cancelResults
+			.map((r, i) => ({ result: r, order: othersDetail[i] }))
+			.filter((r) => r.result.status === 'rejected');
+
+		if (locals.session) {
+			await logAudit(locals.session.userId, 'dispatcher', 'order.merge', {
+				targetType: 'order', targetId: mainOrderId,
+				storeId: params.storeId,
+				metadata: {
+					mergedFrom: otherOrderIds,
+					cancelFailures: failedCancels.map((f) => f.order.name)
+				}
+			});
+		}
+
+		if (failedCancels.length > 0) {
+			const names = failedCancels.map((f) => f.order.name).join(', ');
+			return fail(400, {
+				error: `Items merged into ${mainOrderId.split('/').pop()}, but failed to cancel: ${names}. Cancel ${failedCancels.length === 1 ? 'it' : 'them'} manually to avoid double-fulfilling.`
+			});
+		}
+
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${mainOrderId.split('/').pop()}`);
 	}
 };

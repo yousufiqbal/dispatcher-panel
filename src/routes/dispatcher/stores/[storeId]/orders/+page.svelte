@@ -8,8 +8,9 @@
 	import { Input } from '$lib/components/ui/input/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
-	import * as Tabs from '$lib/components/ui/tabs/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
 	import { formatCurrency, formatDate, formatRelativeDate } from '$lib/utils';
 	import { deliveryPill } from '$lib/delivery-status';
 	import SearchIcon from '@lucide/svelte/icons/search';
@@ -51,6 +52,29 @@
 	const selectableStatuses = ['pending', 'confirmed', 'fulfilled', 'attempted', 'failed'];
 	let showBulkConfirmDialog = $state(false);
 	let bulkConfirming = $state(false);
+
+	let showMergeDialog = $state(false);
+	let mergeMainId = $state('');
+	let merging = $state(false);
+
+	const selectedOrders = $derived(data.orders.filter((o) => selectedIds.has(o.id)));
+	// Merging only makes sense for 2+ orders placed by the same real customer
+	// (guest orders have no customer to key off of).
+	const mergeEligible = $derived(
+		selectedOrders.length >= 2 &&
+		!!selectedOrders[0].customer &&
+		selectedOrders.every((o) => o.customer?.id === selectedOrders[0].customer?.id)
+	);
+
+	function openMergeDialog() {
+		// Default to the oldest selected order as the main one — it's usually the
+		// customer's original intent, with later orders being add-ons/duplicates.
+		const oldest = [...selectedOrders].sort(
+			(a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+		)[0];
+		mergeMainId = oldest?.id ?? '';
+		showMergeDialog = true;
+	}
 
 	function printLabels() {
 		const ids = [...selectedIds].map((gid) => gid.split('/').pop()).join(',');
@@ -136,6 +160,18 @@
 
 	function setStatus(key: string) {
 		navigate({ status: key === 'all' ? null : key });
+	}
+
+	// Real href (not just an onclick+goto) so SvelteKit's hover-preload
+	// (data-sveltekit-preload-data="hover" in app.html) actually kicks in.
+	function tabHref(key: string): string {
+		const sp = new URLSearchParams($page.url.searchParams);
+		if (key === 'all') sp.delete('status');
+		else sp.set('status', key);
+		sp.delete('after');
+		sp.delete('page');
+		const qs = sp.toString();
+		return qs ? `?${qs}` : '?';
 	}
 
 	const storeId = $derived($page.params.storeId);
@@ -227,12 +263,6 @@
 	<title>Orders — {data.currentStore?.name ?? 'Store'}</title>
 </svelte:head>
 
-{#if $navigating}
-	<div class="fixed top-0 left-0 right-0 h-0.5 bg-primary z-50 overflow-hidden">
-		<div class="h-full w-1/3 bg-primary-foreground/40 animate-[loading-bar_1s_ease-in-out_infinite]"></div>
-	</div>
-{/if}
-
 <div class="p-3 sm:p-6">
 	<!-- Toolbar -->
 	<div class="flex items-center justify-between gap-3 sm:gap-4 mb-5">
@@ -278,37 +308,46 @@
 	<!-- Status tabs -->
 	<div class="mb-5 pb-1 flex items-center gap-2">
 		<div class="overflow-x-auto overflow-y-hidden">
-			<Tabs.Root value={data.status ?? 'all'} onValueChange={setStatus}>
-				<Tabs.List class="h-auto flex-nowrap">
-					{#each tabs as tab}
-						<Tabs.Trigger value={tab.key} class="gap-1.5 shrink-0">
-							{tab.label}
-							{#if tab.key === 'pending' && data.pendingCount > 0}
-								<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
-									{data.pendingCount}
-								</span>
-							{/if}
-							{#if tab.key === 'confirmed' && data.confirmedCount > 0}
-								<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
-									{data.confirmedCount}
-								</span>
-							{/if}
-							{#if tab.key === 'attempted' && data.attemptedCount > 0}
-								<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
-									{data.attemptedCount}
-								</span>
-							{/if}
-						</Tabs.Trigger>
-					{/each}
-				</Tabs.List>
-			</Tabs.Root>
+			<div class="inline-flex items-center gap-2 flex-nowrap">
+				{#each tabs as tab}
+					{@const isActive = (data.status ?? 'all') === tab.key}
+					<a
+						href={tabHref(tab.key)}
+						onclick={() => selectedIds = new Set()}
+						class="inline-flex items-center gap-1.5 shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-150
+							{isActive ? 'bg-primary text-primary-foreground border-primary' : 'bg-white border border-zinc-200 text-muted-foreground hover:bg-accent'}"
+					>
+						{tab.label}
+						{#if tab.key === 'pending' && data.pendingCount > 0}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+								{data.pendingCount}
+							</span>
+						{/if}
+						{#if tab.key === 'confirmed' && data.confirmedCount > 0}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+								{data.confirmedCount}
+							</span>
+						{/if}
+						{#if tab.key === 'attempted' && data.attemptedCount > 0}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+								{data.attemptedCount}
+							</span>
+						{/if}
+					</a>
+				{/each}
+			</div>
 		</div>
 	</div>
 
 	{#if data.status === 'pending' && selectedIds.size > 0}
 		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
 			<span class="text-sm font-medium">{selectedIds.size} selected</span>
-			<Button size="sm" onclick={() => showBulkConfirmDialog = true}>Confirm Selected</Button>
+			<div class="flex items-center gap-2">
+				{#if mergeEligible}
+					<Button variant="outline" size="sm" onclick={openMergeDialog}>Merge Orders</Button>
+				{/if}
+				<Button size="sm" onclick={() => showBulkConfirmDialog = true}>Confirm Selected</Button>
+			</div>
 		</div>
 	{/if}
 
@@ -316,6 +355,9 @@
 		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
 			<span class="text-sm font-medium">{selectedIds.size} selected</span>
 			<div class="flex items-center gap-2">
+				{#if mergeEligible}
+					<Button variant="outline" size="sm" onclick={openMergeDialog}>Merge Orders</Button>
+				{/if}
 				{#each data.couriers as courier}
 					<Button variant="outline" size="sm" onclick={() => bookSelected(courier.id)}>Book with {courier.name}</Button>
 				{/each}
@@ -469,19 +511,27 @@
 						{#each data.orders as order}
 							{@const delivery = deliveryStatusInfo(order)}
 							{@const isCancelled = !!order.cancelledAt}
-							<tr
-								class="hover:bg-muted/40 transition-colors cursor-pointer {isCancelled ? 'opacity-60 bg-muted/30' : ''}"
-								onclick={() => goto(`/dispatcher/stores/${storeId}/orders/${order.id.split('/').pop()}`)}
-							>
+							<tr class="hover:bg-muted/40 transition-colors {isCancelled ? 'opacity-60 bg-muted/30' : ''}">
 								{#if selectableStatuses.includes(data.status)}
-									<td class="px-3 py-1.5" onclick={(e) => e.stopPropagation()}>
+									<td class="px-3 py-1.5">
 										<Checkbox checked={selectedIds.has(order.id)} onCheckedChange={() => toggleSelect(order.id)} />
 									</td>
 								{/if}
-								<td class="px-3 py-1.5 font-bold text-foreground whitespace-nowrap {isCancelled ? 'line-through' : ''}">{order.name}</td>
+								<td class="px-3 py-1.5 font-bold whitespace-nowrap {isCancelled ? 'line-through' : ''}">
+									<a href="/dispatcher/stores/{storeId}/orders/{order.id.split('/').pop()}" class="text-foreground hover:text-primary hover:underline">{order.name}</a>
+								</td>
 								<td class="px-3 py-1.5 text-foreground/70 whitespace-nowrap {isCancelled ? 'line-through' : ''}">{formatRelativeDate(order.createdAt)}</td>
 								<td class="px-3 py-1.5">
-									<div class="font-medium text-foreground {isCancelled ? 'line-through' : ''}">{order.customer?.displayName ?? 'Guest'}</div>
+									{#if order.customer}
+										<a
+											href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}"
+											target="_blank"
+											rel="noopener"
+											class="font-medium text-foreground hover:text-primary hover:underline {isCancelled ? 'line-through' : ''}"
+										>{order.customer.displayName}</a>
+									{:else}
+										<div class="font-medium text-foreground {isCancelled ? 'line-through' : ''}">Guest</div>
+									{/if}
 								</td>
 								<td class="px-3 py-1.5 text-foreground/70 whitespace-nowrap font-mono text-xs">
 									{#if order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}
@@ -638,19 +688,28 @@
 								<Checkbox checked={selectedIds.has(order.id)} onCheckedChange={() => toggleSelect(order.id)} />
 							</div>
 						{/if}
-						<button
-							class="flex-1 min-w-0 text-left p-4 hover:bg-muted/30 transition-colors active:bg-muted/40"
-							onclick={() => goto(`/dispatcher/stores/${storeId}/orders/${order.id.split('/').pop()}`)}
-						>
+						<div class="flex-1 min-w-0 p-4">
 							<div class="flex items-start justify-between gap-2 mb-2">
-								<span class="font-bold text-foreground {isCancelled ? 'line-through' : ''}">{order.name}</span>
+								<a
+									href="/dispatcher/stores/{storeId}/orders/{order.id.split('/').pop()}"
+									class="font-bold text-foreground hover:text-primary hover:underline {isCancelled ? 'line-through' : ''}"
+								>{order.name}</a>
 								<span class="{getStatusClass(order.displayFinancialStatus, order.displayFulfillmentStatus)} shrink-0">
 									{getStatusLabel(order.displayFinancialStatus, order.displayFulfillmentStatus)}
 								</span>
 							</div>
 							<div class="flex items-end justify-between gap-2">
 								<div>
-									<div class="text-sm text-muted-foreground {isCancelled ? 'line-through' : ''}">{order.customer?.displayName ?? 'Unknown'}</div>
+									{#if order.customer}
+										<a
+											href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}"
+											target="_blank"
+											rel="noopener"
+											class="text-sm text-muted-foreground hover:text-primary hover:underline {isCancelled ? 'line-through' : ''}"
+										>{order.customer.displayName}</a>
+									{:else}
+										<div class="text-sm text-muted-foreground {isCancelled ? 'line-through' : ''}">Unknown</div>
+									{/if}
 									{#if order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}<div class="text-xs text-muted-foreground">{order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}</div>{/if}
 									<div class="text-xs text-muted-foreground mt-0.5 {isCancelled ? 'line-through' : ''}">
 										{formatDate(order.createdAt)} · {order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)} item{order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0) === 1 ? '' : 's'}
@@ -675,7 +734,7 @@
 									{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
 								</span>
 							</div>
-						</button>
+						</div>
 					</div>
 				{/each}
 			</div>
@@ -726,6 +785,62 @@
 				<Button type="submit" disabled={bulkConfirming}>
 					{#if bulkConfirming}<Loader2Icon class="size-4 animate-spin" />{/if}
 					{bulkConfirming ? 'Confirming…' : 'Confirm Orders'}
+				</Button>
+			</Dialog.Footer>
+		</form>
+	</Dialog.Content>
+</Dialog.Root>
+
+<!-- Merge orders dialog -->
+<Dialog.Root bind:open={showMergeDialog}>
+	<Dialog.Content class="sm:max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>Merge {selectedOrders.length} orders</Dialog.Title>
+			<Dialog.Description>
+				Choose which order all items should merge into. The other {selectedOrders.length - 1} order{selectedOrders.length - 1 === 1 ? '' : 's'} will be cancelled — this cannot be undone.
+			</Dialog.Description>
+		</Dialog.Header>
+		<div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+			The orders you don't pick as the main order will be cancelled once their items are moved.
+		</div>
+		<form method="POST" action="?/mergeOrders" use:enhance={() => {
+			merging = true;
+			return async ({ result, update }) => {
+				await update();
+				merging = false;
+				if (result.type === 'redirect') {
+					selectedIds = new Set();
+					addToast('Orders merged');
+				} else {
+					addToast('Failed to merge orders', 'error');
+				}
+			};
+		}}>
+			<input type="hidden" name="mainOrderId" value={mergeMainId} />
+			<input type="hidden" name="otherOrderIds" value={selectedOrders.filter((o) => o.id !== mergeMainId).map((o) => o.id).join(',')} />
+
+			<RadioGroup.Root bind:value={mergeMainId} class="gap-2">
+				{#each [...selectedOrders].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) as o}
+					<label class="flex items-center gap-3 border border-border rounded-lg px-4 py-3 cursor-pointer hover:bg-muted/40 transition-colors {mergeMainId === o.id ? 'border-primary/50 bg-primary/5' : ''}">
+						<RadioGroup.Item value={o.id} />
+						<div class="flex-1 min-w-0">
+							<div class="font-medium text-sm text-foreground">{o.name}</div>
+							<div class="text-xs text-muted-foreground">
+								{o.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)} items · {formatCurrency(o.totalPriceSet.shopMoney.amount, o.totalPriceSet.shopMoney.currencyCode)}
+							</div>
+						</div>
+						{#if mergeMainId === o.id}
+							<span class="text-xs font-semibold text-primary shrink-0">Main order</span>
+						{/if}
+					</label>
+				{/each}
+			</RadioGroup.Root>
+
+			<Dialog.Footer class="mt-4">
+				<Button type="button" variant="outline" disabled={merging} onclick={() => showMergeDialog = false}>Cancel</Button>
+				<Button type="submit" variant="destructive" disabled={merging || !mergeMainId}>
+					{#if merging}<Loader2Icon class="size-4 animate-spin" />{/if}
+					{merging ? 'Merging…' : 'Merge & Cancel Others'}
 				</Button>
 			</Dialog.Footer>
 		</form>

@@ -6,16 +6,50 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import PackageIcon from '@lucide/svelte/icons/package';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
+	import type { PageData } from './$types';
+
+	let { data }: { data: PageData } = $props();
 
 	let email = $state('');
 	let password = $state('');
+	let confirmPassword = $state('');
 	let loading = $state(false);
 	let error = $state('');
-	let step = $state<'credentials' | 'totp' | 'totp-setup'>('credentials');
+	let step = $state<'credentials' | 'register' | 'totp' | 'totp-setup'>(data.hasAdmin ? 'credentials' : 'register');
 	let totpCode = $state('');
 	let qrDataUrl = $state('');
 	let totpSecret = $state('');
 	let setupStep = $state<'scan' | 'confirm'>('scan');
+
+	async function handleRegister() {
+		if (!email || !password) {
+			error = 'Email and password are required';
+			return;
+		}
+		if (password !== confirmPassword) {
+			error = 'Passwords do not match';
+			return;
+		}
+		loading = true;
+		error = '';
+		try {
+			const res = await fetch('/api/auth/register-admin', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ email, password })
+			});
+			const resData = await res.json();
+			if (!res.ok) {
+				error = resData.error ?? 'Registration failed';
+				return;
+			}
+			goto('/admin');
+		} catch {
+			error = 'Network error. Please try again.';
+		} finally {
+			loading = false;
+		}
+	}
 
 	async function handleLogin() {
 		if (!email || !password) {
@@ -128,7 +162,68 @@
 		</div>
 
 		<div class="card">
-			{#if step === 'credentials'}
+			{#if step === 'register'}
+				<div class="card-header">
+					<h2 class="text-lg font-semibold">Set up the admin account</h2>
+					<p class="text-sm text-muted-foreground">No admin account exists yet — create one to get started</p>
+				</div>
+				<div class="card-content">
+					<form onsubmit={(e) => { e.preventDefault(); handleRegister(); }} class="space-y-4">
+						{#if error}
+							<div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">
+								{error}
+							</div>
+						{/if}
+
+						<div class="space-y-1.5">
+							<Label for="reg-email">Email</Label>
+							<Input
+								id="reg-email"
+								type="email"
+								placeholder="you@example.com"
+								bind:value={email}
+								required
+								autocomplete="email"
+							/>
+						</div>
+
+						<div class="space-y-1.5">
+							<Label for="reg-password">Password</Label>
+							<Input
+								id="reg-password"
+								type="password"
+								placeholder="At least 10 characters"
+								bind:value={password}
+								minlength={10}
+								required
+								autocomplete="new-password"
+							/>
+						</div>
+
+						<div class="space-y-1.5">
+							<Label for="reg-confirm-password">Confirm password</Label>
+							<Input
+								id="reg-confirm-password"
+								type="password"
+								placeholder="••••••••••"
+								bind:value={confirmPassword}
+								required
+								autocomplete="new-password"
+							/>
+						</div>
+
+						<Button type="submit" class="w-full" disabled={loading}>
+							{#if loading}
+								<Loader2Icon class="animate-spin size-4" />
+								Creating account...
+							{:else}
+								Create admin account
+							{/if}
+						</Button>
+					</form>
+				</div>
+
+			{:else if step === 'credentials'}
 				<div class="card-header">
 					<h2 class="text-lg font-semibold">Sign in to your account</h2>
 					<p class="text-sm text-muted-foreground">Enter your credentials to continue</p>

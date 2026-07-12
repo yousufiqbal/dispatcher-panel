@@ -1,7 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { getOrder, cancelOrder, confirmOrder, unconfirmOrder, fulfillOrder, cancelFulfillment, refundOrder, updateOrderShipping } from '$lib/server/shopify/orders';
+import { getOrder, cancelOrder, confirmOrder, unconfirmOrder, fulfillOrder, cancelFulfillment, refundOrder, updateOrderShipping, updateOrderEmail, updateOrderNote, updateOrderTags } from '$lib/server/shopify/orders';
 import { cancelShipment, getCourierTrackingUrl } from '$lib/server/courier';
 import { decrypt } from '$lib/server/crypto';
 import { logAudit } from '$lib/server/audit';
@@ -248,6 +248,64 @@ export const actions: Actions = {
 			}
 		} catch (e: unknown) {
 			return fail(400, { error: e instanceof Error ? e.message : 'Failed to update shipping' });
+		}
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${params.orderId}`);
+	},
+
+	updateEmail: async ({ params, request, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const fd = await request.formData();
+		const email = (fd.get('email') as string) ?? '';
+
+		try {
+			await updateOrderEmail(client, toShopifyOrderId(params.orderId), email);
+			if (locals.session) {
+				await logAudit(locals.session.userId, 'dispatcher', 'order.updateEmail', {
+					targetType: 'order', targetId: params.orderId, storeId: params.storeId
+				});
+			}
+		} catch (e: unknown) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Failed to update contact information' });
+		}
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${params.orderId}`);
+	},
+
+	updateNote: async ({ params, request, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const fd = await request.formData();
+		const note = (fd.get('note') as string) ?? '';
+
+		try {
+			await updateOrderNote(client, toShopifyOrderId(params.orderId), note);
+			if (locals.session) {
+				await logAudit(locals.session.userId, 'dispatcher', 'order.updateNote', {
+					targetType: 'order', targetId: params.orderId, storeId: params.storeId
+				});
+			}
+		} catch (e: unknown) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Failed to update note' });
+		}
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${params.orderId}`);
+	},
+
+	updateTags: async ({ params, request, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const fd = await request.formData();
+		const tagsRaw = (fd.get('tags') as string) ?? '';
+		const tags = tagsRaw.split(',').map((t) => t.trim()).filter(Boolean);
+
+		try {
+			await updateOrderTags(client, toShopifyOrderId(params.orderId), tags);
+			if (locals.session) {
+				await logAudit(locals.session.userId, 'dispatcher', 'order.updateTags', {
+					targetType: 'order', targetId: params.orderId, storeId: params.storeId
+				});
+			}
+		} catch (e: unknown) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Failed to update tags' });
 		}
 		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${params.orderId}`);
 	},

@@ -18,6 +18,8 @@
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import ClockIcon from '@lucide/svelte/icons/clock';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -34,7 +36,11 @@
 	let showMarkPaidDialog = $state(false);
 	let showDuplicateDialog = $state(false);
 	let showUnbookDialog = $state(false);
-	let editShipping = $state(false);
+	let showEditContactModal = $state(false);
+	let showEditShippingModal = $state(false);
+	let editNote = $state(false);
+	let noteInput = $state('');
+	let tagsInputEl = $state<HTMLInputElement | null>(null);
 	let submitting = $state<string | null>(null);
 
 	const order = $derived(data.order);
@@ -57,6 +63,42 @@
 	// Shopify's admin shows those separately in a "Removed" card.
 	const activeLineItems = $derived(order.lineItems.nodes.filter((i) => i.currentQuantity > 0));
 	const removedLineItems = $derived(order.lineItems.nodes.filter((i) => i.currentQuantity === 0));
+
+	const shippingTotal = $derived(
+		order.shippingLines.nodes.reduce((s, l) => s + parseFloat(l.originalPriceSet.shopMoney.amount), 0)
+	);
+	// Discounts targeting the shipping line (e.g. a "Free Shipping" code or
+	// automatic discount) — shown as their own row in the payment summary.
+	const shippingDiscounts = $derived(
+		order.discountApplications.nodes
+			.filter((d) => d.targetType === 'SHIPPING_LINE')
+			.map((d) => ({
+				label: d.code ?? d.title ?? 'Discount',
+				amount: d.value.amount != null
+					? parseFloat(d.value.amount)
+					: d.value.percentage != null
+						? shippingTotal * (d.value.percentage / 100)
+						: 0
+			}))
+	);
+
+	const paymentPill = $derived(financialStatusPill(order.displayFinancialStatus));
+
+	function financialStatusPill(status: string): { label: string; class: string; icon: 'clock' | null } {
+		if (status === 'PENDING') return { label: 'Payment pending', class: 'bg-amber-100 text-amber-800', icon: 'clock' };
+		if (status === 'PAID') return { label: 'Paid', class: 'bg-green-100 text-green-800', icon: null };
+		if (status === 'PARTIALLY_PAID') return { label: 'Partially paid', class: 'bg-amber-100 text-amber-800', icon: 'clock' };
+		if (status === 'REFUNDED' || status === 'PARTIALLY_REFUNDED') return { label: 'Refunded', class: 'bg-red-100 text-red-700', icon: null };
+		if (status === 'VOIDED') return { label: 'Voided', class: 'bg-zinc-100 text-zinc-700', icon: null };
+		return { label: status.replace(/_/g, ' '), class: 'bg-zinc-100 text-zinc-700', icon: null };
+	}
+
+	function openEditNote() {
+		noteInput = order.note ?? '';
+		editNote = true;
+	}
+
+	let tagsInput = $state(order.tags.join(', '));
 
 	function statusClass(financial: string, fulfillment: string) {
 		if (financial === 'REFUNDED' || financial === 'VOIDED') return 'badge-cancelled';
@@ -96,67 +138,38 @@
 	<Loader2Icon class="size-4 animate-spin" />
 {/snippet}
 
-{#snippet shippingCard()}
+{#snippet notesCard()}
 	<div class="card">
 		<div class="px-5 py-4 border-b border-border flex items-center justify-between">
-			<h2 class="font-semibold text-sm">Shipping Address</h2>
-			{#if order.shippingAddress && !isCancelled}
-				<button class="btn-ghost btn-sm text-xs" onclick={() => editShipping = !editShipping}>
-					{editShipping ? 'Cancel' : 'Edit'}
+			<h2 class="font-semibold text-sm">Notes</h2>
+			{#if !isCancelled}
+				<button class="text-muted-foreground hover:text-foreground" title="Edit note" onclick={() => editNote ? (editNote = false) : openEditNote()}>
+					<PencilIcon class="size-3.5" />
 				</button>
 			{/if}
 		</div>
 		<div class="px-5 py-4">
-			{#if editShipping && order.shippingAddress}
-				<form method="POST" action="?/updateShipping" use:enhance={() => { submitting = 'shipping'; return async ({ result, update }) => {
+			{#if editNote}
+				<form method="POST" action="?/updateNote" use:enhance={() => { submitting = 'note'; return async ({ result, update }) => {
 					await update();
 					submitting = null;
 					if (result.type === 'redirect' || result.type === 'success') {
-						addToast('Shipping address updated');
-						editShipping = false;
+						addToast('Note updated');
+						editNote = false;
 					} else {
-						addToast('Failed to update shipping address', 'error');
+						addToast('Failed to update note', 'error');
 					}
-				}; }} class="space-y-3">
-					<div class="grid grid-cols-2 gap-2">
-						<div class="space-y-1">
-							<Label class="text-xs">First Name</Label>
-							<Input name="firstName" class="h-8 text-xs" value={order.shippingAddress.name.split(' ')[0]} required />
-						</div>
-						<div class="space-y-1">
-							<Label class="text-xs">Last Name</Label>
-							<Input name="lastName" class="h-8 text-xs" value={order.shippingAddress.name.split(' ').slice(1).join(' ')} required />
-						</div>
-					</div>
-					<Input name="address1" class="h-8 text-xs" placeholder="Address" value={order.shippingAddress.address1} required />
-					<div class="grid grid-cols-2 gap-2">
-						<Input name="city" class="h-8 text-xs" placeholder="City" value={order.shippingAddress.city} required />
-						<Input name="zip" class="h-8 text-xs" placeholder="ZIP" value={order.shippingAddress.zip} />
-					</div>
-					<div class="grid grid-cols-2 gap-2">
-						<Input name="province" class="h-8 text-xs" placeholder="Province" value={order.shippingAddress.province} />
-						<Input name="country" class="h-8 text-xs" placeholder="Country" value={order.shippingAddress.country} required />
-					</div>
-					<Input name="phone" class="h-8 text-xs" placeholder="Phone" value={order.shippingAddress.phone ?? ''} />
+				}; }} class="space-y-2">
+					<textarea name="note" class="input min-h-20 text-sm" bind:value={noteInput}></textarea>
 					<div class="flex gap-2">
-						<Button type="submit" size="sm" disabled={submitting === 'shipping'}>
-							{#if submitting === 'shipping'}{@render spinner()}{/if}Save
+						<Button type="submit" size="sm" disabled={submitting === 'note'}>
+							{#if submitting === 'note'}{@render spinner()}{/if}Save
 						</Button>
-						<Button type="button" variant="outline" size="sm" disabled={submitting === 'shipping'} onclick={() => editShipping = false}>Cancel</Button>
+						<Button type="button" variant="outline" size="sm" disabled={submitting === 'note'} onclick={() => editNote = false}>Cancel</Button>
 					</div>
 				</form>
-			{:else if order.shippingAddress}
-				<address class="not-italic text-sm text-foreground space-y-0.5">
-					<div class="font-medium">{order.shippingAddress.name}</div>
-					<div class="text-muted-foreground">{order.shippingAddress.address1}</div>
-					<div class="text-muted-foreground">{order.shippingAddress.city}, {order.shippingAddress.province} {order.shippingAddress.zip}</div>
-					<div class="text-muted-foreground">{order.shippingAddress.country}</div>
-					{#if order.shippingAddress.phone}
-						<div class="text-muted-foreground">{order.shippingAddress.phone}</div>
-					{/if}
-				</address>
 			{:else}
-				<p class="text-sm text-muted-foreground">No shipping address</p>
+				<p class="text-sm text-muted-foreground">{order.note || 'No notes from customer'}</p>
 			{/if}
 		</div>
 	</div>
@@ -164,22 +177,111 @@
 
 {#snippet customerCard()}
 	<div class="card">
-		<div class="px-5 py-4 border-b border-border">
+		<div class="px-5 py-4 border-b border-border flex items-center justify-between">
 			<h2 class="font-semibold text-sm">Customer</h2>
-		</div>
-		<div class="px-5 py-4 space-y-2 text-sm">
-			{#if order.customer}
-				<div class="font-medium text-foreground">{order.customer.displayName}</div>
-				{#if order.customer.email}
-					<div class="text-muted-foreground">{order.customer.email}</div>
-				{/if}
-				{#if order.customer.phone}
-					<div class="text-muted-foreground">{order.customer.phone}</div>
-				{/if}
-				<a href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}" class="text-primary text-xs hover:underline block mt-1">View profile →</a>
-			{:else}
-				<span class="text-muted-foreground">Guest order</span>
+			{#if !isCancelled}
+				<DropdownMenu.Root>
+					<DropdownMenu.Trigger>
+						{#snippet child({ props })}
+							<button {...props} class="text-muted-foreground hover:text-foreground" title="More">
+								<MoreHorizontalIcon class="size-4" />
+							</button>
+						{/snippet}
+					</DropdownMenu.Trigger>
+					<DropdownMenu.Content align="end" class="w-52">
+						<DropdownMenu.Item onclick={() => showEditContactModal = true}>Edit contact information</DropdownMenu.Item>
+						<DropdownMenu.Item onclick={() => showEditShippingModal = true}>Edit shipping address</DropdownMenu.Item>
+					</DropdownMenu.Content>
+				</DropdownMenu.Root>
 			{/if}
+		</div>
+		<div class="px-5 py-4 space-y-4 text-sm">
+			{#if order.customer}
+				<div>
+					<a href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}" class="text-primary hover:underline block">{order.customer.displayName}</a>
+					{#if order.customer.numberOfOrders > 0}
+						<a href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}" class="text-primary hover:underline text-xs">
+							{order.customer.numberOfOrders} order{order.customer.numberOfOrders === 1 ? '' : 's'}
+						</a>
+					{/if}
+				</div>
+			{:else}
+				<div class="text-muted-foreground">Guest order</div>
+			{/if}
+
+			{#if order.customer?.email || order.customer?.phone}
+				<div>
+					<div class="font-semibold text-foreground text-xs uppercase tracking-wide mb-1">Contact information</div>
+					{#if order.customer.email}<a href="mailto:{order.customer.email}" class="text-primary hover:underline block">{order.customer.email}</a>{/if}
+					{#if order.customer.phone}<div class="text-muted-foreground">{order.customer.phone}</div>{/if}
+				</div>
+			{/if}
+
+			{#if order.shippingAddress}
+				<div>
+					<div class="font-semibold text-foreground text-xs uppercase tracking-wide mb-1">Shipping address</div>
+					<address class="not-italic text-foreground space-y-0.5">
+						<div>{order.shippingAddress.name}</div>
+						<div>{order.shippingAddress.address1}</div>
+						{#if order.shippingAddress.address2}<div>{order.shippingAddress.address2}</div>{/if}
+						<div>{order.shippingAddress.city} {order.shippingAddress.zip}</div>
+						<div>{order.shippingAddress.country}</div>
+						{#if order.shippingAddress.phone}<div>{order.shippingAddress.phone}</div>{/if}
+					</address>
+					<a
+						href="https://www.google.com/maps/search/?api=1&query={encodeURIComponent([order.shippingAddress.address1, order.shippingAddress.city, order.shippingAddress.province, order.shippingAddress.country].filter(Boolean).join(', '))}"
+						target="_blank"
+						rel="noopener"
+						class="text-primary hover:underline text-xs block mt-2"
+					>View map</a>
+				</div>
+
+				<div>
+					<div class="font-semibold text-foreground text-xs uppercase tracking-wide mb-1">Billing address</div>
+					{#if !order.billingAddress || (order.billingAddress.address1 === order.shippingAddress.address1 && order.billingAddress.city === order.shippingAddress.city && order.billingAddress.zip === order.shippingAddress.zip)}
+						<p class="text-muted-foreground">Same as shipping address</p>
+					{:else}
+						<address class="not-italic text-foreground space-y-0.5">
+							<div>{order.billingAddress.name}</div>
+							<div>{order.billingAddress.address1}</div>
+							{#if order.billingAddress.address2}<div>{order.billingAddress.address2}</div>{/if}
+							<div>{order.billingAddress.city} {order.billingAddress.zip}</div>
+							<div>{order.billingAddress.country}</div>
+						</address>
+					{/if}
+				</div>
+			{/if}
+		</div>
+	</div>
+{/snippet}
+
+{#snippet tagsCard()}
+	<div class="card">
+		<div class="px-5 py-4 border-b border-border flex items-center justify-between">
+			<h2 class="font-semibold text-sm">Tags</h2>
+			{#if !isCancelled}
+				<button class="text-muted-foreground hover:text-foreground" title="Edit tags" onclick={() => tagsInputEl?.focus()}>
+					<PencilIcon class="size-3.5" />
+				</button>
+			{/if}
+		</div>
+		<div class="px-5 py-4">
+			<form method="POST" action="?/updateTags" use:enhance={() => { submitting = 'tags'; return async ({ result, update }) => {
+				await update();
+				submitting = null;
+				if (result.type === 'redirect' || result.type === 'success') addToast('Tags updated');
+				else addToast('Failed to update tags', 'error');
+			}; }}>
+				<Input
+					bind:ref={tagsInputEl}
+					name="tags"
+					bind:value={tagsInput}
+					placeholder="Add tags, comma-separated"
+					disabled={isCancelled}
+					onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLInputElement).form?.requestSubmit(); } }}
+					onblur={(e) => (e.currentTarget as HTMLInputElement).form?.requestSubmit()}
+				/>
+			</form>
 		</div>
 	</div>
 {/snippet}
@@ -284,9 +386,11 @@
 
 	<div class="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
 
-		<!-- Shipping Address (mobile only — shown first; desktop copy is in the right column below) -->
-		<div class="lg:hidden">
-			{@render shippingCard()}
+		<!-- Notes/Customer/Tags (mobile only — desktop copy is in the right column below) -->
+		<div class="lg:hidden space-y-5">
+			{@render notesCard()}
+			{@render customerCard()}
+			{@render tagsCard()}
 		</div>
 
 		<!-- LEFT COLUMN -->
@@ -421,12 +525,41 @@
 
 			<!-- Payment summary -->
 			<div class="card overflow-hidden">
+				<div class="px-5 py-3 flex items-center justify-between border-b border-border">
+					<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full {paymentPill.class}">
+						{#if paymentPill.icon === 'clock'}<ClockIcon class="size-3.5" />{/if}
+						{paymentPill.label}
+					</span>
+					<DropdownMenu.Root>
+						<DropdownMenu.Trigger>
+							{#snippet child({ props })}
+								<button {...props} class="text-muted-foreground hover:text-foreground" title="More">
+									<MoreHorizontalIcon class="size-4" />
+								</button>
+							{/snippet}
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content align="end" class="w-44">
+							<DropdownMenu.Item onclick={() => showMarkPaidDialog = true}>Mark as paid</DropdownMenu.Item>
+							<DropdownMenu.Item onclick={() => showInvoiceDialog = true}>Resend invoice</DropdownMenu.Item>
+							{#if order.displayFinancialStatus !== 'PENDING'}
+								<DropdownMenu.Item onclick={() => showRefundDialog = true}>Refund</DropdownMenu.Item>
+							{/if}
+						</DropdownMenu.Content>
+					</DropdownMenu.Root>
+				</div>
 				<div class="text-sm px-5 py-3 space-y-1.5">
 					<div class="flex items-center justify-between">
 						<span class="text-muted-foreground">Subtotal</span>
 						<span class="text-muted-foreground text-xs">{activeLineItems.reduce((s, i) => s + i.currentQuantity, 0)} items</span>
 						<span>{formatCurrency(order.subtotalPriceSet?.shopMoney?.amount ?? '0', order.totalPriceSet.shopMoney.currencyCode)}</span>
 					</div>
+					{#each shippingDiscounts as sd}
+						<div class="flex items-center justify-between">
+							<span class="text-muted-foreground">Discount</span>
+							<span class="text-muted-foreground text-xs truncate max-w-[180px]">{sd.label}</span>
+							<span>-{formatCurrency(sd.amount.toFixed(2), order.totalPriceSet.shopMoney.currencyCode)}</span>
+						</div>
+					{/each}
 					{#each order.shippingLines.nodes as line}
 						<div class="flex items-center justify-between">
 							<span class="text-muted-foreground">Shipping</span>
@@ -452,27 +585,15 @@
 						</span>
 					</div>
 					<div class="flex items-center justify-end gap-2 pt-1.5">
-						<Button type="button" variant="outline" size="sm" onclick={() => showInvoiceDialog = true}>Resend invoice</Button>
+						<Button type="button" variant="outline" size="sm" onclick={() => showInvoiceDialog = true}>Send invoice</Button>
 						<Button type="button" size="sm" onclick={() => showMarkPaidDialog = true}>Mark as paid</Button>
 					</div>
 				</div>
 			</div>
 
-			<!-- Note -->
-			{#if order.note}
-				<div class="card px-5 py-4">
-					<div class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Order Note</div>
-					<p class="text-sm text-foreground">{order.note}</p>
-				</div>
-			{/if}
 		</div>
 
-		<!-- Customer (mobile only — desktop copy is in the right column below) -->
-		<div class="lg:hidden">
-			{@render customerCard()}
-		</div>
-
-		<!-- RIGHT COLUMN (desktop only): Tracking (if fulfilled), Shipping, Customer -->
+		<!-- RIGHT COLUMN (desktop only): Tracking (if fulfilled), Notes, Customer, Tags -->
 		<div class="hidden lg:flex lg:col-start-3 flex-col gap-5">
 			{#if isFulfilled}
 				{@const fallbackTracking = order.fulfillments.flatMap((f) => f.trackingInfo).find((t) => t.number)}
@@ -521,11 +642,108 @@
 					</div>
 				</div>
 			{/if}
-			{@render shippingCard()}
+			{@render notesCard()}
 			{@render customerCard()}
+			{@render tagsCard()}
 		</div>
 	</div>
 </div>
+
+<!-- Edit contact information dialog -->
+<Dialog.Root bind:open={showEditContactModal}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Edit contact information</Dialog.Title>
+		</Dialog.Header>
+		<form method="POST" action="?/updateEmail" use:enhance={() => { submitting = 'contact'; return async ({ result, update }) => {
+			await update();
+			submitting = null;
+			if (result.type === 'redirect' || result.type === 'success') {
+				addToast('Contact information updated');
+				showEditContactModal = false;
+			} else {
+				addToast('Failed to update contact information', 'error');
+			}
+		}; }} class="space-y-4">
+			<div class="space-y-1.5">
+				<Label for="edit-contact-email">Email</Label>
+				<Input id="edit-contact-email" name="email" type="email" value={order.customer?.email ?? ''} />
+			</div>
+			<Dialog.Footer>
+				<Button type="button" variant="outline" disabled={submitting === 'contact'} onclick={() => showEditContactModal = false}>Cancel</Button>
+				<Button type="submit" disabled={submitting === 'contact'}>
+					{#if submitting === 'contact'}{@render spinner()}{/if}Save
+				</Button>
+			</Dialog.Footer>
+		</form>
+	</Dialog.Content>
+</Dialog.Root>
+
+<!-- Edit shipping address dialog -->
+<Dialog.Root bind:open={showEditShippingModal}>
+	<Dialog.Content class="sm:max-w-lg">
+		<Dialog.Header>
+			<Dialog.Title>Edit shipping address</Dialog.Title>
+		</Dialog.Header>
+		{#if order.shippingAddress}
+			<form method="POST" action="?/updateShipping" use:enhance={() => { submitting = 'shipping'; return async ({ result, update }) => {
+				await update();
+				submitting = null;
+				if (result.type === 'redirect' || result.type === 'success') {
+					addToast('Shipping address updated');
+					showEditShippingModal = false;
+				} else {
+					addToast('Failed to update shipping address', 'error');
+				}
+			}; }} class="space-y-3">
+				<div class="grid grid-cols-2 gap-3">
+					<div class="space-y-1.5">
+						<Label class="text-xs">First Name</Label>
+						<Input name="firstName" value={order.shippingAddress.name.split(' ')[0]} required />
+					</div>
+					<div class="space-y-1.5">
+						<Label class="text-xs">Last Name</Label>
+						<Input name="lastName" value={order.shippingAddress.name.split(' ').slice(1).join(' ')} required />
+					</div>
+				</div>
+				<div class="space-y-1.5">
+					<Label class="text-xs">Address</Label>
+					<Input name="address1" value={order.shippingAddress.address1} required />
+				</div>
+				<div class="grid grid-cols-2 gap-3">
+					<div class="space-y-1.5">
+						<Label class="text-xs">City</Label>
+						<Input name="city" value={order.shippingAddress.city} required />
+					</div>
+					<div class="space-y-1.5">
+						<Label class="text-xs">ZIP</Label>
+						<Input name="zip" value={order.shippingAddress.zip} />
+					</div>
+				</div>
+				<div class="grid grid-cols-2 gap-3">
+					<div class="space-y-1.5">
+						<Label class="text-xs">Province</Label>
+						<Input name="province" value={order.shippingAddress.province} />
+					</div>
+					<div class="space-y-1.5">
+						<Label class="text-xs">Country</Label>
+						<Input name="country" value={order.shippingAddress.country} required />
+					</div>
+				</div>
+				<div class="space-y-1.5">
+					<Label class="text-xs">Phone</Label>
+					<Input name="phone" value={order.shippingAddress.phone ?? ''} />
+				</div>
+				<Dialog.Footer>
+					<Button type="button" variant="outline" disabled={submitting === 'shipping'} onclick={() => showEditShippingModal = false}>Cancel</Button>
+					<Button type="submit" disabled={submitting === 'shipping'}>
+						{#if submitting === 'shipping'}{@render spinner()}{/if}Save
+					</Button>
+				</Dialog.Footer>
+			</form>
+		{/if}
+	</Dialog.Content>
+</Dialog.Root>
 
 <!-- Cancel dialog -->
 <Dialog.Root bind:open={showCancelDialog}>
@@ -547,10 +765,11 @@
 				</Select.Root>
 			</div>
 			<div class="space-y-1.5">
-				<label class="flex items-center gap-1.5 text-sm cursor-pointer">
-					<Checkbox name="restock" value="true" checked />
-					Restock inventory
-				</label>
+				<div class="flex items-center gap-1.5 text-sm">
+					<input type="hidden" name="restock" value="true" />
+					<Checkbox checked disabled />
+					<span class="text-muted-foreground">Restock inventory (always on — cancelled orders can't skip restocking)</span>
+				</div>
 				<label class="flex items-center gap-1.5 text-sm cursor-pointer">
 					<Checkbox name="notify" value="true" checked />
 					Send a notification to the customer

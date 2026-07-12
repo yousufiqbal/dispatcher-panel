@@ -64,6 +64,29 @@ export async function orderEditAddVariant(client: ShopifyClient, calcOrderId: st
 	if (data.orderEditAddVariant.userErrors.length) throw new Error(data.orderEditAddVariant.userErrors.map(e => e.message).join(', '));
 }
 
+export async function orderEditAddCustomItem(
+	client: ShopifyClient,
+	calcOrderId: string,
+	title: string,
+	price: string,
+	currencyCode: string,
+	quantity: number
+): Promise<void> {
+	const gql = `
+    mutation orderEditAddCustomItem($id: ID!, $title: String!, $price: MoneyInput!, $quantity: Int!) {
+      orderEditAddCustomItem(id: $id, title: $title, price: $price, quantity: $quantity) {
+        calculatedOrder { id }
+        userErrors { field message }
+      }
+    }
+  `;
+	const data = await shopifyRequest<{
+		orderEditAddCustomItem: { userErrors: { field: string[]; message: string }[] } | null;
+	}>(client, gql, { id: calcOrderId, title, price: { amount: price, currencyCode }, quantity });
+	if (!data.orderEditAddCustomItem) throw new Error('orderEditAddCustomItem returned null');
+	if (data.orderEditAddCustomItem.userErrors.length) throw new Error(data.orderEditAddCustomItem.userErrors.map(e => e.message).join(', '));
+}
+
 export async function orderEditAddDiscount(
 	client: ShopifyClient,
 	calcOrderId: string,
