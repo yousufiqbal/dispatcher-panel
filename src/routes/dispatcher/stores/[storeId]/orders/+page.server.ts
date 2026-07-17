@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { listOrders, getTagSplitCounts, confirmOrder, cancelOrder, getOrder, CONFIRMED_TAG } from '$lib/server/shopify/orders';
+import { listOrders, getTagSplitCounts, confirmOrder, cancelOrder, getOrder, updateOrderShipping, CONFIRMED_TAG } from '$lib/server/shopify/orders';
 import { orderEditBegin, orderEditAddVariant, orderEditAddCustomItem, orderEditCommit } from '$lib/server/shopify/order-edit';
 import { db } from '$lib/server/db';
 import { couriers, courierStoreAccess } from '$lib/server/db/schema';
@@ -287,5 +287,48 @@ export const actions: Actions = {
 		}
 
 		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${mainOrderId.split('/').pop()}`);
+	},
+
+	bulkUpdateAddresses: async ({ params, request, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const fd = await request.formData();
+		const orderIds = (fd.get('orderIds') as string).split(',').filter(Boolean);
+
+		if (orderIds.length === 0) {
+			return fail(400, { error: 'No orders selected' });
+		}
+
+		const results = await Promise.allSettled(
+			orderIds.map((id) =>
+				updateOrderShipping(client, toShopifyOrderId(id), {
+					firstName: (fd.get(`firstName_${id}`) as string) ?? '',
+					lastName: (fd.get(`lastName_${id}`) as string) ?? '',
+					address1: (fd.get(`address1_${id}`) as string) ?? '',
+					city: (fd.get(`city_${id}`) as string) ?? '',
+					province: (fd.get(`province_${id}`) as string) ?? '',
+					country: (fd.get(`country_${id}`) as string) ?? '',
+					zip: (fd.get(`zip_${id}`) as string) ?? '',
+					phone: (fd.get(`phone_${id}`) as string) || undefined
+				})
+			)
+		);
+
+		const failed = orderIds.filter((_, i) => results[i].status === 'rejected');
+
+		if (locals.session) {
+			await logAudit(locals.session.userId, 'dispatcher', 'order.bulkUpdateAddresses', {
+				targetType: 'order', storeId: params.storeId,
+				metadata: { orderIds, failed }
+			});
+		}
+
+		if (failed.length > 0) {
+			return fail(400, {
+				error: `Updated ${orderIds.length - failed.length} of ${orderIds.length} orders. ${failed.length} failed — try again for those.`
+			});
+		}
+
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=confirmed`);
 	}
 };

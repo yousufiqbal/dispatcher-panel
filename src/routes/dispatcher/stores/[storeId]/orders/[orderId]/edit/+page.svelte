@@ -290,6 +290,7 @@
 			<input type="hidden" name="discountValue" value={d.value} />
 			<input type="hidden" name="discountType" value={d.type} />
 			<input type="hidden" name="discountDesc" value={d.desc} />
+			<input type="hidden" name="currencyCode" value={currency} />
 		{/each}
 
 		</div><!-- end left col -->

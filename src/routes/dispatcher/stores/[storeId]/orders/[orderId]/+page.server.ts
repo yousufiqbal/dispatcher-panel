@@ -2,6 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
 import { getOrder, cancelOrder, confirmOrder, unconfirmOrder, fulfillOrder, cancelFulfillment, refundOrder, updateOrderShipping, updateOrderEmail, updateOrderNote, updateOrderTags } from '$lib/server/shopify/orders';
+import { orderEditBegin, orderEditAddDiscount, orderEditCommit } from '$lib/server/shopify/order-edit';
 import { cancelShipment, getCourierTrackingUrl } from '$lib/server/courier';
 import { decrypt } from '$lib/server/crypto';
 import { logAudit } from '$lib/server/audit';
@@ -306,6 +307,38 @@ export const actions: Actions = {
 			}
 		} catch (e: unknown) {
 			return fail(400, { error: e instanceof Error ? e.message : 'Failed to update tags' });
+		}
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${params.orderId}`);
+	},
+
+	applyDiscount: async ({ params, request, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const fd = await request.formData();
+		const percentage = parseFloat(fd.get('percentage') as string);
+
+		if (!percentage || percentage <= 0 || percentage > 100) {
+			return fail(400, { error: 'Enter a valid percentage between 1 and 100' });
+		}
+
+		try {
+			const { calcOrderId, lineItems } = await orderEditBegin(client, toShopifyOrderId(params.orderId));
+			for (const item of lineItems) {
+				await orderEditAddDiscount(client, calcOrderId, item.id, {
+					value: percentage,
+					valueType: 'PERCENTAGE',
+					description: `${percentage}% off`
+				});
+			}
+			await orderEditCommit(client, calcOrderId, false, `Applied ${percentage}% discount to all items`);
+			if (locals.session) {
+				await logAudit(locals.session.userId, 'dispatcher', 'order.applyDiscount', {
+					targetType: 'order', targetId: params.orderId, storeId: params.storeId,
+					metadata: { percentage }
+				});
+			}
+		} catch (e: unknown) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Failed to apply discount' });
 		}
 		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${params.orderId}`);
 	},

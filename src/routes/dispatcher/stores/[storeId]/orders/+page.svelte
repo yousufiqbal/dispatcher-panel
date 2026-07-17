@@ -6,6 +6,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
+	import { Textarea } from '$lib/components/ui/textarea/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
@@ -22,6 +23,7 @@
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -31,6 +33,7 @@
 
 	let selectedIds = $state<Set<string>>(new Set());
 	let copiedPhone = $state<string | null>(null);
+	let copiedTracking = $state<string | null>(null);
 	let refreshing = $state(false);
 
 	function toggleSelect(id: string) {
@@ -74,6 +77,43 @@
 		)[0];
 		mergeMainId = oldest?.id ?? '';
 		showMergeDialog = true;
+	}
+
+	interface AddressEdit {
+		firstName: string;
+		lastName: string;
+		phone: string;
+		address1: string;
+		address2: string;
+		city: string;
+		province: string;
+		country: string;
+		zip: string;
+	}
+
+	let showAddressCheckModal = $state(false);
+	let addressEdits = $state<Record<string, AddressEdit>>({});
+	let checkingAddresses = $state(false);
+
+	function openAddressCheckModal() {
+		const edits: Record<string, AddressEdit> = {};
+		for (const o of selectedOrders) {
+			const addr = o.shippingAddress;
+			const [firstName, ...rest] = (addr?.name ?? '').split(' ');
+			edits[o.id] = {
+				firstName: firstName ?? '',
+				lastName: rest.join(' '),
+				phone: addr?.phone ?? o.customer?.phone ?? o.phone ?? '',
+				address1: addr?.address1 ?? '',
+				address2: addr?.address2 ?? '',
+				city: addr?.city ?? '',
+				province: addr?.province ?? '',
+				country: addr?.country ?? '',
+				zip: addr?.zip ?? ''
+			};
+		}
+		addressEdits = edits;
+		showAddressCheckModal = true;
 	}
 
 	function printLabels() {
@@ -357,6 +397,12 @@
 			<div class="flex items-center gap-2">
 				{#if mergeEligible}
 					<Button variant="outline" size="sm" onclick={openMergeDialog}>Merge Orders</Button>
+				{/if}
+				{#if selectedOrders.length >= 2}
+					<Button variant="outline" size="sm" onclick={openAddressCheckModal}>
+						<MapPinIcon class="size-4" />
+						Check Addresses
+					</Button>
 				{/if}
 				{#each data.couriers as courier}
 					<Button variant="outline" size="sm" onclick={() => bookSelected(courier.id)}>Book with {courier.name}</Button>
@@ -650,13 +696,34 @@
 														</div>
 														<div>
 															<div class="text-xs text-muted-foreground uppercase tracking-wide">Tracking</div>
-															{#if tracking.url}
-																<a href={tracking.url} target="_blank" rel="noopener" class="font-mono text-primary hover:underline">
-																	{tracking.number ?? tracking.url}
-																</a>
-															{:else}
-																<div class="font-mono text-foreground">{tracking.number ?? '—'}</div>
-															{/if}
+															<div class="flex items-center gap-1.5">
+																{#if tracking.url}
+																	<a href={tracking.url} target="_blank" rel="noopener" class="font-mono text-primary hover:underline">
+																		{tracking.number ?? tracking.url}
+																	</a>
+																{:else}
+																	<div class="font-mono text-foreground">{tracking.number ?? '—'}</div>
+																{/if}
+																{#if tracking.number}
+																	<button
+																		type="button"
+																		class="text-muted-foreground hover:text-primary shrink-0"
+																		title="Copy tracking number"
+																		onclick={() => {
+																			const num = tracking.number ?? '';
+																			navigator.clipboard.writeText(num);
+																			copiedTracking = num;
+																			setTimeout(() => copiedTracking === num && (copiedTracking = null), 1200);
+																		}}
+																	>
+																		{#if copiedTracking === tracking.number}
+																			<CheckIcon class="size-3.5 text-green-600" />
+																		{:else}
+																			<CopyIcon class="size-3.5" />
+																		{/if}
+																	</button>
+																{/if}
+															</div>
 														</div>
 													</div>
 												{:else}
@@ -841,6 +908,82 @@
 				<Button type="submit" variant="destructive" disabled={merging || !mergeMainId}>
 					{#if merging}<Loader2Icon class="size-4 animate-spin" />{/if}
 					{merging ? 'Merging…' : 'Merge & Cancel Others'}
+				</Button>
+			</Dialog.Footer>
+		</form>
+	</Dialog.Content>
+</Dialog.Root>
+
+<!-- Check addresses dialog -->
+<Dialog.Root bind:open={showAddressCheckModal}>
+	<Dialog.Content class="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
+		<Dialog.Header>
+			<Dialog.Title>Check addresses — {selectedOrders.length} orders</Dialog.Title>
+			<Dialog.Description>Review and fix any incorrect customer name, phone, or address before booking.</Dialog.Description>
+		</Dialog.Header>
+		<form method="POST" action="?/bulkUpdateAddresses" use:enhance={() => {
+			checkingAddresses = true;
+			return async ({ result, update }) => {
+				await update();
+				checkingAddresses = false;
+				if (result.type === 'redirect') {
+					addToast('Addresses updated');
+					showAddressCheckModal = false;
+				} else {
+					addToast('Failed to update addresses', 'error');
+				}
+			};
+		}} class="space-y-4">
+			<input type="hidden" name="orderIds" value={selectedOrders.map((o) => o.id).join(',')} />
+			{#each selectedOrders as o}
+				{@const e = addressEdits[o.id]}
+				{#if e}
+					<div class="card p-4 space-y-3">
+						<div class="font-semibold text-sm text-foreground">{o.name}</div>
+						<div class="grid grid-cols-2 gap-3">
+							<div class="space-y-1.5">
+								<Label class="text-xs">First Name</Label>
+								<Input name="firstName_{o.id}" bind:value={e.firstName} />
+							</div>
+							<div class="space-y-1.5">
+								<Label class="text-xs">Last Name</Label>
+								<Input name="lastName_{o.id}" bind:value={e.lastName} />
+							</div>
+							<div class="space-y-1.5 col-span-2">
+								<Label class="text-xs">Phone</Label>
+								<Input name="phone_{o.id}" bind:value={e.phone} />
+							</div>
+							<div class="space-y-1.5 col-span-2">
+								<Label class="text-xs">Address</Label>
+								<Textarea name="address1_{o.id}" bind:value={e.address1} rows={2} class="resize-none" />
+							</div>
+						</div>
+						<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+							<div class="space-y-1.5">
+								<Label class="text-xs">City</Label>
+								<Input name="city_{o.id}" bind:value={e.city} />
+							</div>
+							<div class="space-y-1.5">
+								<Label class="text-xs">ZIP</Label>
+								<Input name="zip_{o.id}" bind:value={e.zip} />
+							</div>
+							<div class="space-y-1.5">
+								<Label class="text-xs">Province</Label>
+								<Input name="province_{o.id}" bind:value={e.province} />
+							</div>
+							<div class="space-y-1.5">
+								<Label class="text-xs">Country</Label>
+								<Input name="country_{o.id}" bind:value={e.country} />
+							</div>
+						</div>
+					</div>
+				{/if}
+			{/each}
+			<Dialog.Footer>
+				<Button type="button" variant="outline" disabled={checkingAddresses} onclick={() => showAddressCheckModal = false}>Cancel</Button>
+				<Button type="submit" disabled={checkingAddresses}>
+					{#if checkingAddresses}<Loader2Icon class="size-4 animate-spin" />{/if}
+					{checkingAddresses ? 'Saving…' : 'Save Addresses'}
 				</Button>
 			</Dialog.Footer>
 		</form>

@@ -42,6 +42,7 @@ export const actions: Actions = {
 		const discountValue = parseFloat((fd.get('discountValue') as string) || '0');
 		const discountType = (fd.get('discountType') as 'PERCENTAGE' | 'FIXED_AMOUNT') || 'PERCENTAGE';
 		const discountDesc = (fd.get('discountDesc') as string) || 'Discount';
+		const discountCurrencyCode = fd.get('currencyCode') as string | null;
 
 		try {
 			const { calcOrderId: calcId, lineItems: calcLineItems } = await orderEditBegin(client, orderId);
@@ -65,7 +66,8 @@ export const actions: Actions = {
 				await orderEditAddDiscount(client, calcId, calcDiscountLineItemId, {
 					value: discountValue,
 					valueType: discountType,
-					description: discountDesc
+					description: discountDesc,
+					currencyCode: discountCurrencyCode ?? undefined
 				});
 			}
 

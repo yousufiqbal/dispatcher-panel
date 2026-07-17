@@ -38,6 +38,9 @@
 	let showUnbookDialog = $state(false);
 	let showEditContactModal = $state(false);
 	let showEditShippingModal = $state(false);
+	let showDiscountModal = $state(false);
+	let discountPercentage = $state('');
+	let applyingDiscount = $state(false);
 	let editNote = $state(false);
 	let noteInput = $state('');
 	let tagsInputEl = $state<HTMLInputElement | null>(null);
@@ -370,6 +373,9 @@
 							<DropdownMenu.Item onclick={() => showRefundDialog = true}>Refund</DropdownMenu.Item>
 						{/if}
 						<DropdownMenu.Item onclick={() => showDuplicateDialog = true}>Duplicate Order</DropdownMenu.Item>
+						{#if !isCancelled}
+							<DropdownMenu.Item onclick={() => { discountPercentage = ''; showDiscountModal = true; }}>Add discount to items</DropdownMenu.Item>
+						{/if}
 						<DropdownMenu.Item onclick={() => window.open(`/dispatcher/stores/${storeId}/orders/${$page.params.orderId}/invoice`, '_blank')}>
 							Download Invoice
 						</DropdownMenu.Item>
@@ -742,6 +748,55 @@
 				</Dialog.Footer>
 			</form>
 		{/if}
+	</Dialog.Content>
+</Dialog.Root>
+
+<!-- Add discount to items dialog -->
+<Dialog.Root bind:open={showDiscountModal}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Add discount to items</Dialog.Title>
+			<Dialog.Description>Applies a percentage discount to every line item on this order.</Dialog.Description>
+		</Dialog.Header>
+		<form method="POST" action="?/applyDiscount" use:enhance={() => {
+			applyingDiscount = true;
+			return async ({ result, update }) => {
+				await update();
+				applyingDiscount = false;
+				if (result.type === 'redirect') {
+					addToast('Discount applied');
+					showDiscountModal = false;
+				} else {
+					addToast('Failed to apply discount', 'error');
+				}
+			};
+		}} class="space-y-4">
+			<div class="space-y-1.5">
+				<Label for="discount-percentage">Discount percentage</Label>
+				<div class="relative">
+					<Input
+						id="discount-percentage"
+						name="percentage"
+						type="number"
+						min="1"
+						max="100"
+						step="1"
+						placeholder="10"
+						bind:value={discountPercentage}
+						class="pr-8"
+						required
+					/>
+					<span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+				</div>
+			</div>
+			<Dialog.Footer>
+				<Button type="button" variant="outline" disabled={applyingDiscount} onclick={() => showDiscountModal = false}>Cancel</Button>
+				<Button type="submit" disabled={applyingDiscount || !discountPercentage}>
+					{#if applyingDiscount}{@render spinner()}{/if}
+					{applyingDiscount ? 'Applying…' : 'Apply Discount'}
+				</Button>
+			</Dialog.Footer>
+		</form>
 	</Dialog.Content>
 </Dialog.Root>
 

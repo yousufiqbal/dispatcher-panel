@@ -91,8 +91,17 @@ export async function orderEditAddDiscount(
 	client: ShopifyClient,
 	calcOrderId: string,
 	lineItemId: string,
-	discount: { value: number; valueType: 'PERCENTAGE' | 'FIXED_AMOUNT'; description: string }
+	discount: { value: number; valueType: 'PERCENTAGE' | 'FIXED_AMOUNT'; description: string; currencyCode?: string }
 ): Promise<void> {
+	// OrderEditAppliedDiscountInput doesn't take value/valueType — it's
+	// percentValue (Float) or fixedValue (MoneyInput), one or the other.
+	if (discount.valueType === 'FIXED_AMOUNT' && !discount.currencyCode) {
+		throw new Error('currencyCode is required for a fixed-amount discount');
+	}
+	const discountInput = discount.valueType === 'PERCENTAGE'
+		? { percentValue: discount.value, description: discount.description }
+		: { fixedValue: { amount: String(discount.value), currencyCode: discount.currencyCode }, description: discount.description };
+
 	const gql = `
     mutation orderEditAddLineItemDiscount($id: ID!, $lineItemId: ID!, $discount: OrderEditAppliedDiscountInput!) {
       orderEditAddLineItemDiscount(id: $id, lineItemId: $lineItemId, discount: $discount) {
@@ -103,7 +112,7 @@ export async function orderEditAddDiscount(
   `;
 	const data = await shopifyRequest<{
 		orderEditAddLineItemDiscount: { userErrors: { field: string[]; message: string }[] } | null;
-	}>(client, gql, { id: calcOrderId, lineItemId, discount });
+	}>(client, gql, { id: calcOrderId, lineItemId, discount: discountInput });
 	if (!data.orderEditAddLineItemDiscount) throw new Error('orderEditAddLineItemDiscount returned null');
 	if (data.orderEditAddLineItemDiscount.userErrors.length) throw new Error(data.orderEditAddLineItemDiscount.userErrors.map(e => e.message).join(', '));
 }
