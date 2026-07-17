@@ -418,12 +418,15 @@
 							<tr>
 								<td class="px-5 py-3">
 									<div class="flex items-center gap-3">
+										<span class="size-14 rounded-md bg-white text-foreground border border-border flex items-center justify-center shrink-0 text-base font-bold">
+											{item.currentQuantity}×
+										</span>
 										{#if img}
 											<button type="button" onclick={() => { lightboxUrl = img; lightboxAlt = item.image?.altText ?? item.title; }} class="shrink-0 cursor-zoom-in">
-												<img src={img} alt={item.image?.altText ?? item.title} class="size-12 rounded-md object-cover border border-border hover:opacity-80 transition-opacity" />
+												<img src={img} alt={item.image?.altText ?? item.title} class="size-14 rounded-md object-cover border border-border hover:opacity-80 transition-opacity" />
 											</button>
 										{:else}
-											<div class="size-12 rounded-md bg-muted flex items-center justify-center shrink-0 border border-border">
+											<div class="size-14 rounded-md bg-muted flex items-center justify-center shrink-0 border border-border">
 												<svg class="size-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
 													<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5M4.5 3h15A1.5 1.5 0 0121 4.5v15a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 19.5v-15A1.5 1.5 0 014.5 3z" />
 												</svg>
@@ -440,9 +443,6 @@
 										</div>
 									</div>
 								</td>
-								<td class="px-5 py-3 text-center whitespace-nowrap">
-								<span class="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded bg-muted text-foreground text-xs font-semibold">×{item.currentQuantity}</span>
-							</td>
 								<td class="px-5 py-3 text-right font-medium whitespace-nowrap">
 									{formatCurrency(
 										(parseFloat(item.originalUnitPriceSet.shopMoney.amount) * item.currentQuantity).toFixed(2),
@@ -459,12 +459,15 @@
 					{#each activeLineItems as item}
 						{@const img = item.image?.url ?? item.variant?.image?.url}
 						<div class="px-4 py-3 flex items-start gap-3">
+							<span class="size-14 rounded-md bg-white text-foreground border border-border flex items-center justify-center shrink-0 text-base font-bold">
+								{item.currentQuantity}×
+							</span>
 							{#if img}
 								<button type="button" onclick={() => { lightboxUrl = img; lightboxAlt = item.image?.altText ?? item.title; }} class="shrink-0 cursor-zoom-in">
-									<img src={img} alt={item.image?.altText ?? item.title} class="size-12 rounded-md object-cover border border-border hover:opacity-80 transition-opacity" />
+									<img src={img} alt={item.image?.altText ?? item.title} class="size-14 rounded-md object-cover border border-border hover:opacity-80 transition-opacity" />
 								</button>
 							{:else}
-								<div class="size-12 rounded-md bg-muted flex items-center justify-center shrink-0 border border-border">
+								<div class="size-14 rounded-md bg-muted flex items-center justify-center shrink-0 border border-border">
 									<svg class="size-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
 										<path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5M4.5 3h15A1.5 1.5 0 0121 4.5v15a1.5 1.5 0 01-1.5 1.5h-15A1.5 1.5 0 013 19.5v-15A1.5 1.5 0 014.5 3z" />
 									</svg>
@@ -478,8 +481,7 @@
 								{#if item.variant?.sku}
 									<div class="text-xs text-muted-foreground font-mono">SKU: {item.variant.sku}</div>
 								{/if}
-								<div class="flex items-center justify-between gap-2 mt-1.5">
-									<span class="inline-flex items-center justify-center min-w-[1.5rem] h-6 px-1.5 rounded bg-muted text-foreground text-xs font-semibold">×{item.currentQuantity}</span>
+								<div class="flex items-center justify-end gap-2 mt-1.5">
 									<span class="text-sm font-medium text-foreground">
 										{formatCurrency(
 											(parseFloat(item.originalUnitPriceSet.shopMoney.amount) * item.currentQuantity).toFixed(2),
