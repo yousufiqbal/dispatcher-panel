@@ -1,13 +1,14 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { listOrders, getTagSplitCounts, confirmOrder, cancelOrder, getOrder, updateOrderShipping, CONFIRMED_TAG } from '$lib/server/shopify/orders';
+import { listOrders, getTagSplitCounts, confirmOrder, cancelOrder, getOrder, updateOrderShipping, CONFIRMED_TAG, INCORRECT_ADDRESS_TAG, markAddressIncorrect, unmarkAddressIncorrect } from '$lib/server/shopify/orders';
 import { orderEditBegin, orderEditAddVariant, orderEditAddCustomItem, orderEditCommit } from '$lib/server/shopify/order-edit';
 import { db } from '$lib/server/db';
 import { couriers, courierStoreAccess } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getAuthorizedStore } from '$lib/server/store-access';
 import { logAudit } from '$lib/server/audit';
+import { checkAddress } from '$lib/server/address-check';
 
 function toShopifyOrderId(orderId: string): string {
 	return orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`;
@@ -35,6 +36,7 @@ function orderDisplayStatus(o: { fulfillments: { displayStatus: string | null }[
 const STATUS_QUERIES: Record<string, string> = {
 	pending: 'fulfillment_status:unfulfilled status:open',
 	confirmed: 'fulfillment_status:unfulfilled status:open',
+	'incorrect-address': 'status:open',
 	fulfilled: 'fulfillment_status:shipped',
 	attempted: 'fulfillment_status:shipped',
 	failed: 'fulfillment_status:shipped',
@@ -98,11 +100,17 @@ async function getAttemptedCount(client: ReturnType<typeof getShopifyClient>): P
 // the search index lags a few seconds behind a tagsAdd mutation, which made these
 // badges show stale numbers right after a bulk-confirm.
 async function getBadgeCounts(client: ReturnType<typeof getShopifyClient>) {
-	const [{ withTag, withoutTag }, attemptedCount] = await Promise.all([
+	const [{ withTag, withoutTag }, attemptedCount, incorrectAddressSplit] = await Promise.all([
 		getTagSplitCounts(client, STATUS_QUERIES.pending, CONFIRMED_TAG),
-		getAttemptedCount(client)
+		getAttemptedCount(client),
+		getTagSplitCounts(client, STATUS_QUERIES['incorrect-address'], INCORRECT_ADDRESS_TAG)
 	]);
-	return { pendingCount: withoutTag, confirmedCount: withTag, attemptedCount };
+	return {
+		pendingCount: withoutTag,
+		confirmedCount: withTag,
+		attemptedCount,
+		incorrectAddressCount: incorrectAddressSplit.withTag
+	};
 }
 
 export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
@@ -137,7 +145,7 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 		};
 	}
 
-	const isTagFiltered = status === 'pending' || status === 'confirmed' || status === 'attempted' || status === 'failed';
+	const isTagFiltered = status === 'pending' || status === 'confirmed' || status === 'incorrect-address' || status === 'attempted' || status === 'failed';
 
 	let shopifyQuery = STATUS_QUERIES[status] ?? '';
 	if (searchQ) {
@@ -163,6 +171,7 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 	let orders = result.nodes;
 	if (status === 'pending') orders = orders.filter((o) => !o.tags.includes(CONFIRMED_TAG));
 	else if (status === 'confirmed') orders = orders.filter((o) => o.tags.includes(CONFIRMED_TAG));
+	else if (status === 'incorrect-address') orders = orders.filter((o) => o.tags.includes(INCORRECT_ADDRESS_TAG));
 
 	// "Attempted"/"Failed" filter on Shopify's fulfillment displayStatus (no search
 	// syntax exists for it, so filter client-side after fetching shipped orders).
@@ -300,8 +309,9 @@ export const actions: Actions = {
 		}
 
 		const results = await Promise.allSettled(
-			orderIds.map((id) =>
-				updateOrderShipping(client, toShopifyOrderId(id), {
+			orderIds.map(async (id) => {
+				const shopifyId = toShopifyOrderId(id);
+				await updateOrderShipping(client, shopifyId, {
 					firstName: (fd.get(`firstName_${id}`) as string) ?? '',
 					lastName: (fd.get(`lastName_${id}`) as string) ?? '',
 					address1: (fd.get(`address1_${id}`) as string) ?? '',
@@ -310,8 +320,11 @@ export const actions: Actions = {
 					country: (fd.get(`country_${id}`) as string) ?? '',
 					zip: (fd.get(`zip_${id}`) as string) ?? '',
 					phone: (fd.get(`phone_${id}`) as string) || undefined
-				})
-			)
+				});
+				const incorrect = fd.get(`incorrectAddress_${id}`) != null;
+				if (incorrect) await markAddressIncorrect(client, shopifyId);
+				else await unmarkAddressIncorrect(client, shopifyId);
+			})
 		);
 
 		const failed = orderIds.filter((_, i) => results[i].status === 'rejected');
@@ -329,6 +342,33 @@ export const actions: Actions = {
 			});
 		}
 
-		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=confirmed`);
+		const returnStatus = (fd.get('returnStatus') as string) || 'confirmed';
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=${returnStatus}`);
+	},
+
+	autoCheckAddresses: async ({ params, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+
+		// Same query the Pending tab uses, then the same live-tag filter — orders
+		// still open, unfulfilled, and not yet marked Confirmed.
+		const result = await listOrders(client, { first: 250, query: STATUS_QUERIES.pending });
+		const pendingOnly = result.nodes.filter((o) => !o.tags.includes(CONFIRMED_TAG));
+
+		const toTag = pendingOnly.filter(
+			(o) => !o.tags.includes(INCORRECT_ADDRESS_TAG) && checkAddress(o).length > 0
+		);
+
+		const results = await Promise.allSettled(toTag.map((o) => markAddressIncorrect(client, o.id)));
+		const tagged = results.filter((r) => r.status === 'fulfilled').length;
+
+		if (locals.session) {
+			await logAudit(locals.session.userId, 'dispatcher', 'order.autoCheckAddresses', {
+				targetType: 'order', storeId: params.storeId,
+				metadata: { checked: pendingOnly.length, tagged }
+			});
+		}
+
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=incorrect-address&autoChecked=${tagged}`);
 	}
 };

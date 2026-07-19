@@ -273,6 +273,42 @@ export async function unconfirmOrder(client: ShopifyClient, orderId: string): Pr
 	}
 }
 
+export const INCORRECT_ADDRESS_TAG = 'incorrect-address';
+
+export async function markAddressIncorrect(client: ShopifyClient, orderId: string): Promise<void> {
+	const gql = `
+    mutation TagsAdd($id: ID!, $tags: [String!]!) {
+      tagsAdd(id: $id, tags: $tags) {
+        userErrors { field message }
+      }
+    }
+  `;
+	const data = await shopifyRequest<{
+		tagsAdd: { userErrors: { field: string[]; message: string }[] };
+	}>(client, gql, { id: orderId, tags: [INCORRECT_ADDRESS_TAG] });
+
+	if (data.tagsAdd.userErrors.length > 0) {
+		throw new Error(data.tagsAdd.userErrors.map((e) => e.message).join(', '));
+	}
+}
+
+export async function unmarkAddressIncorrect(client: ShopifyClient, orderId: string): Promise<void> {
+	const gql = `
+    mutation TagsRemove($id: ID!, $tags: [String!]!) {
+      tagsRemove(id: $id, tags: $tags) {
+        userErrors { field message }
+      }
+    }
+  `;
+	const data = await shopifyRequest<{
+		tagsRemove: { userErrors: { field: string[]; message: string }[] };
+	}>(client, gql, { id: orderId, tags: [INCORRECT_ADDRESS_TAG] });
+
+	if (data.tagsRemove.userErrors.length > 0) {
+		throw new Error(data.tagsRemove.userErrors.map((e) => e.message).join(', '));
+	}
+}
+
 export async function fulfillOrder(
 	client: ShopifyClient,
 	orderId: string,

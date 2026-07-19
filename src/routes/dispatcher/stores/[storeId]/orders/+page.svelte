@@ -52,9 +52,13 @@
 		goto(`/dispatcher/stores/${storeId}/orders/book/${courierId}?ids=${ids}`);
 	}
 
-	const selectableStatuses = ['pending', 'confirmed', 'fulfilled', 'attempted', 'failed'];
+	const selectableStatuses = ['pending', 'confirmed', 'incorrect-address', 'fulfilled', 'attempted', 'failed'];
+	const INCORRECT_ADDRESS_TAG = 'incorrect-address';
 	let showBulkConfirmDialog = $state(false);
 	let bulkConfirming = $state(false);
+
+	let autoCheckFormEl = $state<HTMLFormElement | null>(null);
+	let autoChecking = $state(false);
 
 	let showMergeDialog = $state(false);
 	let mergeMainId = $state('');
@@ -89,6 +93,7 @@
 		province: string;
 		country: string;
 		zip: string;
+		incorrectAddress: boolean;
 	}
 
 	let showAddressCheckModal = $state(false);
@@ -109,7 +114,8 @@
 				city: addr?.city ?? '',
 				province: addr?.province ?? '',
 				country: addr?.country ?? '',
-				zip: addr?.zip ?? ''
+				zip: addr?.zip ?? '',
+				incorrectAddress: o.tags.includes(INCORRECT_ADDRESS_TAG)
 			};
 		}
 		addressEdits = edits;
@@ -140,9 +146,19 @@
 		goto(`?${sp}`, { replaceState: true, keepFocus: true, noScroll: true });
 	});
 
+	$effect(() => {
+		const autoChecked = $page.url.searchParams.get('autoChecked');
+		if (autoChecked === null) return;
+		addToast(`Auto-check flagged ${autoChecked} order${autoChecked === '1' ? '' : 's'} with an incorrect address`);
+		const sp = new URLSearchParams($page.url.searchParams);
+		sp.delete('autoChecked');
+		goto(`?${sp}`, { replaceState: true, keepFocus: true, noScroll: true });
+	});
+
 	const tabs = [
 		{ key: 'all', label: 'All' },
 		{ key: 'pending', label: 'Pending' },
+		{ key: 'incorrect-address', label: 'Incorrect Address' },
 		{ key: 'confirmed', label: 'Confirmed' },
 		{ key: 'fulfilled', label: 'Fulfilled' },
 		{ key: 'attempted', label: 'Attempted' },
@@ -358,18 +374,23 @@
 							{isActive ? 'bg-primary text-primary-foreground border-primary' : 'bg-white border border-zinc-200 text-muted-foreground hover:bg-accent'}"
 					>
 						{tab.label}
-						{#if tab.key === 'pending' && data.pendingCount > 0}
-							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+						{#if tab.key === 'pending'}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.pendingCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-500'}">
 								{data.pendingCount}
 							</span>
 						{/if}
-						{#if tab.key === 'confirmed' && data.confirmedCount > 0}
-							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
+						{#if tab.key === 'incorrect-address'}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.incorrectAddressCount > 0 ? 'bg-red-100 text-red-700' : 'bg-zinc-100 text-zinc-500'}">
+								{data.incorrectAddressCount}
+							</span>
+						{/if}
+						{#if tab.key === 'confirmed'}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.confirmedCount > 0 ? 'bg-green-100 text-green-800' : 'bg-zinc-100 text-zinc-500'}">
 								{data.confirmedCount}
 							</span>
 						{/if}
-						{#if tab.key === 'attempted' && data.attemptedCount > 0}
-							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+						{#if tab.key === 'attempted'}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.attemptedCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-500'}">
 								{data.attemptedCount}
 							</span>
 						{/if}
@@ -379,6 +400,29 @@
 		</div>
 	</div>
 
+	{#if data.status === 'pending'}
+		<div class="flex items-center justify-end mb-4">
+			<Button variant="outline" size="sm" disabled={autoChecking} onclick={() => autoCheckFormEl?.requestSubmit()}>
+				{#if autoChecking}<Loader2Icon class="size-4 animate-spin" />{:else}<MapPinIcon class="size-4" />{/if}
+				{autoChecking ? 'Checking…' : 'Check Addresses'}
+			</Button>
+			<form
+				bind:this={autoCheckFormEl}
+				method="POST"
+				action="?/autoCheckAddresses"
+				class="hidden"
+				use:enhance={() => {
+					autoChecking = true;
+					return async ({ result, update }) => {
+						await update();
+						autoChecking = false;
+						if (result.type !== 'redirect') addToast('Auto-check failed', 'error');
+					};
+				}}
+			></form>
+		</div>
+	{/if}
+
 	{#if data.status === 'pending' && selectedIds.size > 0}
 		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
 			<span class="text-sm font-medium">{selectedIds.size} selected</span>
@@ -387,6 +431,18 @@
 					<Button variant="outline" size="sm" onclick={openMergeDialog}>Merge Orders</Button>
 				{/if}
 				<Button size="sm" onclick={() => showBulkConfirmDialog = true}>Confirm Selected</Button>
+			</div>
+		</div>
+	{/if}
+
+	{#if data.status === 'incorrect-address' && selectedIds.size > 0}
+		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
+			<span class="text-sm font-medium">{selectedIds.size} selected</span>
+			<div class="flex items-center gap-2">
+				<Button variant="outline" size="sm" onclick={openAddressCheckModal}>
+					<MapPinIcon class="size-4" />
+					Check Addresses
+				</Button>
 			</div>
 		</div>
 	{/if}
@@ -935,11 +991,18 @@
 			};
 		}} class="space-y-4">
 			<input type="hidden" name="orderIds" value={selectedOrders.map((o) => o.id).join(',')} />
+			<input type="hidden" name="returnStatus" value={data.status} />
 			{#each selectedOrders as o}
 				{@const e = addressEdits[o.id]}
 				{#if e}
-					<div class="card p-4 space-y-3">
-						<div class="font-semibold text-sm text-foreground">{o.name}</div>
+					<div class="card p-4 space-y-3 {e.incorrectAddress ? 'border-red-500' : ''}">
+						<div class="flex items-center justify-between gap-2">
+							<div class="font-semibold text-sm text-foreground">{o.name}</div>
+							<label class="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+								<Checkbox bind:checked={e.incorrectAddress} name="incorrectAddress_{o.id}" />
+								Mark address as incorrect
+							</label>
+						</div>
 						<div class="grid grid-cols-2 gap-3">
 							<div class="space-y-1.5">
 								<Label class="text-xs">First Name</Label>
@@ -979,12 +1042,18 @@
 					</div>
 				{/if}
 			{/each}
-			<Dialog.Footer>
-				<Button type="button" variant="outline" disabled={checkingAddresses} onclick={() => showAddressCheckModal = false}>Cancel</Button>
-				<Button type="submit" disabled={checkingAddresses}>
-					{#if checkingAddresses}<Loader2Icon class="size-4 animate-spin" />{/if}
-					{checkingAddresses ? 'Saving…' : 'Save Addresses'}
-				</Button>
+			<Dialog.Footer class="sm:justify-between items-center">
+				{@const markedCount = Object.values(addressEdits).filter((e) => e.incorrectAddress).length}
+				<span class="text-xs text-muted-foreground {markedCount > 0 ? 'text-red-600 font-medium' : ''}">
+					{markedCount} of {selectedOrders.length} marked incorrect
+				</span>
+				<div class="flex items-center gap-2">
+					<Button type="button" variant="outline" disabled={checkingAddresses} onclick={() => showAddressCheckModal = false}>Cancel</Button>
+					<Button type="submit" disabled={checkingAddresses}>
+						{#if checkingAddresses}<Loader2Icon class="size-4 animate-spin" />{/if}
+						{checkingAddresses ? 'Saving…' : 'Save Addresses'}
+					</Button>
+				</div>
 			</Dialog.Footer>
 		</form>
 	</Dialog.Content>
