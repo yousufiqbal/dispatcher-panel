@@ -116,6 +116,14 @@
 
 	const progress = $derived(((data.index + 1) / data.totalProducts) * 100);
 
+	// Autofocus the first quantity input whenever a new product loads
+	$effect(() => {
+		data.index;
+		queueMicrotask(() => {
+			formEl?.querySelector<HTMLInputElement>('input[type="number"]')?.focus();
+		});
+	});
+
 	// Prefetch adjacent products so Next/Prev/arrow nav is instant
 	$effect(() => {
 		const base = `/dispatcher/stores/${storeId}/restock/${data.session.id}`;
@@ -219,7 +227,6 @@
 						<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Variant</span>
 						<div class="flex gap-2">
 							<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide w-[52px] text-center">90d</span>
-							<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide w-[52px] text-center">30d</span>
 							<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide w-[52px] text-center">Stock</span>
 						</div>
 						<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Restock qty</span>
@@ -245,14 +252,10 @@
 								</div>
 
 								<div class="lg:contents">
-									<div class="grid grid-cols-5 gap-1.5 lg:flex lg:gap-2 mb-2 lg:mb-0">
+									<div class="grid grid-cols-4 gap-1.5 lg:flex lg:gap-2 mb-2 lg:mb-0">
 										<div class="flex flex-col items-center justify-center border border-border rounded-lg px-1 py-1.5 min-w-0 lg:min-w-[52px] lg:px-3">
 											<span class="text-[9px] text-muted-foreground font-medium uppercase tracking-wide lg:hidden">90d</span>
 											<span class="text-sm font-semibold text-foreground tabular-nums">{v.sales90}</span>
-										</div>
-										<div class="flex flex-col items-center justify-center border border-border rounded-lg px-1 py-1.5 min-w-0 lg:min-w-[52px] lg:px-3">
-											<span class="text-[9px] text-muted-foreground font-medium uppercase tracking-wide lg:hidden">30d</span>
-											<span class="text-sm font-semibold text-foreground tabular-nums">{v.sales30}</span>
 										</div>
 										<div class="flex flex-col items-center justify-center border rounded-lg px-1 py-1.5 min-w-0 lg:min-w-[52px] lg:px-3 {v.currentStock === 0 ? 'border-red-200 bg-red-50' : 'border-border'}">
 											<span class="text-[9px] {v.currentStock === 0 ? 'text-red-500' : 'text-muted-foreground'} font-medium uppercase tracking-wide lg:hidden">Stock</span>

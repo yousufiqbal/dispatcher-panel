@@ -115,6 +115,14 @@
 
 	const progress = $derived(((data.index + 1) / data.totalProducts) * 100);
 
+	// Autofocus the first quantity input whenever a new product loads
+	$effect(() => {
+		data.index;
+		queueMicrotask(() => {
+			formEl?.querySelector<HTMLInputElement>('input[type="number"]')?.focus();
+		});
+	});
+
 	$effect(() => {
 		const base = `/dispatcher/stores/${storeId}/inventory-count/${data.session.id}`;
 		if (data.nextIndex !== null) preloadData(`${base}/${data.nextIndex}`);
