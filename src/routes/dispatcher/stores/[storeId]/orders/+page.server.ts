@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { listOrders, getTagSplitCounts, confirmOrder, cancelOrder, getOrder, updateOrderShipping, CONFIRMED_TAG, INCORRECT_ADDRESS_TAG, markAddressIncorrect, unmarkAddressIncorrect } from '$lib/server/shopify/orders';
+import { listOrders, getTagSplitCounts, confirmOrder, cancelOrder, getOrder, updateOrderShipping, CONFIRMED_TAG, INCORRECT_ADDRESS_TAG, markAddressIncorrect, unmarkAddressIncorrect, phoneQueryVariants } from '$lib/server/shopify/orders';
 import { orderEditBegin, orderEditAddVariant, orderEditAddCustomItem, orderEditCommit } from '$lib/server/shopify/order-edit';
 import { db } from '$lib/server/db';
 import { couriers, courierStoreAccess } from '$lib/server/db/schema';
@@ -45,20 +45,6 @@ const STATUS_QUERIES: Record<string, string> = {
 	all: ''
 };
 
-// Builds Shopify search clauses that match a Pakistani mobile number regardless of
-// how it was typed (leading 0, country code 92, +92, with/without dashes or spaces).
-function phoneQueryVariants(raw: string): string[] {
-	const digits = raw.replace(/\D/g, '');
-	if (digits.length < 5) return [`phone:${raw}*`];
-
-	let national = digits; // number without leading 0 or country code, e.g. 3001234567
-	if (digits.startsWith('0')) national = digits.slice(1);
-	else if (digits.startsWith('92')) national = digits.slice(2);
-
-	const variants = new Set([digits, national, `0${national}`, `92${national}`, `+92${national}`]);
-	// Shopify search only supports a trailing wildcard, not a leading one.
-	return [...variants].map((v) => `phone:${v}*`);
-}
 
 async function listDraftOrders(client: ReturnType<typeof getShopifyClient>, { first = 50, after, query }: { first?: number; after?: string; query?: string } = {}) {
 	const gql = `
@@ -346,7 +332,10 @@ export const actions: Actions = {
 		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=${returnStatus}`);
 	},
 
-	autoCheckAddresses: async ({ params, locals }) => {
+	// Dry run only — scans pending orders and reports which ones look wrong, but
+	// tags nothing. The dispatcher confirms which flagged orders actually get
+	// marked incorrect via markIncorrectSelected below.
+	checkAddresses: async ({ params, locals }) => {
 		const store = await getAuthorizedStore(locals.session, params.storeId);
 		const client = getShopifyClient(store);
 
@@ -355,17 +344,38 @@ export const actions: Actions = {
 		const result = await listOrders(client, { first: 250, query: STATUS_QUERIES.pending });
 		const pendingOnly = result.nodes.filter((o) => !o.tags.includes(CONFIRMED_TAG));
 
-		const toTag = pendingOnly.filter(
-			(o) => !o.tags.includes(INCORRECT_ADDRESS_TAG) && checkAddress(o).length > 0
-		);
+		const candidates = pendingOnly
+			.filter((o) => !o.tags.includes(INCORRECT_ADDRESS_TAG))
+			.map((o) => ({ id: o.id, name: o.name, customerName: o.customer?.displayName ?? o.shippingAddress?.name ?? 'Guest', reasons: checkAddress(o) }))
+			.filter((c) => c.reasons.length > 0);
 
-		const results = await Promise.allSettled(toTag.map((o) => markAddressIncorrect(client, o.id)));
+		if (locals.session) {
+			await logAudit(locals.session.userId, 'dispatcher', 'order.checkAddresses', {
+				targetType: 'order', storeId: params.storeId,
+				metadata: { checked: pendingOnly.length, flagged: candidates.length }
+			});
+		}
+
+		return { checked: pendingOnly.length, candidates };
+	},
+
+	markIncorrectSelected: async ({ params, request, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const fd = await request.formData();
+		const ids = (fd.get('ids') as string ?? '').split(',').filter(Boolean);
+
+		if (ids.length === 0) {
+			throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=pending`);
+		}
+
+		const results = await Promise.allSettled(ids.map((id) => markAddressIncorrect(client, toShopifyOrderId(id))));
 		const tagged = results.filter((r) => r.status === 'fulfilled').length;
 
 		if (locals.session) {
-			await logAudit(locals.session.userId, 'dispatcher', 'order.autoCheckAddresses', {
+			await logAudit(locals.session.userId, 'dispatcher', 'order.markIncorrectSelected', {
 				targetType: 'order', storeId: params.storeId,
-				metadata: { checked: pendingOnly.length, tagged }
+				metadata: { ids, tagged }
 			});
 		}
 

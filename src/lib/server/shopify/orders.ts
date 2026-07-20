@@ -56,6 +56,21 @@ const ORDER_FIELDS = `
   tags
 `;
 
+// Builds Shopify search clauses that match a Pakistani mobile number regardless of
+// how it was typed (leading 0, country code 92, +92, with/without dashes or spaces).
+export function phoneQueryVariants(raw: string): string[] {
+	const digits = raw.replace(/\D/g, '');
+	if (digits.length < 5) return [`phone:${raw}*`];
+
+	let national = digits; // number without leading 0 or country code, e.g. 3001234567
+	if (digits.startsWith('0')) national = digits.slice(1);
+	else if (digits.startsWith('92')) national = digits.slice(2);
+
+	const variants = new Set([digits, national, `0${national}`, `92${national}`, `+92${national}`]);
+	// Shopify search only supports a trailing wildcard, not a leading one.
+	return [...variants].map((v) => `phone:${v}*`);
+}
+
 export async function getOrdersCount(client: ShopifyClient, query?: string): Promise<number> {
 	const gql = `
 		query OrdersCount($query: String) {

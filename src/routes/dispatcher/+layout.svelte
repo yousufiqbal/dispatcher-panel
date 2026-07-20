@@ -5,6 +5,7 @@
 	import { isStoreSwitcherOpen, openStoreSwitcher, closeStoreSwitcher } from '$lib/storeSwitcher.svelte';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
+	import GlobalSearch from '$lib/components/GlobalSearch.svelte';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
 	import XIcon from '@lucide/svelte/icons/x';
 	import type { LayoutData } from './$types';
@@ -98,6 +99,11 @@
 
 	<!-- Main -->
 	<div class="flex-1 flex flex-col min-h-screen min-w-0 lg:ml-64">
+		{#if currentStoreId}
+			<div class="sticky top-0 z-30 bg-card border-b border-border px-3 sm:px-6 py-2.5">
+				<GlobalSearch />
+			</div>
+		{/if}
 		<main class="flex-1 pb-20 lg:pb-0">
 			{#key $page.url.pathname}
 				{@render children()}

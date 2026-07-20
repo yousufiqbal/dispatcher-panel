@@ -57,8 +57,35 @@
 	let showBulkConfirmDialog = $state(false);
 	let bulkConfirming = $state(false);
 
-	let autoCheckFormEl = $state<HTMLFormElement | null>(null);
-	let autoChecking = $state(false);
+	interface AddressCandidate {
+		id: string;
+		name: string;
+		customerName: string;
+		reasons: string[];
+	}
+
+	let showCheckAddressesModal = $state(false);
+	let scanningAddresses = $state(false);
+	let hasRunCheck = $state(false);
+	let checkedCount = $state(0);
+	let candidates = $state<AddressCandidate[]>([]);
+	let selectedCandidateIds = $state<Set<string>>(new Set());
+	let markingSelected = $state(false);
+
+	function openCheckAddressesModal() {
+		hasRunCheck = false;
+		checkedCount = 0;
+		candidates = [];
+		selectedCandidateIds = new Set();
+		showCheckAddressesModal = true;
+	}
+
+	function toggleCandidate(id: string) {
+		const next = new Set(selectedCandidateIds);
+		if (next.has(id)) next.delete(id);
+		else next.add(id);
+		selectedCandidateIds = next;
+	}
 
 	let showMergeDialog = $state(false);
 	let mergeMainId = $state('');
@@ -354,8 +381,12 @@
 						</Button>
 					{/snippet}
 				</DropdownMenu.Trigger>
-				<DropdownMenu.Content align="end" class="w-36">
+				<DropdownMenu.Content align="end" class="w-44">
 					<DropdownMenu.Item onclick={() => setStatus('drafts')}>Drafts</DropdownMenu.Item>
+					<DropdownMenu.Item onclick={openCheckAddressesModal}>
+						<MapPinIcon class="size-3.5" />
+						Check Addresses
+					</DropdownMenu.Item>
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
 		</div>
@@ -399,29 +430,6 @@
 			</div>
 		</div>
 	</div>
-
-	{#if data.status === 'pending'}
-		<div class="flex items-center justify-end mb-4">
-			<Button variant="outline" size="sm" disabled={autoChecking} onclick={() => autoCheckFormEl?.requestSubmit()}>
-				{#if autoChecking}<Loader2Icon class="size-4 animate-spin" />{:else}<MapPinIcon class="size-4" />{/if}
-				{autoChecking ? 'Checking…' : 'Check Addresses'}
-			</Button>
-			<form
-				bind:this={autoCheckFormEl}
-				method="POST"
-				action="?/autoCheckAddresses"
-				class="hidden"
-				use:enhance={() => {
-					autoChecking = true;
-					return async ({ result, update }) => {
-						await update();
-						autoChecking = false;
-						if (result.type !== 'redirect') addToast('Auto-check failed', 'error');
-					};
-				}}
-			></form>
-		</div>
-	{/if}
 
 	{#if data.status === 'pending' && selectedIds.size > 0}
 		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
@@ -911,6 +919,94 @@
 				</Button>
 			</Dialog.Footer>
 		</form>
+	</Dialog.Content>
+</Dialog.Root>
+
+<!-- Check addresses (scan pending orders) dialog -->
+<Dialog.Root bind:open={showCheckAddressesModal}>
+	<Dialog.Content class="sm:max-w-xl max-h-[85vh] overflow-y-auto">
+		<Dialog.Header>
+			<Dialog.Title>Check Addresses</Dialog.Title>
+			<Dialog.Description>
+				Scans every Pending order for address issues (missing/short street address, unrecognized city, incomplete name, invalid phone). Nothing changes until you confirm which ones below are actually wrong.
+			</Dialog.Description>
+		</Dialog.Header>
+
+		{#if !hasRunCheck}
+			<form method="POST" action="?/checkAddresses" use:enhance={() => {
+				scanningAddresses = true;
+				return async ({ result }) => {
+					scanningAddresses = false;
+					if (result.type === 'success' && result.data) {
+						checkedCount = (result.data.checked as number) ?? 0;
+						candidates = (result.data.candidates as AddressCandidate[]) ?? [];
+						selectedCandidateIds = new Set(candidates.map((c) => c.id));
+						hasRunCheck = true;
+					} else {
+						addToast('Address check failed', 'error');
+					}
+				};
+			}}>
+				<Dialog.Footer>
+					<Button type="button" variant="outline" disabled={scanningAddresses} onclick={() => showCheckAddressesModal = false}>Cancel</Button>
+					<Button type="submit" disabled={scanningAddresses}>
+						{#if scanningAddresses}<Loader2Icon class="size-4 animate-spin" />{/if}
+						{scanningAddresses ? 'Scanning…' : 'Run Check'}
+					</Button>
+				</Dialog.Footer>
+			</form>
+		{:else if candidates.length === 0}
+			<div class="py-6 text-center text-sm text-muted-foreground">
+				Checked {checkedCount} pending order{checkedCount === 1 ? '' : 's'} — no address issues found.
+			</div>
+			<Dialog.Footer>
+				<Button type="button" variant="outline" onclick={() => showCheckAddressesModal = false}>Close</Button>
+			</Dialog.Footer>
+		{:else}
+			<p class="text-xs text-muted-foreground">
+				Checked {checkedCount} pending order{checkedCount === 1 ? '' : 's'}, flagged {candidates.length}. Uncheck any that are actually fine.
+			</p>
+			<div class="space-y-2 max-h-96 overflow-y-auto">
+				{#each candidates as c}
+					<label class="flex items-start gap-3 border border-border rounded-lg px-3 py-2.5 cursor-pointer hover:bg-muted/40 transition-colors {selectedCandidateIds.has(c.id) ? 'border-red-300 bg-red-50/50' : ''}">
+						<Checkbox checked={selectedCandidateIds.has(c.id)} onCheckedChange={() => toggleCandidate(c.id)} class="mt-0.5" />
+						<div class="min-w-0 flex-1">
+							<div class="flex items-center justify-between gap-2">
+								<span class="font-semibold text-sm text-foreground">{c.name}</span>
+								<span class="text-xs text-muted-foreground truncate">{c.customerName}</span>
+							</div>
+							<ul class="mt-1 text-xs text-red-700 list-disc list-inside space-y-0.5">
+								{#each c.reasons as reason}
+									<li>{reason}</li>
+								{/each}
+							</ul>
+						</div>
+					</label>
+				{/each}
+			</div>
+			<form method="POST" action="?/markIncorrectSelected" use:enhance={() => {
+				markingSelected = true;
+				return async ({ result, update }) => {
+					await update();
+					markingSelected = false;
+					if (result.type === 'redirect') {
+						showCheckAddressesModal = false;
+						addToast('Orders marked incorrect');
+					} else {
+						addToast('Failed to mark orders', 'error');
+					}
+				};
+			}}>
+				<input type="hidden" name="ids" value={[...selectedCandidateIds].join(',')} />
+				<Dialog.Footer class="mt-4">
+					<Button type="button" variant="outline" disabled={markingSelected} onclick={() => showCheckAddressesModal = false}>Cancel</Button>
+					<Button type="submit" disabled={markingSelected || selectedCandidateIds.size === 0}>
+						{#if markingSelected}<Loader2Icon class="size-4 animate-spin" />{/if}
+						{markingSelected ? 'Marking…' : `Mark ${selectedCandidateIds.size} as Incorrect`}
+					</Button>
+				</Dialog.Footer>
+			</form>
+		{/if}
 	</Dialog.Content>
 </Dialog.Root>
 
