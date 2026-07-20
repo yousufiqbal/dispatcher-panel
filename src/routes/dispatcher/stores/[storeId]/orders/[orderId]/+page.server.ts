@@ -315,26 +315,36 @@ export const actions: Actions = {
 		const store = await getAuthorizedStore(locals.session, params.storeId);
 		const client = getShopifyClient(store);
 		const fd = await request.formData();
-		const percentage = parseFloat(fd.get('percentage') as string);
 
-		if (!percentage || percentage <= 0 || percentage > 100) {
-			return fail(400, { error: 'Enter a valid percentage between 1 and 100' });
+		// One or more line items, each with its own percentage — order matches
+		// the calculated order's line items 1:1 since neither list is reordered.
+		const lineItemIds = fd.getAll('lineItemId') as string[];
+		const percentages = fd.getAll('percentage') as string[];
+
+		const selections = lineItemIds
+			.map((id, i) => ({ id, percentage: parseFloat(percentages[i] ?? '0') }))
+			.filter((s) => s.percentage > 0 && s.percentage <= 100);
+
+		if (selections.length === 0) {
+			return fail(400, { error: 'Select at least one item and enter a valid percentage (1–100)' });
 		}
 
 		try {
-			const { calcOrderId, lineItems } = await orderEditBegin(client, toShopifyOrderId(params.orderId));
-			for (const item of lineItems) {
-				await orderEditAddDiscount(client, calcOrderId, item.id, {
-					value: percentage,
+			const { calcOrderId, lineItems: calcLineItems } = await orderEditBegin(client, toShopifyOrderId(params.orderId));
+			for (const sel of selections) {
+				const origIdx = lineItemIds.indexOf(sel.id);
+				const calcLineItemId = calcLineItems[origIdx]?.id ?? sel.id;
+				await orderEditAddDiscount(client, calcOrderId, calcLineItemId, {
+					value: sel.percentage,
 					valueType: 'PERCENTAGE',
-					description: `${percentage}% off`
+					description: `${sel.percentage}% off`
 				});
 			}
-			await orderEditCommit(client, calcOrderId, false, `Applied ${percentage}% discount to all items`);
+			await orderEditCommit(client, calcOrderId, false, `Applied discount to ${selections.length} item${selections.length === 1 ? '' : 's'}`);
 			if (locals.session) {
 				await logAudit(locals.session.userId, 'dispatcher', 'order.applyDiscount', {
 					targetType: 'order', targetId: params.orderId, storeId: params.storeId,
-					metadata: { percentage }
+					metadata: { selections }
 				});
 			}
 		} catch (e: unknown) {

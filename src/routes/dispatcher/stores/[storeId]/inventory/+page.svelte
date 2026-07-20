@@ -61,7 +61,7 @@
 			<Input
 				type="search"
 				class="pl-9"
-				placeholder="Search Inventory"
+				placeholder="Filter Inventory"
 				bind:value={searchInput}
 				oninput={onSearch}
 			/>

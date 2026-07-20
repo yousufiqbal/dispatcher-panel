@@ -43,6 +43,10 @@ export const stores = sqliteTable('stores', {
 	oauthClientId: text('oauth_client_id'),
 	oauthClientSecret: text('oauth_client_secret'),
 	oauthRedirectUri: text('oauth_redirect_uri'),
+	// Restock tool: how many days air/sea shipments take to arrive, used to size
+	// the recommended reorder quantity so stock doesn't run out before it lands.
+	airLeadDays: integer('air_lead_days').notNull().default(15),
+	seaLeadDays: integer('sea_lead_days').notNull().default(60),
 	isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
 	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()
@@ -157,6 +161,86 @@ export const courierBookings = sqliteTable('courier_bookings', {
 export const activityLogSettings = sqliteTable('activity_log_settings', {
 	action: text('action').primaryKey(),
 	enabled: integer('enabled', { mode: 'boolean' }).notNull()
+});
+
+// --- Restock tool ---------------------------------------------------------
+// A "session" is one pass through the catalog (start → page through products
+// entering quantities → complete). Never writes to Shopify — output is a
+// report the admin acts on manually, by design (keeps inventory writes out
+// of dispatcher hands).
+
+export const restockSessions = sqliteTable('restock_sessions', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	storeId: text('store_id')
+		.notNull()
+		.references(() => stores.id, { onDelete: 'cascade' }),
+	startedAt: integer('started_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
+	completedAt: integer('completed_at', { mode: 'timestamp' }),
+	totalProducts: integer('total_products').notNull().default(0)
+});
+
+export const restockItems = sqliteTable('restock_items', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	sessionId: text('session_id')
+		.notNull()
+		.references(() => restockSessions.id, { onDelete: 'cascade' }),
+	productId: text('product_id').notNull(),
+	variantId: text('variant_id').notNull(),
+	productTitle: text('product_title').notNull(),
+	variantTitle: text('variant_title'),
+	sku: text('sku'),
+	productImageUrl: text('product_image_url'),
+	variantImageUrl: text('variant_image_url'),
+	sales30: integer('sales_30').notNull().default(0),
+	sales60: integer('sales_60').notNull().default(0),
+	sales90: integer('sales_90').notNull().default(0),
+	currentStock: integer('current_stock').notNull().default(0),
+	recAir: integer('rec_air').notNull().default(0),
+	recSea: integer('rec_sea').notNull().default(0),
+	actualRestock: integer('actual_restock'),
+	position: integer('position').notNull().default(0),
+	variantPosition: integer('variant_position').notNull().default(0),
+	orderedAt: integer('ordered_at', { mode: 'timestamp' })
+});
+
+export const inventorySessions = sqliteTable('inventory_sessions', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	storeId: text('store_id')
+		.notNull()
+		.references(() => stores.id, { onDelete: 'cascade' }),
+	startedAt: integer('started_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
+	completedAt: integer('completed_at', { mode: 'timestamp' }),
+	totalProducts: integer('total_products').notNull().default(0)
+});
+
+export const inventoryItems = sqliteTable('inventory_items', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	sessionId: text('session_id')
+		.notNull()
+		.references(() => inventorySessions.id, { onDelete: 'cascade' }),
+	productId: text('product_id').notNull(),
+	variantId: text('variant_id').notNull(),
+	productTitle: text('product_title').notNull(),
+	variantTitle: text('variant_title'),
+	sku: text('sku'),
+	productImageUrl: text('product_image_url'),
+	variantImageUrl: text('variant_image_url'),
+	currentStock: integer('current_stock').notNull().default(0),
+	newStock: integer('new_stock'),
+	position: integer('position').notNull().default(0),
+	variantPosition: integer('variant_position').notNull().default(0)
 });
 
 export const auditLog = sqliteTable('audit_log', {

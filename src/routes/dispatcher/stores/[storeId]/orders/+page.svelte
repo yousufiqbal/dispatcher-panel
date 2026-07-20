@@ -14,8 +14,9 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { formatCurrency, formatDate, formatRelativeDate } from '$lib/utils';
 	import { deliveryPill } from '$lib/delivery-status';
-	import SearchIcon from '@lucide/svelte/icons/search';
+	import GlobalSearch from '$lib/components/GlobalSearch.svelte';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
+	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import PrinterIcon from '@lucide/svelte/icons/printer';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
@@ -24,12 +25,10 @@
 	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
+	import CheckCircle2Icon from '@lucide/svelte/icons/check-circle-2';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
-
-	let searchInput = $state(data.searchQ ?? '');
-	let searchTimeout: ReturnType<typeof setTimeout>;
 
 	let selectedIds = $state<Set<string>>(new Set());
 	let copiedPhone = $state<string | null>(null);
@@ -232,15 +231,6 @@
 		goto(`?${sp}`, { keepFocus: true });
 	}
 
-	function onSearch() {
-		clearTimeout(searchTimeout);
-		searchTimeout = setTimeout(() => {
-			// Search should look across all orders, not just the currently
-			// selected status tab — reset to "all" whenever a search runs.
-			navigate({ q: searchInput || null, status: null });
-		}, 350);
-	}
-
 	function setStatus(key: string) {
 		navigate({ status: key === 'all' ? null : key });
 	}
@@ -349,26 +339,8 @@
 <div class="p-3 sm:p-6">
 	<!-- Toolbar -->
 	<div class="flex items-center justify-between gap-3 sm:gap-4 mb-5">
-		<div class="flex-1 min-w-0 sm:max-w-sm relative">
-			<SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-			<Input
-				type="search"
-				class="pl-9"
-				placeholder="Search Orders"
-				bind:value={searchInput}
-				oninput={onSearch}
-			/>
-		</div>
+		<GlobalSearch />
 		<div class="flex items-center gap-2 shrink-0">
-			<Button
-				onclick={async () => { refreshing = true; await invalidateAll(); refreshing = false; }}
-				variant="outline"
-				size="icon"
-				title="Refresh orders"
-				disabled={refreshing}
-			>
-				<RefreshCwIcon class="size-4 {refreshing ? 'animate-spin' : ''}" />
-			</Button>
 			<Button href="/dispatcher/stores/{storeId}/orders/new" class="size-9 p-0 sm:size-auto sm:px-4 sm:py-2">
 				<PlusIcon class="size-4" />
 				<span class="hidden sm:inline">New Order</span>
@@ -382,7 +354,14 @@
 					{/snippet}
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Content align="end" class="w-44">
-					<DropdownMenu.Item onclick={() => setStatus('drafts')}>Drafts</DropdownMenu.Item>
+					<DropdownMenu.Item disabled={refreshing} onclick={async () => { refreshing = true; await invalidateAll(); refreshing = false; }}>
+						<RefreshCwIcon class="size-3.5 {refreshing ? 'animate-spin' : ''}" />
+						Refresh
+					</DropdownMenu.Item>
+					<DropdownMenu.Item onclick={() => setStatus('drafts')}>
+						<FileTextIcon class="size-3.5" />
+						Order Drafts
+					</DropdownMenu.Item>
 					<DropdownMenu.Item onclick={openCheckAddressesModal}>
 						<MapPinIcon class="size-3.5" />
 						Check Addresses
@@ -586,9 +565,7 @@
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
 			</svg>
 			<h3 class="font-semibold text-foreground mb-1">No orders found</h3>
-			<p class="text-sm text-muted-foreground">
-				{searchInput ? `No results for "${searchInput}"` : 'No orders in this category yet'}
-			</p>
+			<p class="text-sm text-muted-foreground">No orders in this category yet</p>
 		</div>
 	{:else}
 		<!-- Desktop table -->
@@ -956,8 +933,12 @@
 				</Dialog.Footer>
 			</form>
 		{:else if candidates.length === 0}
-			<div class="py-6 text-center text-sm text-muted-foreground">
-				Checked {checkedCount} pending order{checkedCount === 1 ? '' : 's'} — no address issues found.
+			<div class="flex flex-col items-center gap-3 py-8 px-4 text-center rounded-lg bg-green-50 border border-green-200">
+				<CheckCircle2Icon class="size-10 text-green-600" />
+				<p class="font-semibold text-green-900">All addresses look good</p>
+				<p class="text-sm text-green-700 -mt-2">
+					Checked {checkedCount} pending order{checkedCount === 1 ? '' : 's'} — nothing needs attention.
+				</p>
 			</div>
 			<Dialog.Footer>
 				<Button type="button" variant="outline" onclick={() => showCheckAddressesModal = false}>Close</Button>

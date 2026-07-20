@@ -131,6 +131,9 @@ export interface OrderDetail extends OrderNode {
 			// fully removed from the order (Shopify shows these in a "Removed" card).
 			currentQuantity: number;
 			originalUnitPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+			// Reflects any discount already applied to this line item — used to show
+			// "already discounted" state before applying more.
+			discountedUnitPriceSet: { shopMoney: { amount: string; currencyCode: string } };
 			variant: { id: string; title: string; sku: string | null; image: { url: string; altText: string | null } | null } | null;
 			image: { url: string; altText: string | null } | null;
 		}[];
@@ -186,6 +189,7 @@ export async function getOrder(client: ShopifyClient, orderId: string): Promise<
           nodes {
             id title quantity currentQuantity
             originalUnitPriceSet { shopMoney { amount currencyCode } }
+            discountedUnitPriceSet { shopMoney { amount currencyCode } }
             variant { id title sku image { url altText } }
             image { url altText }
           }

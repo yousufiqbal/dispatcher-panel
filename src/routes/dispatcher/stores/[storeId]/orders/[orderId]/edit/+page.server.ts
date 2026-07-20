@@ -37,11 +37,11 @@ export const actions: Actions = {
 		const newVariantIds = fd.getAll('newVariantId') as string[];
 		const newQtys = fd.getAll('newQty') as string[];
 
-		// Discount
-		const discountLineItemId = fd.get('discountLineItemId') as string | null;
-		const discountValue = parseFloat((fd.get('discountValue') as string) || '0');
-		const discountType = (fd.get('discountType') as 'PERCENTAGE' | 'FIXED_AMOUNT') || 'PERCENTAGE';
-		const discountDesc = (fd.get('discountDesc') as string) || 'Discount';
+		// Discounts — one or more line items, each with its own value/type
+		const discountLineItemIds = fd.getAll('discountLineItemId') as string[];
+		const discountValues = fd.getAll('discountValue') as string[];
+		const discountTypes = fd.getAll('discountType') as ('PERCENTAGE' | 'FIXED_AMOUNT')[];
+		const discountDescs = fd.getAll('discountDesc') as string[];
 		const discountCurrencyCode = fd.get('currencyCode') as string | null;
 
 		try {
@@ -60,13 +60,16 @@ export const actions: Actions = {
 				await orderEditAddVariant(client, calcId, newVariantIds[i], qty);
 			}
 
-			if (discountLineItemId && discountValue > 0) {
+			for (let i = 0; i < discountLineItemIds.length; i++) {
+				const discountLineItemId = discountLineItemIds[i];
+				const discountValue = parseFloat(discountValues[i] ?? '0');
+				if (!discountLineItemId || discountValue <= 0) continue;
 				const origIdx = lineItemIds.indexOf(discountLineItemId);
 				const calcDiscountLineItemId = origIdx >= 0 ? (calcLineItems[origIdx]?.id ?? discountLineItemId) : discountLineItemId;
 				await orderEditAddDiscount(client, calcId, calcDiscountLineItemId, {
 					value: discountValue,
-					valueType: discountType,
-					description: discountDesc,
+					valueType: discountTypes[i] ?? 'PERCENTAGE',
+					description: discountDescs[i] || 'Discount',
 					currencyCode: discountCurrencyCode ?? undefined
 				});
 			}

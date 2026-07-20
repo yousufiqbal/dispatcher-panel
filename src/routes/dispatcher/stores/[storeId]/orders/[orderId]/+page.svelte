@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { goto } from '$app/navigation';
 	import { addToast } from '$lib/toast.svelte';
 	import { page } from '$app/stores';
 	import { formatCurrency, formatDate } from '$lib/utils';
@@ -39,7 +40,7 @@
 	let showEditContactModal = $state(false);
 	let showEditShippingModal = $state(false);
 	let showDiscountModal = $state(false);
-	let discountPercentage = $state('');
+	let discountSelections = $state<Record<string, { checked: boolean; percent: string }>>({});
 	let applyingDiscount = $state(false);
 	let editNote = $state(false);
 	let noteInput = $state('');
@@ -298,7 +299,16 @@
 	<!-- Header -->
 	<div class="flex items-start justify-between gap-4 flex-wrap">
 		<div class="flex items-start gap-3">
-			<Button href="/dispatcher/stores/{storeId}/orders" variant="outline" size="icon" class="shrink-0" title="Back to Orders">
+			<Button
+				onclick={() => {
+					if (window.history.length > 1) window.history.back();
+					else goto(`/dispatcher/stores/${storeId}/orders`);
+				}}
+				variant="outline"
+				size="icon"
+				class="shrink-0"
+				title="Back"
+			>
 				<ArrowLeftIcon class="size-4" />
 			</Button>
 			<div>
@@ -374,7 +384,7 @@
 						{/if}
 						<DropdownMenu.Item onclick={() => showDuplicateDialog = true}>Duplicate Order</DropdownMenu.Item>
 						{#if !isCancelled}
-							<DropdownMenu.Item onclick={() => { discountPercentage = ''; showDiscountModal = true; }}>Add discount to items</DropdownMenu.Item>
+							<DropdownMenu.Item onclick={() => { discountSelections = {}; showDiscountModal = true; }}>Add discount to items</DropdownMenu.Item>
 						{/if}
 						<DropdownMenu.Item onclick={() => window.open(`/dispatcher/stores/${storeId}/orders/${$page.params.orderId}/invoice`, '_blank')}>
 							Download Invoice
@@ -415,12 +425,12 @@
 					<tbody class="divide-y divide-border">
 						{#each activeLineItems as item}
 							{@const img = item.image?.url ?? item.variant?.image?.url}
+							{@const unitOriginal = parseFloat(item.originalUnitPriceSet.shopMoney.amount)}
+							{@const unitDiscounted = parseFloat(item.discountedUnitPriceSet.shopMoney.amount)}
+							{@const itemPct = unitOriginal > 0 && unitDiscounted < unitOriginal ? Math.round((1 - unitDiscounted / unitOriginal) * 100) : 0}
 							<tr>
 								<td class="px-5 py-3">
 									<div class="flex items-center gap-3">
-										<span class="size-14 rounded-md bg-white text-foreground border border-border flex items-center justify-center shrink-0 text-base font-bold">
-											{item.currentQuantity}×
-										</span>
 										{#if img}
 											<button type="button" onclick={() => { lightboxUrl = img; lightboxAlt = item.image?.altText ?? item.title; }} class="shrink-0 cursor-zoom-in">
 												<img src={img} alt={item.image?.altText ?? item.title} class="size-14 rounded-md object-cover border border-border hover:opacity-80 transition-opacity" />
@@ -434,20 +444,30 @@
 										{/if}
 										<div>
 											<div class="font-medium text-foreground">{item.title}</div>
-											{#if item.variant?.title && item.variant.title !== 'Default Title'}
-												<div class="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-xs font-semibold">{item.variant.title}</div>
-											{/if}
+											<div class="flex items-center gap-1.5 mt-0.5">
+												{#if item.variant?.title && item.variant.title !== 'Default Title'}
+													<span class="inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-xs font-semibold">{item.variant.title}</span>
+												{/if}
+												<span class="inline-block px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 text-xs font-semibold">×{item.currentQuantity}</span>
+											</div>
 											{#if item.variant?.sku}
-												<div class="text-xs text-muted-foreground font-mono">SKU: {item.variant.sku}</div>
+												<div class="text-xs text-muted-foreground font-mono mt-0.5">SKU: {item.variant.sku}</div>
 											{/if}
 										</div>
 									</div>
 								</td>
 								<td class="px-5 py-3 text-right font-medium whitespace-nowrap">
-									{formatCurrency(
-										(parseFloat(item.originalUnitPriceSet.shopMoney.amount) * item.currentQuantity).toFixed(2),
-										item.originalUnitPriceSet.shopMoney.currencyCode
-									)}
+									{#if itemPct > 0}
+										<div class="inline-block mb-0.5 px-1.5 py-0.5 rounded bg-green-100 text-green-800 text-xs font-semibold">{itemPct}% off</div>
+										<div class="line-through text-muted-foreground text-xs">
+											{formatCurrency((unitOriginal * item.currentQuantity).toFixed(2), item.originalUnitPriceSet.shopMoney.currencyCode)}
+										</div>
+										<div class="text-green-700">
+											{formatCurrency((unitDiscounted * item.currentQuantity).toFixed(2), item.discountedUnitPriceSet.shopMoney.currencyCode)}
+										</div>
+									{:else}
+										{formatCurrency((unitOriginal * item.currentQuantity).toFixed(2), item.originalUnitPriceSet.shopMoney.currencyCode)}
+									{/if}
 								</td>
 							</tr>
 						{/each}
@@ -458,10 +478,10 @@
 				<div class="md:hidden divide-y divide-border">
 					{#each activeLineItems as item}
 						{@const img = item.image?.url ?? item.variant?.image?.url}
+						{@const unitOriginal = parseFloat(item.originalUnitPriceSet.shopMoney.amount)}
+						{@const unitDiscounted = parseFloat(item.discountedUnitPriceSet.shopMoney.amount)}
+						{@const itemPct = unitOriginal > 0 && unitDiscounted < unitOriginal ? Math.round((1 - unitDiscounted / unitOriginal) * 100) : 0}
 						<div class="px-4 py-3 flex items-start gap-3">
-							<span class="size-14 rounded-md bg-white text-foreground border border-border flex items-center justify-center shrink-0 text-base font-bold">
-								{item.currentQuantity}×
-							</span>
 							{#if img}
 								<button type="button" onclick={() => { lightboxUrl = img; lightboxAlt = item.image?.altText ?? item.title; }} class="shrink-0 cursor-zoom-in">
 									<img src={img} alt={item.image?.altText ?? item.title} class="size-14 rounded-md object-cover border border-border hover:opacity-80 transition-opacity" />
@@ -475,19 +495,29 @@
 							{/if}
 							<div class="flex-1 min-w-0">
 								<div class="font-medium text-foreground">{item.title}</div>
-								{#if item.variant?.title && item.variant.title !== 'Default Title'}
-									<div class="inline-block mt-0.5 px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-xs font-semibold">{item.variant.title}</div>
-								{/if}
+								<div class="flex items-center gap-1.5 mt-0.5">
+									{#if item.variant?.title && item.variant.title !== 'Default Title'}
+										<span class="inline-block px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 text-xs font-semibold">{item.variant.title}</span>
+									{/if}
+									<span class="inline-block px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 text-xs font-semibold">×{item.currentQuantity}</span>
+								</div>
 								{#if item.variant?.sku}
-									<div class="text-xs text-muted-foreground font-mono">SKU: {item.variant.sku}</div>
+									<div class="text-xs text-muted-foreground font-mono mt-0.5">SKU: {item.variant.sku}</div>
 								{/if}
 								<div class="flex items-center justify-end gap-2 mt-1.5">
-									<span class="text-sm font-medium text-foreground">
-										{formatCurrency(
-											(parseFloat(item.originalUnitPriceSet.shopMoney.amount) * item.currentQuantity).toFixed(2),
-											item.originalUnitPriceSet.shopMoney.currencyCode
-										)}
-									</span>
+									{#if itemPct > 0}
+										<span class="px-1.5 py-0.5 rounded bg-green-100 text-green-800 text-xs font-semibold">{itemPct}% off</span>
+										<span class="text-xs text-muted-foreground line-through">
+											{formatCurrency((unitOriginal * item.currentQuantity).toFixed(2), item.originalUnitPriceSet.shopMoney.currencyCode)}
+										</span>
+										<span class="text-sm font-medium text-green-700">
+											{formatCurrency((unitDiscounted * item.currentQuantity).toFixed(2), item.discountedUnitPriceSet.shopMoney.currencyCode)}
+										</span>
+									{:else}
+										<span class="text-sm font-medium text-foreground">
+											{formatCurrency((unitOriginal * item.currentQuantity).toFixed(2), item.originalUnitPriceSet.shopMoney.currencyCode)}
+										</span>
+									{/if}
 								</div>
 							</div>
 						</div>
@@ -755,12 +785,12 @@
 
 <!-- Add discount to items dialog -->
 <Dialog.Root bind:open={showDiscountModal}>
-	<Dialog.Content class="sm:max-w-sm">
+	<Dialog.Content class="sm:max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden min-w-0">
 		<Dialog.Header>
 			<Dialog.Title>Add discount to items</Dialog.Title>
-			<Dialog.Description>Applies a percentage discount to every line item on this order.</Dialog.Description>
+			<Dialog.Description>Select the items to discount and set a percentage for each.</Dialog.Description>
 		</Dialog.Header>
-		<form method="POST" action="?/applyDiscount" use:enhance={() => {
+		<form method="POST" action="?/applyDiscount" class="min-w-0" use:enhance={() => {
 			applyingDiscount = true;
 			return async ({ result, update }) => {
 				await update();
@@ -772,28 +802,66 @@
 					addToast('Failed to apply discount', 'error');
 				}
 			};
-		}} class="space-y-4">
-			<div class="space-y-1.5">
-				<Label for="discount-percentage">Discount percentage</Label>
-				<div class="relative">
-					<Input
-						id="discount-percentage"
-						name="percentage"
-						type="number"
-						min="1"
-						max="100"
-						step="1"
-						placeholder="10"
-						bind:value={discountPercentage}
-						class="pr-8"
-						required
-					/>
-					<span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
-				</div>
+		}}>
+			<div class="space-y-2 min-w-0">
+				{#if activeLineItems.length === 0}
+					<p class="text-sm text-muted-foreground py-4 text-center">No items on this order.</p>
+				{/if}
+				<!-- Loop the full (unfiltered) line item list, not just activeLineItems —
+				     orderEditBegin's calculated order mirrors this same full order, so a
+				     hidden input must still be emitted for removed (qty-0) items to keep
+				     array positions aligned when the server matches by index. -->
+				{#each order.lineItems.nodes as item}
+					{#if item.currentQuantity > 0}
+						{@const sel = discountSelections[item.id] ?? { checked: false, percent: '' }}
+						{@const original = parseFloat(item.originalUnitPriceSet.shopMoney.amount)}
+						{@const discounted = parseFloat(item.discountedUnitPriceSet.shopMoney.amount)}
+						{@const existingPct = original > 0 && discounted < original ? Math.round((1 - discounted / original) * 100) : 0}
+						{@const img = item.image?.url ?? item.variant?.image?.url}
+						<label class="flex items-center gap-3 min-w-0 border border-border rounded-lg px-3 py-2.5 {sel.checked ? 'border-primary/40 bg-primary/5' : ''}">
+							<Checkbox checked={sel.checked} onCheckedChange={() => discountSelections[item.id] = { ...sel, checked: !sel.checked }} />
+							<input type="hidden" name="lineItemId" value={item.id} />
+							<input type="hidden" name="percentage" value={sel.checked ? sel.percent : ''} />
+							{#if img}
+								<img src={img} alt={item.title} class="size-10 rounded-md object-cover border border-border shrink-0" />
+							{:else}
+								<div class="size-10 rounded-md bg-muted border border-border shrink-0"></div>
+							{/if}
+							<div class="min-w-0 flex-1">
+								<div class="text-sm font-medium text-foreground truncate">{item.title}</div>
+								<div class="text-xs text-muted-foreground truncate">
+									{#if existingPct > 0}
+										<span class="line-through">{formatCurrency(item.originalUnitPriceSet.shopMoney.amount, item.originalUnitPriceSet.shopMoney.currencyCode)}</span>
+										<span class="text-green-700 font-medium">{formatCurrency(item.discountedUnitPriceSet.shopMoney.amount, item.discountedUnitPriceSet.shopMoney.currencyCode)} each · {existingPct}% off</span>
+									{:else}
+										{formatCurrency(item.originalUnitPriceSet.shopMoney.amount, item.originalUnitPriceSet.shopMoney.currencyCode)} each
+									{/if}
+								</div>
+							</div>
+							<div class="relative w-24 shrink-0">
+								<Input
+									type="number"
+									min="0"
+									max="100"
+									step="1"
+									placeholder="0"
+									class="pr-7 h-9 text-sm"
+									disabled={!sel.checked}
+									value={sel.percent}
+									oninput={(e) => discountSelections[item.id] = { ...sel, percent: e.currentTarget.value }}
+								/>
+								<span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+							</div>
+						</label>
+					{:else}
+						<input type="hidden" name="lineItemId" value={item.id} />
+						<input type="hidden" name="percentage" value="" />
+					{/if}
+				{/each}
 			</div>
-			<Dialog.Footer>
+			<Dialog.Footer class="mt-4">
 				<Button type="button" variant="outline" disabled={applyingDiscount} onclick={() => showDiscountModal = false}>Cancel</Button>
-				<Button type="submit" disabled={applyingDiscount || !discountPercentage}>
+				<Button type="submit" disabled={applyingDiscount}>
 					{#if applyingDiscount}{@render spinner()}{/if}
 					{applyingDiscount ? 'Applying…' : 'Apply Discount'}
 				</Button>

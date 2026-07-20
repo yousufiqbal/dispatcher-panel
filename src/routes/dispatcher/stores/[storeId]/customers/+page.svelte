@@ -2,8 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import SearchIcon from '@lucide/svelte/icons/search';
+	import GlobalSearch from '$lib/components/GlobalSearch.svelte';
 	import UserPlusIcon from '@lucide/svelte/icons/user-plus';
 	import Minimize2Icon from '@lucide/svelte/icons/minimize-2';
 	import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
@@ -13,8 +12,6 @@
 
 	let { data }: { data: PageData } = $props();
 
-	let searchInput = $state(data.q ?? '');
-	let searchTimeout: ReturnType<typeof setTimeout>;
 	const storeId = $derived($page.params.storeId);
 	let loadingMore = $state(false);
 	let compact = $state(true);
@@ -23,15 +20,6 @@
 		data;
 		loadingMore = false;
 	});
-
-	function onSearch() {
-		clearTimeout(searchTimeout);
-		searchTimeout = setTimeout(() => {
-			const sp = new URLSearchParams();
-			if (searchInput) sp.set('q', searchInput);
-			goto(`?${sp}`, { keepFocus: true });
-		}, 350);
-	}
 
 	function nextPage() {
 		loadingMore = true;
@@ -47,16 +35,7 @@
 
 <div class="p-3 sm:p-6">
 	<div class="flex items-center justify-between gap-4 mb-5">
-		<div class="flex-1 max-w-sm relative">
-			<SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-			<Input
-				type="search"
-				class="pl-9"
-				placeholder="Search Customers"
-				bind:value={searchInput}
-				oninput={onSearch}
-			/>
-		</div>
+		<GlobalSearch />
 		<div class="flex items-center gap-2 shrink-0">
 			<Button href="/dispatcher/stores/{storeId}/customers/new" class="shrink-0 size-9 p-0 sm:size-auto sm:px-4 sm:py-2">
 				<UserPlusIcon class="size-4" />
@@ -84,9 +63,6 @@
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
 			</svg>
 			<h3 class="font-semibold text-foreground mb-1">No customers found</h3>
-			{#if searchInput}
-				<p class="text-sm text-muted-foreground">No results for "{searchInput}"</p>
-			{/if}
 		</div>
 	{:else}
 		<div class="card overflow-hidden {compact ? 'lg:max-w-[50%]' : ''}">

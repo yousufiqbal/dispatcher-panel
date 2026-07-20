@@ -2,8 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import SearchIcon from '@lucide/svelte/icons/search';
+	import GlobalSearch from '$lib/components/GlobalSearch.svelte';
 	import Minimize2Icon from '@lucide/svelte/icons/minimize-2';
 	import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
@@ -13,8 +12,6 @@
 
 	let { data }: { data: PageData } = $props();
 
-	let searchInput = $state(data.q ?? '');
-	let searchTimeout: ReturnType<typeof setTimeout>;
 	const storeId = $derived($page.params.storeId);
 	let loadingMore = $state(false);
 	let compact = $state(true);
@@ -23,15 +20,6 @@
 		data;
 		loadingMore = false;
 	});
-
-	function onSearch() {
-		clearTimeout(searchTimeout);
-		searchTimeout = setTimeout(() => {
-			const sp = new URLSearchParams();
-			if (searchInput) sp.set('q', searchInput);
-			goto(`?${sp}`, { keepFocus: true });
-		}, 350);
-	}
 
 	function nextPage() {
 		loadingMore = true;
@@ -53,16 +41,7 @@
 
 <div class="p-3 sm:p-6">
 	<div class="flex items-center justify-between gap-4 mb-5">
-		<div class="flex-1 max-w-sm relative">
-			<SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-			<Input
-				type="search"
-				class="pl-9"
-				placeholder="Search {data.totalCount} Products"
-				bind:value={searchInput}
-				oninput={onSearch}
-			/>
-		</div>
+		<GlobalSearch />
 		<Button
 			onclick={() => compact = !compact}
 			variant="outline"
@@ -84,9 +63,6 @@
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
 			</svg>
 			<h3 class="font-semibold text-foreground mb-1">No products found</h3>
-			{#if searchInput}
-				<p class="text-sm text-muted-foreground">No results for "{searchInput}"</p>
-			{/if}
 		</div>
 	{:else}
 		<div class="card overflow-hidden {compact ? 'lg:max-w-[50%]' : ''}">

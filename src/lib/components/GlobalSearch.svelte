@@ -27,6 +27,7 @@
 	let open = $state(false);
 	let activeIndex = $state(-1);
 	let containerEl = $state<HTMLDivElement | null>(null);
+	let inputEl = $state<HTMLInputElement | null>(null);
 	let searchTimeout: ReturnType<typeof setTimeout>;
 	let requestId = 0;
 
@@ -52,6 +53,32 @@
 	}
 
 	const storeId = $derived($page.params.storeId as string | undefined);
+
+	// Default the scope to whichever section (Orders/Products/Customers) the
+	// dispatcher is currently viewing — still freely changeable from the dropdown,
+	// it just re-syncs on the next navigation into one of those sections.
+	const routeScope = $derived.by((): Scope | null => {
+		const segments = $page.url.pathname.split('/').filter(Boolean);
+		const idx = storeId ? segments.indexOf(storeId) : -1;
+		const section = idx >= 0 ? segments[idx + 1] : undefined;
+		return section === 'orders' || section === 'products' || section === 'customers' ? section : null;
+	});
+
+	$effect(() => {
+		if (routeScope) scope = routeScope;
+	});
+
+	// Ctrl/Cmd+K focuses search from anywhere in the dispatcher panel.
+	$effect(() => {
+		function onKeydown(e: KeyboardEvent) {
+			if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+				e.preventDefault();
+				inputEl?.focus();
+			}
+		}
+		window.addEventListener('keydown', onKeydown);
+		return () => window.removeEventListener('keydown', onKeydown);
+	});
 
 	async function runSearch() {
 		const q = query.trim();
@@ -101,9 +128,14 @@
 		} else if (e.key === 'ArrowUp') {
 			e.preventDefault();
 			activeIndex = (activeIndex - 1 + results.length) % results.length;
-		} else if (e.key === 'Enter' && activeIndex >= 0) {
-			e.preventDefault();
-			selectResult(results[activeIndex]);
+		} else if (e.key === 'Enter') {
+			if (activeIndex >= 0) {
+				e.preventDefault();
+				selectResult(results[activeIndex]);
+			} else if (results.length === 1) {
+				e.preventDefault();
+				selectResult(results[0]);
+			}
 		} else if (e.key === 'Escape') {
 			open = false;
 		}
@@ -157,6 +189,7 @@
 			<div class="relative flex-1 min-w-0">
 				<SearchIcon class="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
 				<Input
+					bind:ref={inputEl}
 					type="search"
 					placeholder="Search {SCOPES.find((s) => s.key === scope)?.label.toLowerCase()}…"
 					class="border-0 shadow-none pl-8 h-9 focus-visible:ring-0"

@@ -3,10 +3,8 @@
 	import { page } from '$app/stores';
 	import { formatCurrency } from '$lib/utils';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import * as Select from '$lib/components/ui/select/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
-	import { Label } from '$lib/components/ui/label/index.js';
 	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import SearchIcon from '@lucide/svelte/icons/search';
@@ -34,37 +32,38 @@
 
 	let notifyCustomer = $state(false);
 
-	// Per-item discount modal
-	interface DiscountModal {
-		lineItemId: string;
-		title: string;
-		unitPrice: string;
-	}
-	let discountModal = $state<DiscountModal | null>(null);
-	let discountValue = $state('');
-	let discountType = $state<'PERCENTAGE' | 'FIXED_AMOUNT'>('FIXED_AMOUNT');
-	let discountDesc = $state('');
-
 	// Track applied discounts per lineItemId
 	let appliedDiscounts = $state<Record<string, { value: string; type: 'PERCENTAGE' | 'FIXED_AMOUNT'; desc: string }>>({});
 
-	function openDiscount(item: { id: string; title: string; originalUnitPriceSet: { shopMoney: { amount: string; currencyCode: string } } }) {
-		discountModal = { lineItemId: item.id, title: item.title, unitPrice: item.originalUnitPriceSet.shopMoney.amount };
-		const existing = appliedDiscounts[item.id];
-		discountValue = existing?.value ?? '';
-		discountType = existing?.type ?? 'FIXED_AMOUNT';
-		discountDesc = existing?.desc ?? '';
+	// Bulk discount modal — lists every item at once so several discounts can be
+	// set/edited/cleared in one pass instead of opening a dialog per item.
+	// Selections default lazily from appliedDiscounts in the template rather than
+	// being pre-populated on open, so rendering never depends on that timing.
+	let showDiscountModal = $state(false);
+	let discountSelections = $state<Record<string, { checked: boolean; percent: string }>>({});
+
+	function defaultSelection(itemId: string): { checked: boolean; percent: string } {
+		const existing = appliedDiscounts[itemId];
+		return { checked: !!existing, percent: existing?.type === 'PERCENTAGE' ? existing.value : '' };
 	}
 
-	function applyDiscount() {
-		if (!discountModal) return;
-		if (discountValue && parseFloat(discountValue) > 0) {
-			appliedDiscounts[discountModal.lineItemId] = { value: discountValue, type: discountType, desc: discountDesc };
-		} else {
-			delete appliedDiscounts[discountModal.lineItemId];
-			appliedDiscounts = { ...appliedDiscounts };
+	function openDiscountModal() {
+		discountSelections = {};
+		showDiscountModal = true;
+	}
+
+	function applyDiscountSelections() {
+		const next = { ...appliedDiscounts };
+		for (const item of order.lineItems.nodes) {
+			const sel = discountSelections[item.id] ?? defaultSelection(item.id);
+			if (sel.checked && sel.percent && parseFloat(sel.percent) > 0) {
+				next[item.id] = { value: sel.percent, type: 'PERCENTAGE', desc: '' };
+			} else {
+				delete next[item.id];
+			}
 		}
-		discountModal = null;
+		appliedDiscounts = next;
+		showDiscountModal = false;
 	}
 
 	function discountedPrice(itemId: string, unitPrice: string, qty: number): number {
@@ -150,9 +149,12 @@
 
 		<!-- Current items -->
 		<div class="card overflow-hidden">
-			<div class="px-5 py-3 border-b border-border bg-muted/30">
-				<h2 class="font-semibold text-sm">Current Items</h2>
-				<p class="text-xs text-muted-foreground mt-0.5">Set quantity to 0 to remove</p>
+			<div class="px-5 py-3 border-b border-border bg-muted/30 flex items-center justify-between gap-3">
+				<div>
+					<h2 class="font-semibold text-sm">Current Items</h2>
+					<p class="text-xs text-muted-foreground mt-0.5">Set quantity to 0 to remove</p>
+				</div>
+				<Button type="button" variant="outline" size="sm" onclick={openDiscountModal}>Add Discount</Button>
 			</div>
 			<div class="divide-y divide-border">
 				{#each order.lineItems.nodes as item}
@@ -184,21 +186,21 @@
 
 						<!-- Price (clickable for discount) + qty -->
 						<div class="flex items-center gap-3 shrink-0">
-							<button
-								type="button"
-								onclick={() => openDiscount(item)}
-								class="text-sm font-medium text-primary hover:underline text-right min-w-[80px] cursor-pointer"
-								title="Click to add discount"
-							>
+							<div class="text-sm font-medium text-right min-w-[80px]">
 								{#if appliedDiscounts[item.id]}
 									<span class="line-through text-muted-foreground text-xs block">
 										{formatCurrency((parseFloat(item.originalUnitPriceSet.shopMoney.amount) * (quantities[item.id] ?? 0)).toFixed(2), item.originalUnitPriceSet.shopMoney.currencyCode)}
 									</span>
-									{formatCurrency(discountedPrice(item.id, item.originalUnitPriceSet.shopMoney.amount, quantities[item.id] ?? 0).toFixed(2), item.originalUnitPriceSet.shopMoney.currencyCode)}
+									<span class="text-foreground">
+										{formatCurrency(discountedPrice(item.id, item.originalUnitPriceSet.shopMoney.amount, quantities[item.id] ?? 0).toFixed(2), item.originalUnitPriceSet.shopMoney.currencyCode)}
+									</span>
+									<span class="text-[10px] font-semibold text-green-700 block">−{appliedDiscounts[item.id].value}%</span>
 								{:else}
-									{formatCurrency((parseFloat(item.originalUnitPriceSet.shopMoney.amount) * (quantities[item.id] ?? 0)).toFixed(2), item.originalUnitPriceSet.shopMoney.currencyCode)}
+									<span class="text-foreground">
+										{formatCurrency((parseFloat(item.originalUnitPriceSet.shopMoney.amount) * (quantities[item.id] ?? 0)).toFixed(2), item.originalUnitPriceSet.shopMoney.currencyCode)}
+									</span>
 								{/if}
-							</button>
+							</div>
 							<div class="flex items-center gap-1">
 								<Button type="button" variant="outline" size="icon" class="size-8" onclick={() => quantities[item.id] = Math.max(0, (quantities[item.id] ?? 1) - 1)}>−</Button>
 								<Input type="number" name="quantity" bind:value={quantities[item.id]} min="0" max="999" class="w-14 text-center h-8 text-sm font-medium" />
@@ -328,58 +330,51 @@
 	</form>
 </div>
 
-<!-- Discount modal -->
-<Dialog.Root open={!!discountModal} onOpenChange={(open) => { if (!open) discountModal = null; }}>
-	<Dialog.Content class="sm:max-w-sm p-0 gap-0 overflow-hidden">
-		<div class="px-6 pt-6 pb-4 border-b border-border">
-			<h2 class="font-semibold">Discount</h2>
-			<p class="text-xs text-muted-foreground mt-0.5 truncate">{discountModal?.title}</p>
+<!-- Bulk discount modal -->
+<Dialog.Root bind:open={showDiscountModal}>
+	<Dialog.Content class="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+		<Dialog.Header>
+			<Dialog.Title>Add Discount</Dialog.Title>
+			<Dialog.Description>Select the items to discount and set a percentage for each. Discounts are visible to the customer.</Dialog.Description>
+		</Dialog.Header>
+		<div class="space-y-2">
+			{#if order.lineItems.nodes.length === 0}
+				<p class="text-sm text-muted-foreground py-4 text-center">No items on this order.</p>
+			{/if}
+			{#each order.lineItems.nodes as item}
+				{@const sel = discountSelections[item.id] ?? defaultSelection(item.id)}
+				{@const existing = appliedDiscounts[item.id]}
+				<label class="flex items-center gap-3 border border-border rounded-lg px-3 py-2.5 {sel.checked ? 'border-primary/40 bg-primary/5' : ''}">
+					<Checkbox checked={sel.checked} onCheckedChange={() => discountSelections[item.id] = { ...sel, checked: !sel.checked }} />
+					<div class="min-w-0 flex-1">
+						<div class="text-sm font-medium text-foreground truncate">{item.title}</div>
+						<div class="text-xs text-muted-foreground">
+							{formatCurrency(item.originalUnitPriceSet.shopMoney.amount, item.originalUnitPriceSet.shopMoney.currencyCode)} each
+							{#if existing}
+								<span class="text-green-700 font-medium">· current discount: {existing.type === 'PERCENTAGE' ? `${existing.value}%` : formatCurrency(existing.value, item.originalUnitPriceSet.shopMoney.currencyCode)}</span>
+							{/if}
+						</div>
+					</div>
+					<div class="relative w-24 shrink-0">
+						<Input
+							type="number"
+							min="0"
+							max="100"
+							step="0.1"
+							placeholder="0"
+							class="pr-7 h-9 text-sm"
+							disabled={!sel.checked}
+							value={sel.percent}
+							oninput={(e) => discountSelections[item.id] = { ...sel, percent: e.currentTarget.value }}
+						/>
+						<span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+					</div>
+				</label>
+			{/each}
 		</div>
-		<div class="p-6 space-y-4">
-			<div class="space-y-1.5">
-				<Label class="text-xs">Discount type</Label>
-				<Select.Root type="single" bind:value={discountType}>
-					<Select.Trigger class="w-full">{discountType === 'PERCENTAGE' ? 'Percentage' : 'Amount'}</Select.Trigger>
-					<Select.Content>
-						<Select.Item value="FIXED_AMOUNT" label="Amount">Amount</Select.Item>
-						<Select.Item value="PERCENTAGE" label="Percentage">Percentage</Select.Item>
-					</Select.Content>
-				</Select.Root>
-			</div>
-
-			<div class="space-y-1.5">
-				<Label class="text-xs">
-					Discount value {discountType === 'PERCENTAGE' ? '(%)' : `(per unit)`}
-				</Label>
-				<div class="relative">
-					{#if discountType === 'FIXED_AMOUNT'}
-						<span class="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">Rs</span>
-					{/if}
-					<Input
-						type="number"
-						min="0"
-						step="0.01"
-						class="{discountType === 'FIXED_AMOUNT' ? 'pl-9 pr-16' : 'pr-10'}"
-						placeholder="0.00"
-						bind:value={discountValue}
-						autofocus
-					/>
-					<span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-						{discountType === 'PERCENTAGE' ? '%' : order.totalPriceSet.shopMoney.currencyCode}
-					</span>
-				</div>
-				<p class="text-xs text-muted-foreground">Visible to customer</p>
-			</div>
-
-			<div class="space-y-1.5">
-				<Label class="text-xs">Reason for discount</Label>
-				<Input type="text" placeholder="Optional" bind:value={discountDesc} />
-			</div>
-
-			<div class="flex gap-3">
-				<Button type="button" class="flex-1" onclick={applyDiscount}>Done</Button>
-				<Button type="button" variant="outline" onclick={() => discountModal = null}>Cancel</Button>
-			</div>
-		</div>
+		<Dialog.Footer>
+			<Button type="button" variant="outline" onclick={() => showDiscountModal = false}>Cancel</Button>
+			<Button type="button" onclick={applyDiscountSelections}>Apply</Button>
+		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
