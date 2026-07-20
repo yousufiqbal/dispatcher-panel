@@ -238,7 +238,7 @@
 
 					<div class="divide-y divide-border">
 						{#each data.variants as v}
-							<div class="p-4 lg:grid lg:grid-cols-[200px_1fr_148px_120px] lg:items-center lg:gap-4 transition-colors hover:bg-muted/40 focus-within:bg-muted/40">
+							<div class="p-4 lg:grid lg:grid-cols-[200px_1fr_148px_120px] lg:items-center lg:gap-4 transition-colors hover:bg-yellow-50 focus-within:bg-yellow-50">
 								<div class="flex items-center gap-3 shrink-0 mb-2 lg:mb-0">
 									{#if v.variantImageUrl}
 										<img src={v.variantImageUrl} alt={v.variantTitle ?? ''} class="size-9 lg:size-11 object-cover rounded-lg border border-border bg-muted shrink-0" />
