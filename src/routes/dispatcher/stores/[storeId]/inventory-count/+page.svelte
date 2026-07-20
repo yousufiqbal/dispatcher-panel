@@ -27,9 +27,6 @@
 <svelte:head><title>Inventory Count — Pro Shipper</title></svelte:head>
 
 <div class="p-3 sm:p-6 max-w-3xl mx-auto">
-	<div class="flex items-center justify-between mb-2">
-		<h1 class="text-xl font-bold text-foreground">Inventory Count Sessions</h1>
-	</div>
 	<p class="text-sm text-muted-foreground mb-5">Counts produce a report only — nothing is written back to Shopify. Apply changes yourself in the Shopify admin.</p>
 
 	{#if form?.startError}

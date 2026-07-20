@@ -6,7 +6,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
-	import XIcon from '@lucide/svelte/icons/x';
+	import MenuIcon from '@lucide/svelte/icons/menu';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
@@ -14,6 +14,7 @@
 	const storeSheetOpen = $derived(isStoreSwitcherOpen());
 	let logoutConfirmOpen = $state(false);
 	let switcherPanelEl = $state<HTMLDivElement | null>(null);
+	let mobileNavOpen = $state(false);
 
 	function isStoreActive(storeId: string) {
 		return $page.url.pathname.includes(`/dispatcher/stores/${storeId}`);
@@ -37,10 +38,11 @@
 		goto('/login');
 	}
 
-	// close sheet on navigation
+	// close store switcher + mobile drawer on navigation
 	$effect(() => {
 		$page.url.pathname;
 		closeStoreSwitcher();
+		mobileNavOpen = false;
 	});
 
 	// Click-outside-to-close, driven directly off the panel element rather than a
@@ -99,9 +101,37 @@
 	</div>
 {/snippet}
 
+{#snippet navLinks()}
+	{#each [
+		{ href: 'orders', label: 'Orders', d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+		{ href: 'customers', label: 'Customers', d: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
+		{ href: 'products', label: 'Products', d: 'M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z' },
+		{ href: 'inventory', label: 'Inventory', d: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7' },
+		{ href: 'restock', label: 'Restock', d: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99' },
+		{ href: 'inventory-count', label: 'Inventory Count', d: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z' }
+	] as item}
+		<a
+			href={tabHref(item.href)}
+			class="flex items-center gap-3 mx-1 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150
+				{!currentStoreId ? 'pointer-events-none opacity-40' : ''}
+				{isTabActive(item.href)
+					? 'bg-primary/10 text-primary font-medium'
+					: 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
+		>
+			<svg class="size-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+				<path stroke-linecap="round" stroke-linejoin="round" d={item.d} />
+			</svg>
+			{item.label}
+		</a>
+	{/each}
+{/snippet}
+
 <div class="min-h-screen bg-zinc-50 flex">
-	<!-- Sidebar (desktop only) -->
-	<aside class="fixed inset-y-0 left-0 z-50 hidden lg:flex flex-col bg-card border-r border-border w-64 shadow-sm">
+	<!-- Sidebar — fixed on desktop, slide-in drawer on mobile -->
+	<aside
+		class="fixed inset-y-0 left-0 z-50 flex flex-col bg-card border-r border-border w-64 shadow-sm transition-transform duration-200
+			{mobileNavOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0"
+	>
 		<!-- Store selector -->
 		<div class="relative shrink-0">
 			<button
@@ -139,28 +169,7 @@
 
 		<!-- Section links -->
 		<nav class="flex-1 p-2 pt-3 space-y-0.5 overflow-y-auto">
-			{#each [
-				{ href: 'orders', label: 'Orders', d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-				{ href: 'customers', label: 'Customers', d: 'M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z' },
-				{ href: 'products', label: 'Products', d: 'M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z' },
-				{ href: 'inventory', label: 'Inventory', d: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7' },
-				{ href: 'restock', label: 'Restock', d: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99' },
-				{ href: 'inventory-count', label: 'Inventory Count', d: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z' }
-			] as item}
-				<a
-					href={tabHref(item.href)}
-					class="flex items-center gap-3 mx-1 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150
-						{!currentStoreId ? 'pointer-events-none opacity-40' : ''}
-						{isTabActive(item.href)
-							? 'bg-primary/10 text-primary font-medium'
-							: 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
-				>
-					<svg class="size-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-						<path stroke-linecap="round" stroke-linejoin="round" d={item.d} />
-					</svg>
-					{item.label}
-				</a>
-			{/each}
+			{@render navLinks()}
 		</nav>
 
 		<!-- User footer -->
@@ -180,108 +189,39 @@
 		</div>
 	</aside>
 
+	<!-- Backdrop for mobile drawer -->
+	{#if mobileNavOpen}
+		<div
+			class="lg:hidden fixed inset-0 z-40 bg-black/40"
+			role="button"
+			tabindex="-1"
+			onclick={() => mobileNavOpen = false}
+			onkeydown={(e) => e.key === 'Escape' && (mobileNavOpen = false)}
+		></div>
+	{/if}
+
 	<!-- Main -->
 	<div class="flex-1 flex flex-col min-h-screen min-w-0 lg:ml-64">
-		<main class="flex-1 pb-20 lg:pb-0">
+		<!-- Mobile top bar with hamburger -->
+		<div class="lg:hidden sticky top-0 z-30 flex items-center gap-3 px-3 h-14 bg-card border-b border-border shadow-sm">
+			<Button onclick={() => mobileNavOpen = true} variant="ghost" size="icon" title="Open menu">
+				<MenuIcon class="size-5" />
+			</Button>
+			<div class="flex items-center gap-2 min-w-0">
+				{#if currentStoreLogo}
+					<img src={currentStoreLogo} alt="" class="size-6 rounded-md object-contain shrink-0 border border-border" />
+				{/if}
+				<span class="text-sm font-semibold text-foreground truncate">{currentStoreName ?? 'Pro Shipper'}</span>
+			</div>
+		</div>
+
+		<main class="flex-1">
 			{#key $page.url.pathname}
 				{@render children()}
 			{/key}
 		</main>
 	</div>
 </div>
-
-<!-- Mobile bottom nav -->
-<nav class="lg:hidden fixed bottom-0 inset-x-0 z-40 bg-white border-t border-border shadow-[0_-2px_8px_rgba(0,0,0,0.06)] flex h-20 pb-[env(safe-area-inset-bottom)]">
-	<a
-		href={tabHref('orders')}
-		class="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] transition-colors
-			{!currentStoreId ? 'pointer-events-none opacity-40' : isTabActive('orders') ? 'text-primary' : 'text-muted-foreground'}"
-	>
-		<span class="flex items-center justify-center size-9 rounded-full {isTabActive('orders') ? 'bg-primary/10' : ''}">
-			<svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-			</svg>
-		</span>
-		<span class="font-medium">Orders</span>
-	</a>
-	<a
-		href={tabHref('customers')}
-		class="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] transition-colors
-			{!currentStoreId ? 'pointer-events-none opacity-40' : isTabActive('customers') ? 'text-primary' : 'text-muted-foreground'}"
-	>
-		<span class="flex items-center justify-center size-9 rounded-full {isTabActive('customers') ? 'bg-primary/10' : ''}">
-			<svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-			</svg>
-		</span>
-		<span class="font-medium">Customers</span>
-	</a>
-	<a
-		href={tabHref('products')}
-		class="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] transition-colors
-			{!currentStoreId ? 'pointer-events-none opacity-40' : isTabActive('products') ? 'text-primary' : 'text-muted-foreground'}"
-	>
-		<span class="flex items-center justify-center size-9 rounded-full {isTabActive('products') ? 'bg-primary/10' : ''}">
-			<svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
-			</svg>
-		</span>
-		<span class="font-medium">Products</span>
-	</a>
-	<a
-		href={tabHref('inventory')}
-		class="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] transition-colors
-			{!currentStoreId ? 'pointer-events-none opacity-40' : isTabActive('inventory') ? 'text-primary' : 'text-muted-foreground'}"
-	>
-		<span class="flex items-center justify-center size-9 rounded-full {isTabActive('inventory') ? 'bg-primary/10' : ''}">
-			<svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7" />
-			</svg>
-		</span>
-		<span class="font-medium">Inventory</span>
-	</a>
-	<button
-		data-store-switcher-trigger
-		onclick={() => storeSheetOpen ? closeStoreSwitcher() : openStoreSwitcher()}
-		class="flex-1 flex flex-col items-center justify-center gap-1 text-[11px] {storeSheetOpen ? 'text-primary' : 'text-muted-foreground'}"
-		title="Switch store"
-	>
-		<span class="flex items-center justify-center size-9 rounded-full {storeSheetOpen ? 'bg-primary/10' : ''}">
-			{#if currentStoreLogo}
-				<img src={currentStoreLogo} alt="" class="size-6 rounded object-contain" />
-			{:else}
-				<svg class="size-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-					<path stroke-linecap="round" stroke-linejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
-				</svg>
-			{/if}
-		</span>
-		<span class="font-medium">Store</span>
-	</button>
-</nav>
-
-<!-- Store picker bottom sheet (mobile only — desktop uses the sidebar dropdown above) -->
-{#if storeSheetOpen}
-	<div
-		class="lg:hidden fixed inset-0 z-40"
-		role="button"
-		tabindex="-1"
-		onclick={() => closeStoreSwitcher()}
-		onkeydown={(e) => e.key === 'Escape' && closeStoreSwitcher()}
-	></div>
-	<div
-		transition:slide={{ duration: 180 }}
-		class="lg:hidden fixed bottom-20 inset-x-0 z-50 bg-card/95 backdrop-blur border border-border rounded-t-2xl shadow-[0_-4px_16px_rgba(0,0,0,0.08)] max-h-[60vh] flex flex-col"
-	>
-		<div class="flex justify-end p-1 shrink-0">
-			<Button onclick={() => closeStoreSwitcher()} variant="ghost" size="icon" class="text-muted-foreground">
-				<XIcon class="size-4" />
-			</Button>
-		</div>
-		<div class="overflow-y-auto p-1.5 pt-0 space-y-0.5">
-			{@render storeList()}
-		</div>
-	</div>
-{/if}
 
 <!-- Logout confirm modal -->
 <Dialog.Root bind:open={logoutConfirmOpen}>

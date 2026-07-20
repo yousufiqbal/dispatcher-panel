@@ -27,10 +27,6 @@
 <svelte:head><title>Restock — Pro Shipper</title></svelte:head>
 
 <div class="p-3 sm:p-6 max-w-3xl mx-auto">
-	<div class="flex items-center justify-between mb-5">
-		<h1 class="text-xl font-bold text-foreground">Restock Sessions</h1>
-	</div>
-
 	{#if form?.startError}
 		<div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive mb-4">{form.startError}</div>
 	{/if}

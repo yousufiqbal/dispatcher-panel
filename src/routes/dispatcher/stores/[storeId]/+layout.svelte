@@ -77,7 +77,7 @@
 </script>
 
 <div class="flex flex-col h-full">
-	<!-- Page heading (desktop only — mobile uses bottom nav) -->
+	<!-- Page heading (desktop only — mobile has its own top bar with hamburger) -->
 	<div class="hidden md:flex items-center gap-3 px-6 pt-5 pb-3">
 		<div class="flex items-center justify-center size-9 rounded-lg bg-primary/10 text-primary shrink-0">
 			<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
