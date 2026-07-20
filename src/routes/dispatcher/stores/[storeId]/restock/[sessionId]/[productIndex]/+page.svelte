@@ -97,7 +97,17 @@
 		goto(`../${data.session.id}/${targetIndex}`);
 	}
 
+	let completeBtnEl = $state<HTMLButtonElement>();
+
 	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') {
+			// Prevent the number input's default "submit the form" behavior — Enter
+			// should advance to the next product instead, same as clicking Next.
+			e.preventDefault();
+			if (data.nextIndex !== null) navTo(data.nextIndex, true);
+			else completeBtnEl?.click();
+			return;
+		}
 		if (e.target instanceof HTMLInputElement) return;
 		const { prevIndex, nextIndex } = data;
 		if (e.key === 'ArrowLeft' && prevIndex !== null) navTo(prevIndex);
@@ -262,6 +272,7 @@
 										<div class="flex items-center border border-border rounded-lg overflow-hidden w-fit focus-within:ring-2 focus-within:ring-ring/40">
 											<button
 												type="button"
+												tabindex="-1"
 												onclick={(e) => {
 													const input = e.currentTarget.nextElementSibling as HTMLInputElement;
 													const val = parseInt(input.value || '0', 10);
@@ -279,6 +290,7 @@
 											/>
 											<button
 												type="button"
+												tabindex="-1"
 												onclick={(e) => {
 													const input = e.currentTarget.previousElementSibling as HTMLInputElement;
 													const val = parseInt(input.value || '0', 10);
@@ -321,7 +333,7 @@
 							<ArrowRightIcon class="size-4" />
 						</Button>
 					{:else}
-						<Button type="submit" formaction="?/complete" disabled={saving} onclick={() => saveForm(true)} class="bg-green-600 hover:bg-green-700">
+						<Button bind:ref={completeBtnEl} type="submit" formaction="?/complete" disabled={saving} onclick={() => saveForm(true)} class="bg-green-600 hover:bg-green-700">
 							{#if saving}<Loader2Icon class="size-4 animate-spin" />{:else}Complete<CheckIcon class="size-4" />{/if}
 						</Button>
 					{/if}
