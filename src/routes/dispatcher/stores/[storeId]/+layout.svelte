@@ -2,6 +2,7 @@
 	import { page } from '$app/stores';
 	import { addToast } from '$lib/toast.svelte';
 	import { subscribeToPush } from '$lib/push-client';
+	import GlobalSearch from '$lib/components/GlobalSearch.svelte';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
@@ -77,17 +78,24 @@
 </script>
 
 <div class="flex flex-col h-full">
-	<!-- Page heading (desktop only — mobile has its own top bar with hamburger) -->
-	<div class="hidden md:flex items-center gap-3 px-6 pt-5 pb-3">
-		<div class="flex items-center justify-center size-9 rounded-lg bg-primary/10 text-primary shrink-0">
-			<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-				<path stroke-linecap="round" stroke-linejoin="round" d={sectionIconPath} />
-			</svg>
+	<!-- Page heading + global search (desktop only — mobile has its own top bar with hamburger) -->
+	<div class="hidden md:flex items-center justify-between gap-4 px-6 pt-5 pb-3">
+		<div class="flex items-center gap-3 shrink-0">
+			<div class="flex items-center justify-center size-9 rounded-lg bg-primary/10 text-primary shrink-0">
+				<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d={sectionIconPath} />
+				</svg>
+			</div>
+			<div>
+				<h1 class="font-bold text-foreground text-lg leading-tight">{sectionLabel}</h1>
+				<p class="text-xs text-muted-foreground leading-tight">{data.currentStore.name}</p>
+			</div>
 		</div>
-		<div>
-			<h1 class="font-bold text-foreground text-lg leading-tight">{sectionLabel}</h1>
-			<p class="text-xs text-muted-foreground leading-tight">{data.currentStore.name}</p>
-		</div>
+		<GlobalSearch />
+	</div>
+	<!-- Mobile: search only, section identity lives in the top bar -->
+	<div class="md:hidden px-3 pt-3">
+		<GlobalSearch />
 	</div>
 
 	<div class="flex-1 overflow-auto min-w-0">

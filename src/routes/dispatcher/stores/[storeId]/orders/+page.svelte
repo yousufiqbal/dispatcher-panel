@@ -14,7 +14,6 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import { formatCurrency, formatDate, formatRelativeDate } from '$lib/utils';
 	import { deliveryPill } from '$lib/delivery-status';
-	import GlobalSearch from '$lib/components/GlobalSearch.svelte';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
 	import PlusIcon from '@lucide/svelte/icons/plus';
@@ -338,8 +337,7 @@
 
 <div class="p-3 sm:p-6">
 	<!-- Toolbar -->
-	<div class="flex items-center justify-between gap-3 sm:gap-4 mb-5">
-		<GlobalSearch />
+	<div class="flex items-center justify-start gap-3 sm:gap-4 mb-5">
 		<div class="flex items-center gap-2 shrink-0">
 			<Button href="/dispatcher/stores/{storeId}/orders/new" class="size-9 p-0 sm:size-auto sm:px-4 sm:py-2">
 				<PlusIcon class="size-4" />

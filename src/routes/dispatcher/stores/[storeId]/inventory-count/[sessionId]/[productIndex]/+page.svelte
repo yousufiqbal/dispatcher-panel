@@ -218,7 +218,7 @@
 			}}>
 				<div class="card overflow-hidden mb-4 divide-y divide-border">
 					{#each data.variants as v}
-						<div class="px-4 py-3 flex flex-wrap items-center gap-3">
+						<div class="px-4 py-3 flex flex-wrap items-center gap-3 transition-colors hover:bg-muted/40 focus-within:bg-muted/40">
 							<div class="flex items-center gap-2.5 flex-1 min-w-0">
 								{#if v.variantImageUrl}
 									<img src={v.variantImageUrl} alt={v.variantTitle ?? ''} class="size-8 object-cover rounded-md border border-border bg-muted shrink-0" />

@@ -21,7 +21,11 @@
 	}
 
 	const currentStoreId = $derived($page.params.storeId as string | undefined);
-	const currentStore = $derived(data.assignedStores.find((s) => s.id === currentStoreId));
+	// `data` can transiently be null if a load lower in the tree throws (e.g. a
+	// blip talking to the DB/Shopify during a fast Next/Previous navigation) —
+	// SvelteKit still renders this layout around the error boundary in that case.
+	const assignedStores = $derived(data?.assignedStores ?? []);
+	const currentStore = $derived(assignedStores.find((s) => s.id === currentStoreId));
 	const currentStoreName = $derived(currentStore?.name);
 	const currentStoreLogo = $derived(currentStore?.logoUrl ?? null);
 
@@ -63,10 +67,10 @@
 </script>
 
 {#snippet storeList()}
-	{#if data.assignedStores.length === 0}
+	{#if assignedStores.length === 0}
 		<p class="px-2.5 py-1.5 text-xs text-muted-foreground">No stores assigned</p>
 	{:else}
-		{#each data.assignedStores as store}
+		{#each assignedStores as store}
 			<a
 				href="/dispatcher/stores/{store.id}/orders"
 				class="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors duration-150
@@ -176,11 +180,11 @@
 		<div class="p-2 border-t border-border">
 			<div class="flex items-center gap-3 px-3 py-2 rounded-lg">
 				<div class="size-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary shrink-0">
-					{data.dispatcher?.name?.[0]?.toUpperCase() ?? 'D'}
+					{data?.dispatcher?.name?.[0]?.toUpperCase() ?? 'D'}
 				</div>
 				<div class="flex-1 min-w-0">
-					<div class="text-xs font-medium text-foreground truncate">{data.dispatcher?.name}</div>
-					<div class="text-xs text-muted-foreground truncate">{data.dispatcher?.email}</div>
+					<div class="text-xs font-medium text-foreground truncate">{data?.dispatcher?.name}</div>
+					<div class="text-xs text-muted-foreground truncate">{data?.dispatcher?.email}</div>
 				</div>
 				<Button onclick={() => logoutConfirmOpen = true} title="Sign out" variant="ghost" size="icon" class="text-muted-foreground hover:text-foreground shrink-0">
 					<LogOutIcon class="size-4" />

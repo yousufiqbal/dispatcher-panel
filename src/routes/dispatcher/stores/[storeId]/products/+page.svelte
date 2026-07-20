@@ -2,7 +2,6 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import GlobalSearch from '$lib/components/GlobalSearch.svelte';
 	import Minimize2Icon from '@lucide/svelte/icons/minimize-2';
 	import Maximize2Icon from '@lucide/svelte/icons/maximize-2';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
@@ -40,8 +39,7 @@
 </svelte:head>
 
 <div class="p-3 sm:p-6">
-	<div class="flex items-center justify-between gap-4 mb-5">
-		<GlobalSearch />
+	<div class="flex items-center justify-start gap-4 mb-5">
 		<Button
 			onclick={() => compact = !compact}
 			variant="outline"
