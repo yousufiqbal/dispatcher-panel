@@ -1,7 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
-import { admin, dispatchers } from '$lib/server/db/schema';
+import { admin, dispatchers, accountants } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { verify } from 'argon2';
 import { createSession, setSessionCookie } from '$lib/server/session';
@@ -47,6 +47,23 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 		setSessionCookie(cookies, sessionId, new Date(Date.now() + 8 * 60 * 60 * 1000));
 
 		return json({ role: 'dispatcher', redirect: '/dispatcher' });
+	}
+
+	// Check accounting
+	const accountant = await db.query.accountants.findFirst({
+		where: eq(accountants.email, email)
+	});
+	if (accountant) {
+		if (!accountant.isActive) {
+			return json({ error: 'Account is disabled' }, { status: 403 });
+		}
+		const valid = await verify(accountant.passwordHash, password).catch(() => false);
+		if (!valid) return json({ error: 'Invalid credentials' }, { status: 401 });
+
+		const sessionId = await createSession(accountant.id, 'accounting', true, ip, ua);
+		setSessionCookie(cookies, sessionId, new Date(Date.now() + 8 * 60 * 60 * 1000));
+
+		return json({ role: 'accounting', redirect: '/accounting' });
 	}
 
 	return json({ error: 'Invalid credentials' }, { status: 401 });

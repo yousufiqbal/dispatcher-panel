@@ -24,7 +24,7 @@
 	}
 </script>
 
-<svelte:head><title>Inventory Count — Pro Shipper</title></svelte:head>
+<svelte:head><title>Inventory Audit — Pro Shipper</title></svelte:head>
 
 <div class="p-3 sm:p-6 max-w-3xl mx-auto">
 	<p class="text-sm text-muted-foreground mb-5">Counts produce a report only — nothing is written back to Shopify. Apply changes yourself in the Shopify admin.</p>

@@ -71,6 +71,8 @@
 			}
 			if (data.role === 'admin') {
 				goto('/admin');
+			} else if (data.role === 'accounting') {
+				goto('/accounting');
 			} else {
 				goto('/dispatcher');
 			}

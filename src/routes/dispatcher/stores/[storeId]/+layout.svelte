@@ -13,7 +13,7 @@
 		products: 'Products',
 		inventory: 'Inventory',
 		restock: 'Restock',
-		'inventory-count': 'Inventory Count',
+		'inventory-count': 'Inventory Audit',
 		'draft-orders': 'Draft Orders',
 		booking: 'Booking'
 	};

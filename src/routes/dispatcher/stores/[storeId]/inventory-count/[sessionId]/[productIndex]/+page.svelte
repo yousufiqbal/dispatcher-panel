@@ -130,7 +130,7 @@
 	});
 </script>
 
-<svelte:head><title>{data.index + 1}/{data.totalProducts} {data.productTitle} — Inventory Count</title></svelte:head>
+<svelte:head><title>{data.index + 1}/{data.totalProducts} {data.productTitle} — Inventory Audit</title></svelte:head>
 <svelte:window onkeydown={handleKeydown} onclick={() => { if (jumpOpen) jumpOpen = false; }} />
 
 <div class="min-h-screen bg-zinc-50 flex flex-col">

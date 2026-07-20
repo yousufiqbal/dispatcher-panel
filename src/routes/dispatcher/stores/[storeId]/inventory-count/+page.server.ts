@@ -4,7 +4,7 @@ import { db } from '$lib/server/db';
 import { inventorySessions, inventoryItems } from '$lib/server/db/schema';
 import { eq, and, desc, inArray, asc } from 'drizzle-orm';
 import { getShopifyClient } from '$lib/server/shopify/client';
-import { fetchRestockProducts } from '$lib/server/shopify/restock';
+import { fetchInventoryCountProducts } from '$lib/server/shopify/restock';
 import { getAuthorizedStore } from '$lib/server/store-access';
 import { logAudit } from '$lib/server/audit';
 
@@ -57,9 +57,10 @@ export const actions: Actions = {
 
 		const [session] = await db.insert(inventorySessions).values({ storeId: params.storeId }).returning();
 
-		let products: Awaited<ReturnType<typeof fetchRestockProducts>>;
+		let products: Awaited<ReturnType<typeof fetchInventoryCountProducts>>['products'];
+		let locationName: string | null;
 		try {
-			products = await fetchRestockProducts(client);
+			({ products, locationName } = await fetchInventoryCountProducts(client));
 		} catch (e) {
 			await db.delete(inventorySessions).where(eq(inventorySessions.id, session.id));
 			return fail(422, { startError: e instanceof Error ? e.message : 'Failed to fetch products from Shopify' });
@@ -80,9 +81,23 @@ export const actions: Actions = {
 					sku: variant.sku || null,
 					productImageUrl: product.imageUrl,
 					variantImageUrl: variant.imageUrl,
-					currentStock: Math.max(0, variant.inventoryQuantity),
+					currentStock: Math.max(0, variant.onHand),
 					position,
-					variantPosition: variantPosition++
+					variantPosition: variantPosition++,
+					handle: product.handle,
+					option1Name: variant.option1Name,
+					option1Value: variant.option1Value,
+					option2Name: variant.option2Name,
+					option2Value: variant.option2Value,
+					option3Name: variant.option3Name,
+					option3Value: variant.option3Value,
+					hsCode: variant.hsCode,
+					countryOfOrigin: variant.countryOfOrigin,
+					locationName,
+					incoming: variant.incoming,
+					unavailable: Math.max(0, variant.onHand - variant.available - variant.committed - variant.incoming),
+					committed: variant.committed,
+					available: variant.available
 				});
 			}
 			position++;

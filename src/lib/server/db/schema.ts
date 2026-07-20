@@ -32,6 +32,22 @@ export const dispatchers = sqliteTable('dispatchers', {
 		.$defaultFn(() => new Date())
 });
 
+export const accountants = sqliteTable('accountants', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	email: text('email').notNull().unique(),
+	passwordHash: text('password_hash').notNull(),
+	name: text('name').notNull(),
+	isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
+	updatedAt: integer('updated_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
 export const stores = sqliteTable('stores', {
 	id: text('id')
 		.primaryKey()
@@ -72,6 +88,22 @@ export const dispatcherStoreAccess = sqliteTable(
 	(table) => [primaryKey({ columns: [table.dispatcherId, table.storeId] })]
 );
 
+export const accountantStoreAccess = sqliteTable(
+	'accountant_store_access',
+	{
+		accountantId: text('accountant_id')
+			.notNull()
+			.references(() => accountants.id, { onDelete: 'cascade' }),
+		storeId: text('store_id')
+			.notNull()
+			.references(() => stores.id, { onDelete: 'cascade' }),
+		grantedAt: integer('granted_at', { mode: 'timestamp' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [primaryKey({ columns: [table.accountantId, table.storeId] })]
+);
+
 export const dispatcherPushSubscriptions = sqliteTable('dispatcher_push_subscriptions', {
 	id: text('id')
 		.primaryKey()
@@ -90,7 +122,7 @@ export const dispatcherPushSubscriptions = sqliteTable('dispatcher_push_subscrip
 export const sessions = sqliteTable('sessions', {
 	id: text('id').primaryKey(),
 	userId: text('user_id').notNull(),
-	role: text('role', { enum: ['admin', 'dispatcher'] }).notNull(),
+	role: text('role', { enum: ['admin', 'dispatcher', 'accounting'] }).notNull(),
 	totpVerified: integer('totp_verified', { mode: 'boolean' }).notNull().default(false),
 	expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
 	createdAt: integer('created_at', { mode: 'timestamp' })
@@ -265,7 +297,7 @@ export const auditLog = sqliteTable('audit_log', {
 		.primaryKey()
 		.$defaultFn(() => crypto.randomUUID()),
 	actorId: text('actor_id').notNull(),
-	actorRole: text('actor_role', { enum: ['admin', 'dispatcher'] }).notNull(),
+	actorRole: text('actor_role', { enum: ['admin', 'dispatcher', 'accounting'] }).notNull(),
 	action: text('action').notNull(),
 	targetType: text('target_type'),
 	targetId: text('target_id'),

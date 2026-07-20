@@ -17,7 +17,7 @@ async function isActionEnabled(action: string): Promise<boolean> {
 
 export async function logAudit(
 	actorId: string,
-	actorRole: 'admin' | 'dispatcher',
+	actorRole: 'admin' | 'dispatcher' | 'accounting',
 	action: string,
 	options: {
 		targetType?: string;

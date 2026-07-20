@@ -12,23 +12,48 @@
 		return url.includes('cdn.shopify.com') ? `${url}?width=88` : url;
 	}
 
-	function exportCSV() {
-		const headers = ['Product', 'Variant', 'SKU', 'System Stock', 'Counted Stock', 'Delta'];
-		const rows = data.checkedItems.map((i) => [
-			i.productTitle, i.variantTitle ?? '', i.sku ?? '', i.currentStock, i.newStock, (i.newStock ?? 0) - i.currentStock
-		]);
-		const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+	function download(filename: string, headers: string[], rows: (string | number)[][]) {
+		const csv = [headers, ...rows]
+			.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+			.join('\n');
 		const blob = new Blob([csv], { type: 'text/csv' });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
-		a.download = `inventory-count-${data.storeName}-${new Date().toISOString().slice(0, 10)}.csv`;
+		a.download = filename;
 		a.click();
 		URL.revokeObjectURL(url);
 	}
+
+	function exportCSV() {
+		const headers = ['Product', 'Variant', 'SKU', 'System Stock', 'Counted Stock', 'Delta'];
+		const rows = data.checkedItems.map((i) => [
+			i.productTitle, i.variantTitle ?? '', i.sku ?? '', i.currentStock, i.newStock ?? '', (i.newStock ?? 0) - i.currentStock
+		]);
+		download(`inventory-count-summary-${data.storeName}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+	}
+
+	// Matches Shopify's own "Export inventory" CSV column-for-column, so this
+	// file can be uploaded directly into the Shopify admin's bulk inventory
+	// editor — no reformatting. Every item is included (not just counted ones);
+	// "On hand (new)" is left blank wherever a count hasn't been entered yet.
+	function exportShopifyImport() {
+		const headers = [
+			'Handle', 'Title', 'Option1 Name', 'Option1 Value', 'Option2 Name', 'Option2 Value',
+			'Option3 Name', 'Option3 Value', 'SKU', 'HS Code', 'COO', 'Location', 'Bin name',
+			'Incoming (not editable)', 'Unavailable (not editable)', 'Committed (not editable)',
+			'Available (not editable)', 'On hand (current)', 'On hand (new)'
+		];
+		const rows = data.allItems.map((i) => [
+			i.handle ?? '', i.productTitle, i.option1Name ?? '', i.option1Value ?? '', i.option2Name ?? '', i.option2Value ?? '',
+			i.option3Name ?? '', i.option3Value ?? '', i.sku ?? '', i.hsCode ?? '', i.countryOfOrigin ?? '', i.locationName ?? '', '',
+			i.incoming, i.unavailable, i.committed, i.available, i.currentStock, i.newStock ?? ''
+		]);
+		download(`inventory-import-${data.storeName}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
+	}
 </script>
 
-<svelte:head><title>Inventory Count Report — {data.storeName}</title></svelte:head>
+<svelte:head><title>Inventory Audit Report — {data.storeName}</title></svelte:head>
 
 <div class="min-h-screen bg-zinc-50">
 	<div class="max-w-2xl mx-auto px-4 py-8">
@@ -38,19 +63,25 @@
 					<ArrowLeftIcon class="size-4" />
 					Sessions
 				</a>
-				<h1 class="text-xl font-bold text-foreground">Inventory Count Report</h1>
+				<h1 class="text-xl font-bold text-foreground">Inventory Audit Report</h1>
 				<p class="text-sm text-muted-foreground mt-1">
 					<span class="font-medium text-foreground">{data.checkedItems.length}</span> {data.checkedItems.length === 1 ? 'variant' : 'variants'} differ from system stock
 				</p>
 			</div>
-			<Button variant="outline" onclick={exportCSV} disabled={data.checkedItems.length === 0}>
-				<DownloadIcon class="size-4" />
-				Export CSV
-			</Button>
+			<div class="flex items-center gap-2 shrink-0">
+				<Button variant="outline" onclick={exportCSV} disabled={data.checkedItems.length === 0}>
+					<DownloadIcon class="size-4" />
+					Export Summary
+				</Button>
+				<Button onclick={exportShopifyImport} disabled={data.allItems.length === 0}>
+					<DownloadIcon class="size-4" />
+					Export for Shopify Import
+				</Button>
+			</div>
 		</div>
 
 		<div class="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900 mb-5">
-			This is a report only — nothing was changed in Shopify. Apply these counts yourself in the Shopify admin.
+			This is a report only — nothing was changed in Shopify. "Export for Shopify Import" matches Shopify's own inventory CSV format — upload it directly to the admin's bulk inventory editor to apply the counts.
 		</div>
 
 		{#if data.checkedItems.length === 0}

@@ -21,5 +21,8 @@ export const load: PageServerLoad = async ({ params, parent }) => {
 
 	const checkedItems = items.filter((i) => i.newStock != null && i.newStock !== i.currentStock);
 
-	return { session, checkedItems, storeName: currentStore.name };
+	// Full list (not just checked/changed) — the Shopify-format export includes
+	// every row so the admin gets the complete picture, with "On hand (new)" left
+	// blank for anything not yet counted rather than omitting the row entirely.
+	return { session, checkedItems, allItems: items, storeName: currentStore.name };
 };
