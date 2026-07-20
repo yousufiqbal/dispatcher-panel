@@ -28,56 +28,6 @@
 	let saving = $state(false);
 	let doneVersion = $state(0);
 
-	// Resizable grid columns — width in px per column, persisted so the layout
-	// sticks across sessions/products instead of resetting every navigation.
-	type ColKey = 'variant' | 'stats' | 'qty' | 'airsea';
-	const COL_MIN: Record<ColKey, number> = { variant: 140, stats: 120, qty: 120, airsea: 100 };
-	const COL_STORAGE_KEY = 'restock-grid-col-widths';
-	let colWidths = $state<Record<ColKey, number>>({ variant: 200, stats: 180, qty: 148, airsea: 120 });
-	const gridTemplate = $derived(`${colWidths.variant}px ${colWidths.stats}px ${colWidths.qty}px ${colWidths.airsea}px`);
-
-	$effect(() => {
-		try {
-			const raw = localStorage.getItem(COL_STORAGE_KEY);
-			if (raw) colWidths = { ...colWidths, ...JSON.parse(raw) };
-		} catch {
-			/* localStorage unavailable or bad JSON — keep defaults */
-		}
-	});
-
-	let resizing = $state<{ col: ColKey; startX: number; startWidth: number } | null>(null);
-
-	function startResize(col: ColKey, e: PointerEvent) {
-		e.preventDefault();
-		resizing = { col, startX: e.clientX, startWidth: colWidths[col] };
-	}
-
-	$effect(() => {
-		if (!resizing) return;
-		const { col, startX, startWidth } = resizing;
-		document.body.style.cursor = 'col-resize';
-		document.body.style.userSelect = 'none';
-		function onMove(e: PointerEvent) {
-			const next = Math.max(COL_MIN[col], startWidth + (e.clientX - startX));
-			colWidths = { ...colWidths, [col]: next };
-		}
-		function onUp() {
-			resizing = null;
-			try {
-				localStorage.setItem(COL_STORAGE_KEY, JSON.stringify(colWidths));
-			} catch {
-				/* localStorage unavailable */
-			}
-		}
-		window.addEventListener('pointermove', onMove);
-		window.addEventListener('pointerup', onUp, { once: true });
-		return () => {
-			window.removeEventListener('pointermove', onMove);
-			document.body.style.cursor = '';
-			document.body.style.userSelect = '';
-		};
-	});
-
 	function markDoneLocal(index: number) {
 		let set = sessionDone.get(data.session.id);
 		if (!set) sessionDone.set(data.session.id, (set = new Set()));
@@ -273,41 +223,13 @@
 				};
 			}}>
 				<div class="card overflow-hidden mb-5">
-					<div class="hidden lg:grid gap-4 px-4 py-2.5 border-b border-border bg-muted/30" style="grid-template-columns: {gridTemplate}">
-						<div class="relative pr-2">
-							<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Variant</span>
-							<div
-								role="separator"
-								aria-orientation="vertical"
-								onpointerdown={(e) => startResize('variant', e)}
-								class="absolute top-1/2 -translate-y-1/2 -right-2 w-3 h-5 cursor-col-resize flex items-center justify-center group"
-							>
-								<div class="w-px h-4 bg-border group-hover:bg-primary transition-colors {resizing?.col === 'variant' ? 'bg-primary' : ''}"></div>
-							</div>
-						</div>
-						<div class="relative pr-2 flex gap-2">
+					<div class="hidden lg:grid grid-cols-[200px_1fr_148px_120px] gap-4 px-4 py-2.5 border-b border-border bg-muted/30">
+						<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Variant</span>
+						<div class="flex gap-2">
 							<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide w-[52px] text-center">90d</span>
 							<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide w-[52px] text-center">Stock</span>
-							<div
-								role="separator"
-								aria-orientation="vertical"
-								onpointerdown={(e) => startResize('stats', e)}
-								class="absolute top-1/2 -translate-y-1/2 -right-2 w-3 h-5 cursor-col-resize flex items-center justify-center group"
-							>
-								<div class="w-px h-4 bg-border group-hover:bg-primary transition-colors {resizing?.col === 'stats' ? 'bg-primary' : ''}"></div>
-							</div>
 						</div>
-						<div class="relative pr-2">
-							<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Restock qty</span>
-							<div
-								role="separator"
-								aria-orientation="vertical"
-								onpointerdown={(e) => startResize('qty', e)}
-								class="absolute top-1/2 -translate-y-1/2 -right-2 w-3 h-5 cursor-col-resize flex items-center justify-center group"
-							>
-								<div class="w-px h-4 bg-border group-hover:bg-primary transition-colors {resizing?.col === 'qty' ? 'bg-primary' : ''}"></div>
-							</div>
-						</div>
+						<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Restock qty</span>
 						<div class="flex gap-2">
 							<span class="text-[11px] font-semibold text-blue-500 uppercase tracking-wide w-[52px] text-center">✈ Air</span>
 							<span class="text-[11px] font-semibold text-teal-600 uppercase tracking-wide w-[52px] text-center">🚢 Sea</span>
@@ -316,7 +238,7 @@
 
 					<div class="divide-y divide-border">
 						{#each data.variants as v}
-							<div class="p-4 lg:grid lg:items-center lg:gap-4 transition-colors hover:bg-muted/40 focus-within:bg-muted/40" style="grid-template-columns: {gridTemplate}">
+							<div class="p-4 lg:grid lg:grid-cols-[200px_1fr_148px_120px] lg:items-center lg:gap-4 transition-colors hover:bg-muted/40 focus-within:bg-muted/40">
 								<div class="flex items-center gap-3 shrink-0 mb-2 lg:mb-0">
 									{#if v.variantImageUrl}
 										<img src={v.variantImageUrl} alt={v.variantTitle ?? ''} class="size-9 lg:size-11 object-cover rounded-lg border border-border bg-muted shrink-0" />

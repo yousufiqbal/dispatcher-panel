@@ -42,6 +42,9 @@
 	};
 	const sectionIconPath = $derived(sectionIconPaths[currentSection] ?? sectionIconPaths.orders);
 
+	// Not relevant on these sections — they don't search orders/products/customers.
+	const showGlobalSearch = $derived(currentSection !== 'restock' && currentSection !== 'inventory-count');
+
 	// Real push (service worker + web-push, triggered by the Shopify orders/create
 	// webhook) delivers notifications even when the tab/app is closed — see
 	// subscribeToPush() below. This poll is just an in-tab fallback/toast for
@@ -91,12 +94,16 @@
 				<p class="text-xs text-muted-foreground leading-tight">{data.currentStore.name}</p>
 			</div>
 		</div>
-		<GlobalSearch />
+		{#if showGlobalSearch}
+			<GlobalSearch />
+		{/if}
 	</div>
-	<!-- Mobile: search only, section identity lives in the top bar -->
-	<div class="md:hidden px-3 pt-3">
-		<GlobalSearch />
-	</div>
+	{#if showGlobalSearch}
+		<!-- Mobile: search only, section identity lives in the top bar -->
+		<div class="md:hidden px-3 pt-3">
+			<GlobalSearch />
+		</div>
+	{/if}
 
 	<div class="flex-1 overflow-auto min-w-0">
 		{@render children()}
