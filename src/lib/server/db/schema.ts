@@ -240,7 +240,24 @@ export const inventoryItems = sqliteTable('inventory_items', {
 	currentStock: integer('current_stock').notNull().default(0),
 	newStock: integer('new_stock'),
 	position: integer('position').notNull().default(0),
-	variantPosition: integer('variant_position').notNull().default(0)
+	variantPosition: integer('variant_position').notNull().default(0),
+	// Fields below exist only to reproduce Shopify's own "Export inventory" CSV
+	// template on the report page, so the admin can fill gaps and re-upload it
+	// straight into Shopify without reformatting.
+	handle: text('handle'),
+	option1Name: text('option1_name'),
+	option1Value: text('option1_value'),
+	option2Name: text('option2_name'),
+	option2Value: text('option2_value'),
+	option3Name: text('option3_name'),
+	option3Value: text('option3_value'),
+	hsCode: text('hs_code'),
+	countryOfOrigin: text('country_of_origin'),
+	locationName: text('location_name'),
+	incoming: integer('incoming').notNull().default(0),
+	unavailable: integer('unavailable').notNull().default(0),
+	committed: integer('committed').notNull().default(0),
+	available: integer('available').notNull().default(0)
 });
 
 export const auditLog = sqliteTable('audit_log', {

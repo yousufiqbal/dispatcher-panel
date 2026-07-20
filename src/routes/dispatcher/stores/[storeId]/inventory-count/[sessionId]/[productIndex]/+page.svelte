@@ -96,7 +96,7 @@
 		goto(`../${data.session.id}/${targetIndex}`);
 	}
 
-	let completeBtnEl = $state<HTMLButtonElement>();
+	let completeBtnEl = $state<HTMLButtonElement | null>(null);
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {

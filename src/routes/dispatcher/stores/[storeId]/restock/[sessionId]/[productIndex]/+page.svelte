@@ -28,6 +28,15 @@
 	let saving = $state(false);
 	let doneVersion = $state(0);
 
+	// Lets the Air/Sea recommendation boxes fill the qty input directly instead
+	// of the dispatcher retyping the number they're already looking at.
+	function setQty(variantId: string, value: number) {
+		const input = document.getElementById(`qty-${variantId}`) as HTMLInputElement | null;
+		if (!input) return;
+		input.value = String(value);
+		input.focus();
+	}
+
 	function markDoneLocal(index: number) {
 		let set = sessionDone.get(data.session.id);
 		if (!set) sessionDone.set(data.session.id, (set = new Set()));
@@ -97,7 +106,7 @@
 		goto(`../${data.session.id}/${targetIndex}`);
 	}
 
-	let completeBtnEl = $state<HTMLButtonElement>();
+	let completeBtnEl = $state<HTMLButtonElement | null>(null);
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
@@ -261,14 +270,26 @@
 											<span class="text-[9px] {v.currentStock === 0 ? 'text-red-500' : 'text-muted-foreground'} font-medium uppercase tracking-wide lg:hidden">Stock</span>
 											<span class="text-sm font-semibold tabular-nums {v.currentStock === 0 ? 'text-red-600' : 'text-foreground'}">{v.currentStock}</span>
 										</div>
-										<div class="flex flex-col items-center justify-center border border-blue-100 bg-blue-50 rounded-lg px-1 py-1.5 min-w-0 lg:hidden">
+										<button
+											type="button"
+											tabindex="-1"
+											title="Set restock qty to {v.recAir}"
+											onclick={() => setQty(v.id, v.recAir)}
+											class="flex flex-col items-center justify-center border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors rounded-lg px-1 py-1.5 min-w-0 lg:hidden cursor-pointer"
+										>
 											<span class="text-[9px] text-blue-600 font-medium uppercase tracking-wide">✈Air</span>
 											<span class="text-sm font-semibold text-blue-700 tabular-nums">{v.recAir}</span>
-										</div>
-										<div class="flex flex-col items-center justify-center border border-teal-100 bg-teal-50 rounded-lg px-1 py-1.5 min-w-0 lg:hidden">
+										</button>
+										<button
+											type="button"
+											tabindex="-1"
+											title="Set restock qty to {v.recSea}"
+											onclick={() => setQty(v.id, v.recSea)}
+											class="flex flex-col items-center justify-center border border-teal-100 bg-teal-50 hover:bg-teal-100 transition-colors rounded-lg px-1 py-1.5 min-w-0 lg:hidden cursor-pointer"
+										>
 											<span class="text-[9px] text-teal-600 font-medium uppercase tracking-wide">🚢Sea</span>
 											<span class="text-sm font-semibold text-teal-700 tabular-nums">{v.recSea}</span>
-										</div>
+										</button>
 									</div>
 
 									<div class="shrink-0">
@@ -284,6 +305,7 @@
 												class="px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-lg leading-none select-none border-r border-border"
 											>−</button>
 											<input
+												id="qty-{v.id}"
 												type="number"
 												name="actualRestock_{v.id}"
 												value={v.actualRestock ?? ''}
@@ -305,12 +327,24 @@
 									</div>
 
 									<div class="hidden lg:flex gap-2">
-										<div class="flex flex-col items-center border border-blue-100 bg-blue-50 rounded-lg px-3 py-1.5 shrink-0 min-w-[52px]">
+										<button
+											type="button"
+											tabindex="-1"
+											title="Set restock qty to {v.recAir}"
+											onclick={() => setQty(v.id, v.recAir)}
+											class="flex flex-col items-center border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors rounded-lg px-3 py-1.5 shrink-0 min-w-[52px] cursor-pointer"
+										>
 											<span class="text-sm font-semibold text-blue-700">{v.recAir}</span>
-										</div>
-										<div class="flex flex-col items-center border border-teal-100 bg-teal-50 rounded-lg px-3 py-1.5 shrink-0 min-w-[52px]">
+										</button>
+										<button
+											type="button"
+											tabindex="-1"
+											title="Set restock qty to {v.recSea}"
+											onclick={() => setQty(v.id, v.recSea)}
+											class="flex flex-col items-center border border-teal-100 bg-teal-50 hover:bg-teal-100 transition-colors rounded-lg px-3 py-1.5 shrink-0 min-w-[52px] cursor-pointer"
+										>
 											<span class="text-sm font-semibold text-teal-700">{v.recSea}</span>
-										</div>
+										</button>
 									</div>
 								</div>
 							</div>
