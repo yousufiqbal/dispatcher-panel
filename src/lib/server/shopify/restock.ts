@@ -336,3 +336,191 @@ export async function fetchInventoryCountProducts(client: ShopifyClient): Promis
 
 	return { products, locationName };
 }
+
+// --- Accounting: variant lookup for Purchases/Damages ---------------------
+
+export interface VariantSearchResult {
+	variantId: string;
+	productId: string;
+	productTitle: string;
+	variantTitle: string | null;
+	sku: string;
+	imageUrl: string | null;
+	onHand: number;
+}
+
+const VARIANT_SEARCH_QUERY = `
+	query SearchVariants($query: String!, $first: Int!) {
+		productVariants(first: $first, query: $query) {
+			edges {
+				node {
+					id
+					title
+					sku
+					image { url }
+					product { id title featuredImage { url } }
+					inventoryItem {
+						inventoryLevels(first: 1) {
+							edges { node { quantities(names: ["on_hand"]) { name quantity } } }
+						}
+					}
+				}
+			}
+		}
+	}
+`;
+
+interface VariantSearchResponse {
+	productVariants: {
+		edges: {
+			node: {
+				id: string;
+				title: string;
+				sku: string | null;
+				image: { url: string } | null;
+				product: { id: string; title: string; featuredImage: { url: string } | null };
+				inventoryItem: {
+					inventoryLevels: { edges: { node: { quantities: { name: string; quantity: number }[] } }[] };
+				} | null;
+			};
+		}[];
+	};
+}
+
+// Free-text search across SKU and product/variant title, used by the
+// accounting Purchases/Damages "find a variant" picker.
+export async function searchVariants(client: ShopifyClient, q: string, limit = 10): Promise<VariantSearchResult[]> {
+	const escaped = q.replace(/["\\]/g, '');
+	const query = `(sku:*${escaped}*) OR (title:*${escaped}*)`;
+	const result = await shopifyRequest<VariantSearchResponse>(client, VARIANT_SEARCH_QUERY, { query, first: limit });
+
+	return result.productVariants.edges.map(({ node: v }) => {
+		const level = v.inventoryItem?.inventoryLevels?.edges?.[0]?.node;
+		const onHand = qty(level?.quantities, 'on_hand');
+		return {
+			variantId: v.id,
+			productId: v.product.id,
+			productTitle: v.product.title,
+			variantTitle: v.title === 'Default Title' ? null : v.title,
+			sku: v.sku ?? '',
+			imageUrl: v.image?.url ?? v.product.featuredImage?.url ?? null,
+			onHand
+		};
+	});
+}
+
+export interface VariantForMutation {
+	inventoryItemId: string;
+	locationId: string;
+	locationName: string | null;
+	currentOnHand: number;
+}
+
+const VARIANT_FOR_MUTATION_QUERY = `
+	query VariantForMutation($id: ID!) {
+		node(id: $id) {
+			... on ProductVariant {
+				inventoryItem {
+					id
+					inventoryLevels(first: 1) {
+						edges { node { location { id name } quantities(names: ["on_hand"]) { name quantity } } }
+					}
+				}
+			}
+		}
+	}
+`;
+
+interface VariantForMutationResponse {
+	node: {
+		inventoryItem: {
+			id: string;
+			inventoryLevels: {
+				edges: { node: { location: { id: string; name: string }; quantities: { name: string; quantity: number }[] } }[];
+			};
+		} | null;
+	} | null;
+}
+
+// Re-resolves a variant's inventory item + location fresh at submit time
+// (rather than trusting IDs captured client-side at search time) so a stale
+// picker selection can't silently target the wrong location.
+export async function getVariantForMutation(client: ShopifyClient, variantId: string): Promise<VariantForMutation | null> {
+	const result = await shopifyRequest<VariantForMutationResponse>(client, VARIANT_FOR_MUTATION_QUERY, { id: variantId });
+	const item = result.node?.inventoryItem;
+	const level = item?.inventoryLevels?.edges?.[0]?.node;
+	if (!item || !level) return null;
+
+	return {
+		inventoryItemId: item.id,
+		locationId: level.location.id,
+		locationName: level.location.name,
+		currentOnHand: qty(level.quantities, 'on_hand')
+	};
+}
+
+const INVENTORY_ADJUST_MUTATION = `
+	mutation AdjustInventory($input: InventoryAdjustQuantitiesInput!) {
+		inventoryAdjustQuantities(input: $input) {
+			userErrors { field message }
+			inventoryAdjustmentGroup {
+				createdAt
+				reason
+				changes { name delta quantityAfterChange }
+			}
+		}
+	}
+`;
+
+interface InventoryAdjustResponse {
+	inventoryAdjustQuantities: {
+		userErrors: { field: string[] | null; message: string }[];
+		inventoryAdjustmentGroup: {
+			createdAt: string;
+			reason: string;
+			changes: { name: string; delta: number; quantityAfterChange: number }[];
+		} | null;
+	};
+}
+
+export interface InventoryAdjustResult {
+	success: boolean;
+	actualDelta: number | null;
+	raw: unknown;
+}
+
+// Applies a physical on_hand change at the given location — used for both
+// Purchases (+delta, reason "restock") and Damages (-delta, reason
+// "damaged"). Returns the raw Shopify response alongside a pass/fail verdict
+// so callers can log both into the cost-event ledger for reconciliation,
+// regardless of outcome.
+export async function adjustInventoryQuantity(
+	client: ShopifyClient,
+	params: { inventoryItemId: string; locationId: string; delta: number; reason: 'restock' | 'damaged' }
+): Promise<InventoryAdjustResult> {
+	try {
+		const result = await shopifyRequest<InventoryAdjustResponse>(client, INVENTORY_ADJUST_MUTATION, {
+			input: {
+				name: 'on_hand',
+				reason: params.reason,
+				changes: [
+					{
+						inventoryItemId: params.inventoryItemId,
+						locationId: params.locationId,
+						delta: params.delta,
+						changeFromQuantity: null
+					}
+				]
+			}
+		});
+
+		if (result.inventoryAdjustQuantities.userErrors.length > 0) {
+			return { success: false, actualDelta: null, raw: result.inventoryAdjustQuantities.userErrors };
+		}
+
+		const change = result.inventoryAdjustQuantities.inventoryAdjustmentGroup?.changes.find((c) => c.name === 'on_hand');
+		return { success: true, actualDelta: change?.delta ?? null, raw: result.inventoryAdjustQuantities };
+	} catch (e) {
+		return { success: false, actualDelta: null, raw: e instanceof Error ? e.message : String(e) };
+	}
+}

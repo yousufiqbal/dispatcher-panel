@@ -292,6 +292,155 @@ export const inventoryItems = sqliteTable('inventory_items', {
 	available: integer('available').notNull().default(0)
 });
 
+// --- Accounting: operating expenses ---------------------------------------
+
+export const recurringExpenses = sqliteTable('recurring_expenses', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	storeId: text('store_id')
+		.notNull()
+		.references(() => stores.id, { onDelete: 'cascade' }),
+	category: text('category').notNull(),
+	description: text('description'),
+	amount: text('amount').notNull(),
+	dayOfMonth: integer('day_of_month').notNull().default(1),
+	isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+	// 'YYYY-MM' of the last month this was turned into an operatingExpenses row —
+	// the materialize cron uses this to avoid double-posting the same month.
+	lastMaterializedMonth: text('last_materialized_month'),
+	createdBy: text('created_by').notNull(),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
+	updatedAt: integer('updated_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
+export const operatingExpenses = sqliteTable('operating_expenses', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	storeId: text('store_id')
+		.notNull()
+		.references(() => stores.id, { onDelete: 'cascade' }),
+	category: text('category').notNull(),
+	description: text('description'),
+	amount: text('amount').notNull(),
+	expenseDate: integer('expense_date', { mode: 'timestamp' }).notNull(),
+	recurringExpenseId: text('recurring_expense_id').references(() => recurringExpenses.id, { onDelete: 'set null' }),
+	createdBy: text('created_by').notNull(),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
+// --- Accounting: purchases, damages, weighted-average cost ledger --------
+//
+// variantCosts is a CACHE of current qty+avg-cost per SKU — it is always
+// re-derivable from scratch by folding inventoryCostEvents in order, so if it
+// ever looks wrong the ledger is what you trust and rebuild from, not this
+// table. inventoryCostEvents is append-only and never updated or deleted —
+// it's the audit trail for reconciling our records against live Shopify stock.
+
+export const variantCosts = sqliteTable(
+	'variant_costs',
+	{
+		storeId: text('store_id')
+			.notNull()
+			.references(() => stores.id, { onDelete: 'cascade' }),
+		variantId: text('variant_id').notNull(),
+		sku: text('sku'),
+		quantityOnHand: integer('quantity_on_hand').notNull().default(0),
+		avgCost: text('avg_cost').notNull().default('0'),
+		updatedAt: integer('updated_at', { mode: 'timestamp' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [primaryKey({ columns: [table.storeId, table.variantId] })]
+);
+
+export const inventoryCostEvents = sqliteTable('inventory_cost_events', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	storeId: text('store_id')
+		.notNull()
+		.references(() => stores.id, { onDelete: 'cascade' }),
+	variantId: text('variant_id').notNull(),
+	sku: text('sku'),
+	type: text('type', { enum: ['purchase', 'damage', 'sale'] }).notNull(),
+	quantityDelta: integer('quantity_delta').notNull(),
+	unitCost: text('unit_cost').notNull(),
+	totalCost: text('total_cost').notNull(),
+	qtyBefore: integer('qty_before').notNull(),
+	avgCostBefore: text('avg_cost_before').notNull(),
+	qtyAfter: integer('qty_after').notNull(),
+	avgCostAfter: text('avg_cost_after').notNull(),
+	sourceType: text('source_type', { enum: ['purchase', 'damage', 'order'] }).notNull(),
+	sourceId: text('source_id').notNull(),
+	// What we asked Shopify to change vs. what it actually confirmed changing —
+	// a mismatch here (or a failed status) is exactly the kind of drift this
+	// ledger exists to catch.
+	shopifyAdjustmentStatus: text('shopify_adjustment_status', { enum: ['success', 'failed', 'skipped'] }).notNull(),
+	shopifyExpectedDelta: integer('shopify_expected_delta').notNull(),
+	shopifyActualDelta: integer('shopify_actual_delta'),
+	shopifyResponseRaw: text('shopify_response_raw'),
+	createdBy: text('created_by').notNull(),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
+export const purchases = sqliteTable('purchases', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	storeId: text('store_id')
+		.notNull()
+		.references(() => stores.id, { onDelete: 'cascade' }),
+	variantId: text('variant_id').notNull(),
+	productId: text('product_id').notNull(),
+	productTitle: text('product_title').notNull(),
+	variantTitle: text('variant_title'),
+	sku: text('sku'),
+	quantity: integer('quantity').notNull(),
+	unitCost: text('unit_cost').notNull(),
+	totalCost: text('total_cost').notNull(),
+	purchaseDate: integer('purchase_date', { mode: 'timestamp' }).notNull(),
+	note: text('note'),
+	shopifyAdjustmentStatus: text('shopify_adjustment_status', { enum: ['success', 'failed'] }).notNull(),
+	createdBy: text('created_by').notNull(),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
+export const damages = sqliteTable('damages', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	storeId: text('store_id')
+		.notNull()
+		.references(() => stores.id, { onDelete: 'cascade' }),
+	variantId: text('variant_id').notNull(),
+	productId: text('product_id').notNull(),
+	productTitle: text('product_title').notNull(),
+	variantTitle: text('variant_title'),
+	sku: text('sku'),
+	quantity: integer('quantity').notNull(),
+	costAtDamageTime: text('cost_at_damage_time').notNull(),
+	totalCost: text('total_cost').notNull(),
+	reason: text('reason'),
+	damageDate: integer('damage_date', { mode: 'timestamp' }).notNull(),
+	shopifyAdjustmentStatus: text('shopify_adjustment_status', { enum: ['success', 'failed'] }).notNull(),
+	createdBy: text('created_by').notNull(),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
 export const auditLog = sqliteTable('audit_log', {
 	id: text('id')
 		.primaryKey()

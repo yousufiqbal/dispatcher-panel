@@ -29,6 +29,6 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 	const accountantUser = session.user as { role: 'accounting'; id: string; email: string; name: string; isActive: boolean };
 	return {
 		accountant: accountantUser,
-		assignedStores: access.map((a) => ({ id: a.storeId, name: a.name, iconUrl: a.iconUrl }))
+		assignedStores: access.map((a) => ({ id: a.storeId, name: a.name, logoUrl: a.iconUrl }))
 	};
 };
