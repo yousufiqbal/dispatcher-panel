@@ -15,7 +15,7 @@ export interface OrderNode {
 		nodes: {
 			title: string;
 			quantity: number;
-			variant: { title: string; image: { url: string; altText: string | null } | null } | null;
+			variant: { title: string; sku: string | null; image: { url: string; altText: string | null } | null } | null;
 			image: { url: string; altText: string | null } | null;
 		}[];
 	};
@@ -49,7 +49,7 @@ const ORDER_FIELDS = `
   lineItems(first: 50) {
     nodes {
       title quantity
-      variant { title image { url altText } }
+      variant { title sku image { url altText } }
       image { url altText }
     }
   }

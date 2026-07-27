@@ -8,59 +8,24 @@
 	import { Label } from '$lib/components/ui/label/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import PlusIcon from '@lucide/svelte/icons/plus';
-	import SearchIcon from '@lucide/svelte/icons/search';
-	import CheckIcon from '@lucide/svelte/icons/check';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 	const storeId = $derived($page.params.storeId);
 
-	interface VariantResult {
-		variantId: string;
-		productId: string;
+	interface Line {
+		id: string;
 		productTitle: string;
 		variantTitle: string | null;
-		sku: string;
-		imageUrl: string | null;
-		onHand: number;
+		sku: string | null;
+		quantity: number;
+		unitCost: string;
 	}
 
-	let showAdd = $state(false);
-	let query = $state('');
-	let results = $state<VariantResult[]>([]);
-	let searching = $state(false);
-	let selected = $state<VariantResult | null>(null);
-	let searchTimer: ReturnType<typeof setTimeout>;
-
-	function onQueryInput() {
-		clearTimeout(searchTimer);
-		selected = null;
-		if (!query.trim()) { results = []; return; }
-		searchTimer = setTimeout(async () => {
-			searching = true;
-			try {
-				const res = await fetch(`/api/accounting/stores/${storeId}/variant-search?q=${encodeURIComponent(query)}`);
-				const body = await res.json();
-				results = body.results ?? [];
-			} finally {
-				searching = false;
-			}
-		}, 300);
-	}
-
-	function pick(v: VariantResult) {
-		selected = v;
-		results = [];
-		query = `${v.productTitle}${v.variantTitle ? ' - ' + v.variantTitle : ''}`;
-	}
-
-	function resetForm() {
-		selected = null;
-		query = '';
-		results = [];
-	}
-
-	const todayStr = new Date().toISOString().slice(0, 10);
+	let editing = $state<Line | null>(null);
+	let confirmText = $state('');
+	const confirmed = $derived(confirmText.trim().toLowerCase() === 'edit');
 </script>
 
 <svelte:head><title>Purchases — {data.storeName}</title></svelte:head>
@@ -71,119 +36,100 @@
 			<h2 class="text-sm font-semibold text-foreground">Recent Purchases</h2>
 			<p class="text-xs text-muted-foreground mt-0.5">Increases real Shopify inventory (on hand) at the store's location</p>
 		</div>
-		<Button size="sm" onclick={() => { resetForm(); showAdd = true; }}>
+		<Button href="/accounting/stores/{storeId}/purchases/new">
 			<PlusIcon class="size-4" />
 			Add Purchase
 		</Button>
 	</div>
 
-	{#if data.purchases.length === 0}
+	{#if data.batches.length === 0}
 		<div class="card border-dashed p-8 text-center">
 			<p class="text-sm text-muted-foreground">No purchases recorded yet.</p>
 		</div>
 	{:else}
-		<div class="card overflow-hidden divide-y divide-border">
-			{#each data.purchases as p}
-				<div class="flex items-center gap-3 px-4 py-3">
-					<div class="flex-1 min-w-0">
-						<div class="text-sm font-medium text-foreground truncate">{p.productTitle}{p.variantTitle ? ` · ${p.variantTitle}` : ''}</div>
-						<div class="text-xs text-muted-foreground">
-							{p.sku ?? 'no sku'} · qty {p.quantity} @ {formatCurrency(p.unitCost, 'PKR')} · {formatDateShort(p.purchaseDate.toString())}
+		<div class="space-y-4">
+			{#each data.batches as batch}
+				<div class="card overflow-hidden">
+					<div class="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/20">
+						<div>
+							<div class="text-sm font-semibold text-foreground">{batch.supplier || 'Purchase'}</div>
+							<div class="text-xs text-muted-foreground">{formatDateShort(batch.purchaseDate.toString())} · {batch.lines.length} item{batch.lines.length !== 1 ? 's' : ''}</div>
 						</div>
-						{#if p.shopifyAdjustmentStatus === 'failed'}
-							<div class="text-xs text-destructive mt-0.5">⚠ Shopify stock update failed for this entry</div>
-						{/if}
+						<div class="text-sm font-semibold text-foreground">{formatCurrency(String(batch.totalCost), 'PKR')}</div>
 					</div>
-					<div class="text-sm font-semibold text-foreground shrink-0">{formatCurrency(p.totalCost, 'PKR')}</div>
+					<div class="divide-y divide-border">
+						{#each batch.lines as line}
+							<div class="flex items-center gap-3 px-4 py-2.5">
+								<div class="flex-1 min-w-0">
+									<div class="text-sm text-foreground truncate">{line.productTitle}{line.variantTitle ? ` · ${line.variantTitle}` : ''}</div>
+									<div class="text-xs text-muted-foreground">
+										{line.sku ?? 'no sku'} · qty {line.quantity} @ {formatCurrency(line.unitCost, 'PKR')}
+									</div>
+									{#if line.shopifyAdjustmentStatus === 'failed'}
+										<div class="text-xs text-destructive mt-0.5">⚠ Shopify stock update failed for this line</div>
+									{/if}
+								</div>
+								<div class="text-sm font-medium text-foreground shrink-0">{formatCurrency(line.totalCost, 'PKR')}</div>
+								<Button variant="ghost" size="icon" class="text-muted-foreground hover:text-foreground shrink-0" onclick={() => { editing = line; confirmText = ''; }}>
+									<PencilIcon class="size-4" />
+								</Button>
+							</div>
+						{/each}
+					</div>
+					{#if batch.note}
+						<div class="px-4 py-2 text-xs text-muted-foreground border-t border-border italic">{batch.note}</div>
+					{/if}
 				</div>
 			{/each}
 		</div>
 	{/if}
 </div>
 
-<Dialog.Root bind:open={showAdd}>
-	<Dialog.Content class="sm:max-w-md">
+<Dialog.Root open={!!editing} onOpenChange={(o) => { if (!o) editing = null; }}>
+	<Dialog.Content class="sm:max-w-sm">
 		<Dialog.Header>
-			<Dialog.Title>Add Purchase</Dialog.Title>
-			<Dialog.Description>Records the purchase and increases Shopify on-hand stock for this variant.</Dialog.Description>
+			<Dialog.Title>Edit Line</Dialog.Title>
+			<Dialog.Description>
+				{editing?.productTitle}{editing?.variantTitle ? ` · ${editing.variantTitle}` : ''} — updates Shopify stock by the difference and keeps the average cost in sync.
+			</Dialog.Description>
 		</Dialog.Header>
 		{#if form?.error}
 			<div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{form.error}</div>
 		{/if}
-		<form
-			method="POST"
-			action="?/addPurchase"
-			use:enhance={() => async ({ update, result }) => {
-				await update();
-				if (result.type === 'success') {
-					showAdd = false;
-					addToast(form?.warning ?? 'Purchase recorded');
-				}
-			}}
-			class="space-y-4"
-		>
-			<div class="space-y-1.5 relative">
-				<Label for="variant-search">Product / Variant</Label>
-				<div class="relative">
-					<SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-					<Input id="variant-search" bind:value={query} oninput={onQueryInput} placeholder="Search by title or SKU…" class="pl-9" autocomplete="off" />
-				</div>
-				{#if results.length > 0}
-					<div class="absolute z-10 top-full left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg max-h-64 overflow-y-auto">
-						{#each results as v}
-							<button type="button" class="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-muted/50 transition-colors" onclick={() => pick(v)}>
-								{#if v.imageUrl}
-									<img src={v.imageUrl} alt="" class="size-8 rounded object-cover border border-border shrink-0" />
-								{:else}
-									<div class="size-8 rounded bg-muted shrink-0"></div>
-								{/if}
-								<div class="flex-1 min-w-0">
-									<div class="text-sm font-medium text-foreground truncate">{v.productTitle}{v.variantTitle ? ` · ${v.variantTitle}` : ''}</div>
-									<div class="text-xs text-muted-foreground">{v.sku || 'no sku'} · on hand {v.onHand}</div>
-								</div>
-							</button>
-						{/each}
+		{#if editing}
+			<form
+				method="POST"
+				action="?/editLine"
+				use:enhance={() => async ({ update, result }) => {
+					await update();
+					if (result.type === 'success') {
+						editing = null;
+						confirmText = '';
+						addToast(form?.warning ?? 'Purchase line updated');
+					}
+				}}
+				class="space-y-4"
+			>
+				<input type="hidden" name="id" value={editing.id} />
+				<div class="grid grid-cols-2 gap-3">
+					<div class="space-y-1.5">
+						<Label for="edit-quantity">Quantity</Label>
+						<Input id="edit-quantity" name="quantity" type="number" min="1" step="1" value={editing.quantity} required />
 					</div>
-				{/if}
-				{#if selected}
-					<div class="flex items-center gap-1.5 text-xs text-green-700 mt-1">
-						<CheckIcon class="size-3.5" />
-						Selected — currently {selected.onHand} on hand
+					<div class="space-y-1.5">
+						<Label for="edit-unitCost">Unit Cost</Label>
+						<Input id="edit-unitCost" name="unitCost" type="number" min="0" step="0.01" value={editing.unitCost} required />
 					</div>
-				{/if}
-			</div>
-
-			{#if selected}
-				<input type="hidden" name="variantId" value={selected.variantId} />
-				<input type="hidden" name="productId" value={selected.productId} />
-				<input type="hidden" name="productTitle" value={selected.productTitle} />
-				<input type="hidden" name="variantTitle" value={selected.variantTitle ?? ''} />
-				<input type="hidden" name="sku" value={selected.sku} />
-			{/if}
-
-			<div class="grid grid-cols-2 gap-3">
-				<div class="space-y-1.5">
-					<Label for="quantity">Quantity</Label>
-					<Input id="quantity" name="quantity" type="number" min="1" step="1" required />
 				</div>
 				<div class="space-y-1.5">
-					<Label for="unitCost">Unit Cost</Label>
-					<Input id="unitCost" name="unitCost" type="number" min="0" step="0.01" required />
+					<Label for="edit-confirm">Type <span class="font-mono font-semibold">edit</span> to confirm</Label>
+					<Input id="edit-confirm" bind:value={confirmText} autocomplete="off" placeholder="edit" />
 				</div>
-			</div>
-			<div class="space-y-1.5">
-				<Label for="purchaseDate">Purchase Date</Label>
-				<Input id="purchaseDate" name="purchaseDate" type="date" value={todayStr} required />
-			</div>
-			<div class="space-y-1.5">
-				<Label for="note">Note (optional)</Label>
-				<Input id="note" name="note" placeholder="Supplier, invoice #, etc." />
-			</div>
-
-			<Dialog.Footer>
-				<Button type="button" variant="outline" onclick={() => showAdd = false}>Cancel</Button>
-				<Button type="submit" disabled={!selected}>Add Purchase</Button>
-			</Dialog.Footer>
-		</form>
+				<Dialog.Footer>
+					<Button type="button" variant="outline" onclick={() => editing = null}>Cancel</Button>
+					<Button type="submit" disabled={!confirmed}>Save Changes</Button>
+				</Dialog.Footer>
+			</form>
+		{/if}
 	</Dialog.Content>
 </Dialog.Root>

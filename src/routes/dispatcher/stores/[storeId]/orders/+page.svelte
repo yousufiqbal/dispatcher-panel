@@ -152,6 +152,109 @@
 		window.open(`/dispatcher/stores/${storeId}/orders/labels?ids=${ids}`, '_blank');
 	}
 
+	interface PickingItem {
+		key: string;
+		title: string;
+		variantTitle: string | null;
+		sku: string | null;
+		image: string | null;
+		totalQty: number;
+		orders: { name: string; qty: number }[];
+	}
+
+	// Combines line items across all selected orders so a picker can grab everything
+	// for a batch from the racks in one pass, then pack per-order afterward using the
+	// per-order breakdown printed under each item. Sorted by qty desc — the picker
+	// clears the bulkiest/most-repeated items first.
+	const pickingItems = $derived.by((): PickingItem[] => {
+		const map = new Map<string, PickingItem>();
+		for (const o of selectedOrders) {
+			for (const item of o.lineItems.nodes) {
+				const variantTitle = item.variant?.title && item.variant.title !== 'Default Title' ? item.variant.title : null;
+				const key = `${item.title}__${variantTitle ?? ''}`;
+				let entry = map.get(key);
+				if (!entry) {
+					entry = {
+						key,
+						title: item.title,
+						variantTitle,
+						sku: item.variant?.sku ?? null,
+						image: item.variant?.image?.url ?? item.image?.url ?? null,
+						totalQty: 0,
+						orders: []
+					};
+					map.set(key, entry);
+				}
+				entry.totalQty += item.quantity;
+				entry.orders.push({ name: o.name, qty: item.quantity });
+			}
+		}
+		return [...map.values()].sort((a, b) => b.totalQty - a.totalQty || a.title.localeCompare(b.title));
+	});
+
+	function escapeHtml(s: string): string {
+		return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+	}
+
+	function openPickingList() {
+		const items = pickingItems;
+		const win = window.open('', '_blank');
+		if (!win) return;
+
+		const totalUnits = items.reduce((s, i) => s + i.totalQty, 0);
+
+		const rows = items
+			.map(
+				(item) => `
+					<tr>
+						<td class="qty">${item.totalQty}</td>
+						<td>
+							<div class="title">${escapeHtml(item.title)}</div>
+							${item.variantTitle ? `<div class="variant">${escapeHtml(item.variantTitle)}</div>` : ''}
+							${item.sku ? `<div class="sku">SKU: ${escapeHtml(item.sku)}</div>` : ''}
+						</td>
+					</tr>`
+			)
+			.join('');
+
+		win.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<title>Picking List — ${escapeHtml(selectedOrders.map((o) => o.name).join(', '))}</title>
+<style>
+	* { box-sizing: border-box; }
+	body { font-family: system-ui, sans-serif; padding: 24px; color: #18181b; }
+	h1 { font-size: 18px; margin: 0 0 4px; }
+	.meta { font-size: 12px; color: #71717a; margin-bottom: 4px; }
+	.summary { font-size: 13px; font-weight: 600; margin-bottom: 20px; }
+	table { width: 100%; border-collapse: collapse; }
+	th, td { border-bottom: 1px solid #e4e4e7; padding: 10px 8px; text-align: left; vertical-align: top; font-size: 13px; }
+	th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: #71717a; }
+	tr { page-break-inside: avoid; }
+	td.qty { width: 48px; font-weight: 700; font-size: 15px; }
+	.title { font-weight: 600; }
+	.variant { font-size: 12px; color: #52525b; }
+	.sku { font-size: 11px; color: #71717a; font-family: monospace; }
+	@media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+	<h1>Picking List</h1>
+	<div class="meta">${selectedOrders.length} orders: ${escapeHtml(selectedOrders.map((o) => o.name).join(', '))} · Generated ${new Date().toLocaleString()}</div>
+	<div class="summary">${items.length} item${items.length === 1 ? '' : 's'} · ${totalUnits} unit${totalUnits === 1 ? '' : 's'} to pick</div>
+	<table>
+		<thead>
+			<tr><th>Qty</th><th>Item</th></tr>
+		</thead>
+		<tbody>${rows}</tbody>
+	</table>
+</body>
+</html>`);
+		win.document.close();
+		win.focus();
+		win.print();
+	}
+
 	// After booking, the redirect lands here with ?labels=<orderIds> — auto-download
 	// the airway-bill PDF for the just-booked orders, then drop the param so a page
 	// refresh doesn't re-download.
@@ -443,6 +546,10 @@
 					<Button variant="outline" size="sm" onclick={openAddressCheckModal}>
 						<MapPinIcon class="size-4" />
 						Check Addresses
+					</Button>
+					<Button variant="outline" size="sm" onclick={openPickingList}>
+						<PrinterIcon class="size-4" />
+						Picking List
 					</Button>
 				{/if}
 				{#each data.couriers as courier}

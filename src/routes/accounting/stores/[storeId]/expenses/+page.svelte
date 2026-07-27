@@ -11,6 +11,8 @@
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
 	import RepeatIcon from '@lucide/svelte/icons/repeat';
+	import ChevronLeftIcon from '@lucide/svelte/icons/chevron-left';
+	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -38,14 +40,14 @@
 <div class="p-3 sm:p-6 max-w-3xl mx-auto">
 	<!-- Month nav + summary -->
 	<div class="card p-5 mb-5 flex items-center justify-between gap-3">
-		<Button variant="ghost" size="icon" onclick={() => changeMonth(-1)}>‹</Button>
+		<Button variant="ghost" size="icon" onclick={() => changeMonth(-1)}><ChevronLeftIcon class="size-5" /></Button>
 		<div class="text-center">
 			<div class="text-sm font-semibold text-foreground">
 				{new Date(`${data.month}-01T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })}
 			</div>
 			<div class="text-xs text-muted-foreground mt-0.5">{data.expenses.length} expense{data.expenses.length !== 1 ? 's' : ''} · {formatCurrency(String(total), 'PKR')}</div>
 		</div>
-		<Button variant="ghost" size="icon" onclick={() => changeMonth(1)}>›</Button>
+		<Button variant="ghost" size="icon" onclick={() => changeMonth(1)}><ChevronRightIcon class="size-5" /></Button>
 	</div>
 
 	<div class="flex items-center justify-between mb-3">

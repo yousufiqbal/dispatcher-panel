@@ -22,7 +22,6 @@
 		variantTitle: string | null;
 		sku: string;
 		imageUrl: string | null;
-		onHand: number;
 	}
 
 	let showAdd = $state(false);
@@ -134,7 +133,7 @@
 								{/if}
 								<div class="flex-1 min-w-0">
 									<div class="text-sm font-medium text-foreground truncate">{v.productTitle}{v.variantTitle ? ` · ${v.variantTitle}` : ''}</div>
-									<div class="text-xs text-muted-foreground">{v.sku || 'no sku'} · on hand {v.onHand}</div>
+									<div class="text-xs text-muted-foreground">{v.sku || 'no sku'}</div>
 								</div>
 							</button>
 						{/each}
@@ -143,7 +142,7 @@
 				{#if selected}
 					<div class="flex items-center gap-1.5 text-xs text-green-700 mt-1">
 						<CheckIcon class="size-3.5" />
-						Selected — currently {selected.onHand} on hand
+						Selected
 					</div>
 				{/if}
 			</div>

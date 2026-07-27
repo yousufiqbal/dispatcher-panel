@@ -393,6 +393,24 @@ export const inventoryCostEvents = sqliteTable('inventory_cost_events', {
 		.$defaultFn(() => new Date())
 });
 
+// A batch groups multiple purchase lines entered together — the common case
+// being one supplier invoice covering several SKUs at once.
+export const purchaseBatches = sqliteTable('purchase_batches', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	storeId: text('store_id')
+		.notNull()
+		.references(() => stores.id, { onDelete: 'cascade' }),
+	supplier: text('supplier'),
+	purchaseDate: integer('purchase_date', { mode: 'timestamp' }).notNull(),
+	note: text('note'),
+	createdBy: text('created_by').notNull(),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date())
+});
+
 export const purchases = sqliteTable('purchases', {
 	id: text('id')
 		.primaryKey()
@@ -400,6 +418,7 @@ export const purchases = sqliteTable('purchases', {
 	storeId: text('store_id')
 		.notNull()
 		.references(() => stores.id, { onDelete: 'cascade' }),
+	batchId: text('batch_id').references(() => purchaseBatches.id, { onDelete: 'cascade' }),
 	variantId: text('variant_id').notNull(),
 	productId: text('product_id').notNull(),
 	productTitle: text('product_title').notNull(),
@@ -440,6 +459,29 @@ export const damages = sqliteTable('damages', {
 		.notNull()
 		.$defaultFn(() => new Date())
 });
+
+// A manual monthly close — accounting reviews and records one month's sales
+// at a time (e.g. closes June on July 1st), rather than tracking every sale
+// as it happens. COGS uses each SKU's current average cost at close time,
+// not a per-sale historical snapshot — deliberately simpler, matching how
+// this store's books are actually kept.
+export const monthlyCloses = sqliteTable(
+	'monthly_closes',
+	{
+		storeId: text('store_id')
+			.notNull()
+			.references(() => stores.id, { onDelete: 'cascade' }),
+		month: text('month').notNull(), // 'YYYY-MM'
+		netSales: text('net_sales').notNull(),
+		cogs: text('cogs').notNull(),
+		unitsSold: integer('units_sold').notNull().default(0),
+		closedBy: text('closed_by').notNull(),
+		closedAt: integer('closed_at', { mode: 'timestamp' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [primaryKey({ columns: [table.storeId, table.month] })]
+);
 
 export const auditLog = sqliteTable('audit_log', {
 	id: text('id')

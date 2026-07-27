@@ -11,6 +11,11 @@ export const GET: RequestHandler = async ({ locals, params, url }) => {
 	const q = url.searchParams.get('q')?.trim() ?? '';
 	if (!q) return json({ results: [] });
 
-	const results = await searchVariants(client, q);
-	return json({ results });
+	try {
+		const results = await searchVariants(client, q);
+		return json({ results });
+	} catch (err) {
+		console.error('[variant search failed]', err);
+		return json({ results: [] });
+	}
 };

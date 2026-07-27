@@ -16,9 +16,9 @@ interface WebhookSubscriptionCreateResult {
 	};
 }
 
-export async function registerOrderCreateWebhook(client: ShopifyClient, callbackUrl: string): Promise<void> {
+async function registerWebhook(client: ShopifyClient, topic: string, callbackUrl: string): Promise<void> {
 	const result = await shopifyRequest<WebhookSubscriptionCreateResult>(client, WEBHOOK_SUBSCRIPTION_CREATE, {
-		topic: 'ORDERS_CREATE',
+		topic,
 		webhookSubscription: { callbackUrl, format: 'JSON' }
 	});
 
@@ -27,6 +27,10 @@ export async function registerOrderCreateWebhook(client: ShopifyClient, callback
 	// for this topic+address already exists — safe to ignore on reconnect/re-save.
 	const alreadyExists = errors.some((e) => /already exists|taken/i.test(e.message));
 	if (errors.length > 0 && !alreadyExists) {
-		console.error('[Shopify webhook registration]', errors);
+		console.error('[Shopify webhook registration]', topic, errors);
 	}
+}
+
+export async function registerOrderCreateWebhook(client: ShopifyClient, callbackUrl: string): Promise<void> {
+	await registerWebhook(client, 'ORDERS_CREATE', callbackUrl);
 }

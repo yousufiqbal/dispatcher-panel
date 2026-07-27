@@ -164,6 +164,73 @@ export async function fetchVariantSales(client: ShopifyClient, variantIds: numbe
 	return map;
 }
 
+const MONTHLY_SALES_QUERY = `
+	query FetchMonthlySales($cursor: String, $query: String) {
+		orders(first: 100, after: $cursor, query: $query, sortKey: CREATED_AT) {
+			pageInfo { hasNextPage endCursor }
+			edges {
+				node {
+					cancelledAt
+					subtotalPriceSet { shopMoney { amount } }
+					lineItems(first: 50) {
+						edges { node { quantity variant { id } } }
+					}
+				}
+			}
+		}
+	}
+`;
+
+interface MonthlySalesQueryResponse {
+	orders: {
+		pageInfo: { hasNextPage: boolean; endCursor: string };
+		edges: {
+			node: {
+				cancelledAt: string | null;
+				subtotalPriceSet: { shopMoney: { amount: string } };
+				lineItems: { edges: { node: { quantity: number; variant: { id: string } | null } }[] };
+			};
+		}[];
+	};
+}
+
+export interface MonthlySalesResult {
+	netSales: number;
+	unitsSold: number;
+	qtyByVariant: Map<string, number>;
+}
+
+// Pulled on demand when accounting manually closes a month — not tracked live.
+// Excludes cancelled orders; refunds/returns aren't netted out here (kept
+// simple), so a month with heavy returns will overstate sales slightly.
+export async function fetchMonthlySales(client: ShopifyClient, start: Date, end: Date): Promise<MonthlySalesResult> {
+	const query = `created_at:>='${start.toISOString().slice(0, 10)}' AND created_at:<'${end.toISOString().slice(0, 10)}' AND status:any`;
+	let cursor: string | null = null;
+
+	let netSales = 0;
+	let unitsSold = 0;
+	const qtyByVariant = new Map<string, number>();
+
+	while (true) {
+		const result: MonthlySalesQueryResponse = await shopifyRequest<MonthlySalesQueryResponse>(client, MONTHLY_SALES_QUERY, { cursor, query });
+
+		for (const { node: order } of result.orders.edges) {
+			if (order.cancelledAt) continue;
+			netSales += parseFloat(order.subtotalPriceSet.shopMoney.amount);
+			for (const { node: item } of order.lineItems.edges) {
+				if (!item.variant) continue;
+				unitsSold += item.quantity;
+				qtyByVariant.set(item.variant.id, (qtyByVariant.get(item.variant.id) ?? 0) + item.quantity);
+			}
+		}
+
+		if (!result.orders.pageInfo.hasNextPage) break;
+		cursor = result.orders.pageInfo.endCursor;
+	}
+
+	return { netSales, unitsSold, qtyByVariant };
+}
+
 // How many units to reorder so stock covers `leadDays` transit + a further
 // `coverDays` of expected sales at the current 30-day daily velocity.
 export function calcRecommendation(sales30: number, currentStock: number, leadDays: number, coverDays = 30): number {
@@ -346,7 +413,6 @@ export interface VariantSearchResult {
 	variantTitle: string | null;
 	sku: string;
 	imageUrl: string | null;
-	onHand: number;
 }
 
 const VARIANT_SEARCH_QUERY = `
@@ -359,11 +425,6 @@ const VARIANT_SEARCH_QUERY = `
 					sku
 					image { url }
 					product { id title featuredImage { url } }
-					inventoryItem {
-						inventoryLevels(first: 1) {
-							edges { node { quantities(names: ["on_hand"]) { name quantity } } }
-						}
-					}
 				}
 			}
 		}
@@ -379,34 +440,31 @@ interface VariantSearchResponse {
 				sku: string | null;
 				image: { url: string } | null;
 				product: { id: string; title: string; featuredImage: { url: string } | null };
-				inventoryItem: {
-					inventoryLevels: { edges: { node: { quantities: { name: string; quantity: number }[] } }[] };
-				} | null;
 			};
 		}[];
 	};
 }
 
 // Free-text search across SKU and product/variant title, used by the
-// accounting Purchases/Damages "find a variant" picker.
+// accounting Purchases/Damages "find a variant" picker. Deliberately doesn't
+// read inventory here — that needs the read_inventory scope, which not every
+// store's token has, and on-hand qty isn't needed until getVariantForMutation
+// right before the actual stock change.
 export async function searchVariants(client: ShopifyClient, q: string, limit = 10): Promise<VariantSearchResult[]> {
 	const escaped = q.replace(/["\\]/g, '');
-	const query = `(sku:*${escaped}*) OR (title:*${escaped}*)`;
+	// "title" isn't a real filter field here (that's a Product-level field name);
+	// variant search uses sku / product_title / variant_title instead.
+	const query = `(sku:*${escaped}*) OR (product_title:*${escaped}*) OR (variant_title:*${escaped}*)`;
 	const result = await shopifyRequest<VariantSearchResponse>(client, VARIANT_SEARCH_QUERY, { query, first: limit });
 
-	return result.productVariants.edges.map(({ node: v }) => {
-		const level = v.inventoryItem?.inventoryLevels?.edges?.[0]?.node;
-		const onHand = qty(level?.quantities, 'on_hand');
-		return {
-			variantId: v.id,
-			productId: v.product.id,
-			productTitle: v.product.title,
-			variantTitle: v.title === 'Default Title' ? null : v.title,
-			sku: v.sku ?? '',
-			imageUrl: v.image?.url ?? v.product.featuredImage?.url ?? null,
-			onHand
-		};
-	});
+	return result.productVariants.edges.map(({ node: v }) => ({
+		variantId: v.id,
+		productId: v.product.id,
+		productTitle: v.product.title,
+		variantTitle: v.title === 'Default Title' ? null : v.title,
+		sku: v.sku ?? '',
+		imageUrl: v.image?.url ?? v.product.featuredImage?.url ?? null
+	}));
 }
 
 export interface VariantForMutation {
