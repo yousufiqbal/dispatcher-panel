@@ -15,6 +15,7 @@
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import CheckIcon from '@lucide/svelte/icons/check';
+	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -37,16 +38,25 @@
 		codPercentage: parseFloat(settings.codPercentage) || 0
 	});
 
+	// A product's own shipping-cost/gram override wins over the store-wide
+	// rate — set via the gear icon for the handful of items that cost more
+	// to ship (fragile, oversized) than the rest of the catalog.
+	function effectiveSettingsFor(productId: string) {
+		const product = products.find((p) => p.id === productId);
+		const shippingCostPerGram = product?.shippingCostPerGramOverride ?? liveSettings.shippingCostPerGram;
+		return { ...liveSettings, shippingCostPerGram };
+	}
+
 	// Recomputes the formula's suggestion (shown as a hint only). The final
 	// price/compare-at default to the *current* live Shopify value and only
 	// change when the merchant deliberately edits them via the handlers below —
 	// nothing is pending/pushed just because a suggestion exists.
-	function recalc(v: VariantRow) {
+	function recalc(v: VariantRow, productId: string) {
 		v.suggestion =
 			v.costAmount > 0
 				? calcSuggestedPricing(
 						{ costAmount: v.costAmount, costCurrency: v.costCurrency as CostCurrency, weightGrams: v.weightGrams },
-						liveSettings
+						effectiveSettingsFor(productId)
 					)
 				: null;
 		if (!v.priceOverridden) v.finalPrice = v.currentPrice;
@@ -63,14 +73,20 @@
 	$effect(() => {
 		liveSettings;
 		untrack(() => {
-			for (const p of products) for (const v of p.variants) recalc(v);
+			for (const p of products) for (const v of p.variants) recalc(v, p.id);
 		});
 	});
 
 	const hasPendingChanges = $derived(products.some((p) => p.variants.some((v) => v.pending)));
 
+	let reviewFilter = $state<'all' | 'reviewed' | 'unreviewed'>('all');
+	const filteredProducts = $derived(
+		products.filter((p) => reviewFilter === 'all' || (reviewFilter === 'reviewed') === p.reviewed)
+	);
+	const reviewedCount = $derived(products.filter((p) => p.reviewed).length);
+
 	function scheduleSave(v: VariantRow, productId: string) {
-		recalc(v);
+		recalc(v, productId);
 		const key = v.id;
 		clearTimeout(pendingSave.get(key));
 		pendingSave.set(
@@ -114,7 +130,7 @@
 
 	function resetPriceOverride(v: VariantRow, productId: string) {
 		v.priceOverridden = false;
-		recalc(v);
+		recalc(v, productId);
 		scheduleSave(v, productId);
 	}
 
@@ -127,7 +143,7 @@
 
 	function resetCompareAtOverride(v: VariantRow, productId: string) {
 		v.compareAtOverridden = false;
-		recalc(v);
+		recalc(v, productId);
 		scheduleSave(v, productId);
 	}
 
@@ -146,14 +162,14 @@
 	// variant on the card may currently have different weight/cost, so there's
 	// no single "current" baseline to fall back on like the per-row hint has.
 	const bulkSuggestion = $derived(
-		bulkWeight !== '' && bulkCostAmount !== ''
+		bulkWeight !== '' && bulkCostAmount !== '' && bulkEditProductId
 			? calcSuggestedPricing(
 					{
 						costAmount: Math.max(0, parseFloat(bulkCostAmount) || 0),
 						costCurrency: bulkCostCurrency,
 						weightGrams: Math.max(0, Math.round(parseFloat(bulkWeight) || 0))
 					},
-					liveSettings
+					effectiveSettingsFor(bulkEditProductId)
 				)
 			: null
 	);
@@ -188,7 +204,7 @@
 				v.finalCompareAtPrice = Math.max(0, parseFloat(bulkCompareAt) || 0);
 				v.compareAtOverridden = true;
 			}
-			recalc(v);
+			recalc(v, product.id);
 			scheduleSave(v, product.id);
 		}
 
@@ -232,6 +248,42 @@
 			addToast('Failed to reset — check connection', 'error');
 		} finally {
 			resettingAll = false;
+		}
+	}
+
+	// Per-product shipping-cost/gram override — for the handful of items that
+	// genuinely cost more to ship (fragile, oversized) than the store-wide rate.
+	let shippingOverrideProductId = $state<string | null>(null);
+	let shippingOverrideRate = $state('');
+	let savingShippingOverride = $state(false);
+
+	function openShippingOverride(productId: string) {
+		const product = products.find((p) => p.id === productId);
+		shippingOverrideProductId = productId;
+		shippingOverrideRate = product?.shippingCostPerGramOverride != null ? String(product.shippingCostPerGramOverride) : '';
+	}
+
+	async function saveShippingOverride() {
+		if (!shippingOverrideProductId) return;
+		const product = products.find((p) => p.id === shippingOverrideProductId);
+		if (!product) return;
+
+		savingShippingOverride = true;
+		const rate = String(shippingOverrideRate ?? '').trim();
+		const fd = new FormData();
+		fd.set('productId', product.id);
+		if (rate !== '') fd.set('shippingCostPerGram', rate);
+		try {
+			const res = await fetch('?/saveShippingOverride', { method: 'POST', body: fd });
+			if (!res.ok) throw new Error('failed');
+			product.shippingCostPerGramOverride = rate === '' ? null : Math.max(0, parseFloat(rate) || 0);
+			for (const v of product.variants) recalc(v, product.id);
+			addToast(rate === '' ? 'Shipping override cleared' : 'Shipping override saved');
+			shippingOverrideProductId = null;
+		} catch {
+			addToast('Failed to save — check connection', 'error');
+		} finally {
+			savingShippingOverride = false;
 		}
 	}
 </script>
@@ -294,8 +346,23 @@
 				</p>
 			</div>
 
+			<div class="flex items-center justify-between mb-4">
+				<div class="inline-flex items-center rounded-lg border border-border bg-muted/40 p-0.5 text-sm">
+					{#each [{ key: 'all', label: 'All' }, { key: 'reviewed', label: 'Reviewed' }, { key: 'unreviewed', label: 'Unreviewed' }] as opt}
+						<button
+							type="button"
+							onclick={() => reviewFilter = opt.key as typeof reviewFilter}
+							class="px-3 py-1.5 rounded-md font-medium transition-colors {reviewFilter === opt.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
+						>
+							{opt.label}
+						</button>
+					{/each}
+				</div>
+				<p class="text-xs text-muted-foreground">{reviewedCount} of {products.length} reviewed</p>
+			</div>
+
 			<div class="space-y-4">
-				{#each products as product (product.id)}
+				{#each filteredProducts as product (product.id)}
 			<div class="card overflow-hidden">
 				<div class="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/20">
 					{#if product.imageUrl}
@@ -307,10 +374,29 @@
 					{/if}
 					<div class="flex-1 min-w-0">
 						<div class="text-sm font-semibold text-foreground truncate">{product.title}</div>
-						{#if product.lastModifiedAt}
-							<div class="text-xs text-muted-foreground">Last modified {formatDateTimeLong(product.lastModifiedAt)}</div>
-						{/if}
+						<div class="flex items-center gap-2 flex-wrap">
+							{#if product.lastModifiedAt}
+								<div class="text-xs text-muted-foreground">Last modified {formatDateTimeLong(product.lastModifiedAt)}</div>
+							{/if}
+							{#if product.shippingCostPerGramOverride != null}
+								<span class="text-xs font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-700">
+									Custom shipping Rs {product.shippingCostPerGramOverride}/g
+								</span>
+							{/if}
+						</div>
 					</div>
+					<button
+						type="button"
+						title="Shipping cost/gram for this product"
+						onclick={() => openShippingOverride(product.id)}
+						class="shrink-0 inline-flex items-center justify-center size-8 rounded-lg border transition-colors {product.shippingCostPerGramOverride != null ? 'border-blue-300 bg-blue-100 text-blue-700 hover:bg-blue-200' : 'border-border bg-card text-muted-foreground hover:bg-muted/50'}"
+					>
+						<SettingsIcon class="size-4" />
+					</button>
+					<Button variant="outline" size="sm" onclick={() => openBulkEdit(product.id)}>
+						<PencilIcon class="size-3.5" />
+						Bulk edit
+					</Button>
 					<button
 						type="button"
 						title={product.reviewed ? 'Mark as not reviewed' : 'Mark as reviewed'}
@@ -319,10 +405,6 @@
 					>
 						<CheckIcon class="size-4" />
 					</button>
-					<Button variant="outline" size="sm" onclick={() => openBulkEdit(product.id)}>
-						<PencilIcon class="size-3.5" />
-						Bulk edit
-					</Button>
 				</div>
 				<div class="overflow-x-auto">
 					<Table.Root>
@@ -543,6 +625,28 @@
 		<Dialog.Footer>
 			<Button type="button" variant="outline" onclick={() => bulkEditProductId = null}>Cancel</Button>
 			<Button type="button" onclick={applyBulkEdit}>Apply to all variants</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
+
+<Dialog.Root open={shippingOverrideProductId !== null} onOpenChange={(o) => { if (!o) shippingOverrideProductId = null; }}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Shipping cost / gram</Dialog.Title>
+			<Dialog.Description>
+				Overrides the store-wide rate (Rs {settings.shippingCostPerGram}/g) for every variant on this product only. Leave blank to use the store-wide rate.
+			</Dialog.Description>
+		</Dialog.Header>
+		<div class="space-y-1.5">
+			<Label for="shipping-override">Rate (Rs/g)</Label>
+			<input id="shipping-override" class="input" type="number" min="0" step="0.01" placeholder="Use store-wide rate" bind:value={shippingOverrideRate} />
+		</div>
+		<Dialog.Footer>
+			<Button type="button" variant="outline" onclick={() => shippingOverrideProductId = null}>Cancel</Button>
+			<Button type="button" disabled={savingShippingOverride} onclick={saveShippingOverride}>
+				{#if savingShippingOverride}<Loader2Icon class="size-4 animate-spin" />{/if}
+				Save
+			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

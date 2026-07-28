@@ -33,13 +33,16 @@ export interface PricingProductView {
 	title: string;
 	imageUrl: string | null;
 	lastModifiedAt: Date | null;
+	shippingCostPerGramOverride: number | null;
+	effectiveShippingCostPerGram: number;
 	variants: PricingVariantView[];
 }
 
 export function buildPricingView(
 	shopifyProducts: PricingProduct[],
 	costRows: CostRow[],
-	settings: PricingSettings
+	settings: PricingSettings,
+	shippingOverrides: Map<string, number> = new Map()
 ): PricingProductView[] {
 	const costByVariant = new Map(costRows.map((r) => [r.variantId, r]));
 
@@ -49,18 +52,24 @@ export function buildPricingView(
 			.filter((r) => variantIds.has(r.variantId))
 			.reduce<Date | null>((latest, r) => (!latest || r.updatedAt > latest ? r.updatedAt : latest), null);
 
+		const shippingCostPerGramOverride = shippingOverrides.get(p.id) ?? null;
+		const effectiveShippingCostPerGram = shippingCostPerGramOverride ?? settings.shippingCostPerGram;
+		const productSettings: PricingSettings = { ...settings, shippingCostPerGram: effectiveShippingCostPerGram };
+
 		return {
 		id: p.id,
 		title: p.title,
 		imageUrl: p.imageUrl,
 		lastModifiedAt,
+		shippingCostPerGramOverride,
+		effectiveShippingCostPerGram,
 		variants: p.variants.map((v) => {
 			const cost = costByVariant.get(v.id);
 			const costAmount = cost ? parseFloat(cost.costAmount) : 0;
 			const costCurrency = (cost?.costCurrency ?? 'cny') as CostCurrency;
 			const weightGrams = cost?.weightGramsOverride ?? v.weightGrams;
 			const suggestion =
-				costAmount > 0 ? calcSuggestedPricing({ costAmount, costCurrency, weightGrams }, settings) : null;
+				costAmount > 0 ? calcSuggestedPricing({ costAmount, costCurrency, weightGrams }, productSettings) : null;
 
 			const priceOverride = cost?.priceOverride != null ? parseFloat(cost.priceOverride) : null;
 			const compareAtOverride = cost?.compareAtOverride != null ? parseFloat(cost.compareAtOverride) : null;

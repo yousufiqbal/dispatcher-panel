@@ -542,6 +542,26 @@ export const pricingReviewMarks = sqliteTable(
 	(table) => [primaryKey({ columns: [table.storeId, table.productId] })]
 );
 
+// Per-product override of the store's global shipping-cost/gram — for the
+// handful of items (fragile, oversized) that genuinely cost more to ship
+// than the rest of the catalog. Row presence = overridden; absence means
+// "use the store-wide rate". Applies to every variant on that product.
+export const pricingShippingOverrides = sqliteTable(
+	'pricing_shipping_overrides',
+	{
+		storeId: text('store_id')
+			.notNull()
+			.references(() => stores.id, { onDelete: 'cascade' }),
+		productId: text('product_id').notNull(),
+		shippingCostPerGram: text('shipping_cost_per_gram').notNull(),
+		updatedBy: text('updated_by').notNull(),
+		updatedAt: integer('updated_at', { mode: 'timestamp' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [primaryKey({ columns: [table.storeId, table.productId] })]
+);
+
 export const auditLog = sqliteTable('audit_log', {
 	id: text('id')
 		.primaryKey()

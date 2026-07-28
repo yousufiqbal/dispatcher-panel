@@ -1,7 +1,7 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { stores, variantPricing, pricingReviewMarks } from '$lib/server/db/schema';
+import { stores, variantPricing, pricingReviewMarks, pricingShippingOverrides } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getShopifyClient } from '$lib/server/shopify/client';
 import { fetchPricingProducts } from '$lib/server/shopify/pricing';
@@ -14,10 +14,11 @@ export const load: PageServerLoad = async ({ params }) => {
 	if (!store) error(404, 'Store not found');
 
 	const client = getShopifyClient(store);
-	const [shopifyProducts, costRows, reviewRows] = await Promise.all([
+	const [shopifyProducts, costRows, reviewRows, shippingOverrideRows] = await Promise.all([
 		fetchPricingProducts(client),
 		db.query.variantPricing.findMany({ where: eq(variantPricing.storeId, params.id) }),
-		db.query.pricingReviewMarks.findMany({ where: eq(pricingReviewMarks.storeId, params.id) })
+		db.query.pricingReviewMarks.findMany({ where: eq(pricingReviewMarks.storeId, params.id) }),
+		db.query.pricingShippingOverrides.findMany({ where: eq(pricingShippingOverrides.storeId, params.id) })
 	]);
 
 	const settings: PricingSettings = {
@@ -29,7 +30,8 @@ export const load: PageServerLoad = async ({ params }) => {
 	};
 
 	const reviewedIds = new Set(reviewRows.map((r) => r.productId));
-	const products = buildPricingView(shopifyProducts, costRows, settings).map((p) => ({
+	const shippingOverrideMap = new Map(shippingOverrideRows.map((r) => [r.productId, parseFloat(r.shippingCostPerGram)]));
+	const products = buildPricingView(shopifyProducts, costRows, settings, shippingOverrideMap).map((p) => ({
 		...p,
 		reviewed: reviewedIds.has(p.id)
 	}));
@@ -135,6 +137,40 @@ export const actions: Actions = {
 		}
 
 		return { toggled: productId };
+	},
+
+	saveShippingOverride: async ({ request, params, locals }) => {
+		const fd = await request.formData();
+		const productId = fd.get('productId')?.toString();
+		const rateRaw = fd.get('shippingCostPerGram')?.toString();
+		if (!productId) return fail(400);
+
+		if (!rateRaw) {
+			await db
+				.delete(pricingShippingOverrides)
+				.where(and(eq(pricingShippingOverrides.storeId, params.id), eq(pricingShippingOverrides.productId, productId)));
+			return { shippingOverrideCleared: productId };
+		}
+
+		if (isNaN(parseFloat(rateRaw)) || parseFloat(rateRaw) < 0) return fail(400, { shippingOverrideError: 'Invalid rate' });
+		const shippingCostPerGram = String(parseFloat(rateRaw));
+
+		const existing = await db.query.pricingShippingOverrides.findFirst({
+			where: and(eq(pricingShippingOverrides.storeId, params.id), eq(pricingShippingOverrides.productId, productId))
+		});
+
+		if (existing) {
+			await db
+				.update(pricingShippingOverrides)
+				.set({ shippingCostPerGram, updatedBy: locals.session!.userId, updatedAt: new Date() })
+				.where(and(eq(pricingShippingOverrides.storeId, params.id), eq(pricingShippingOverrides.productId, productId)));
+		} else {
+			await db.insert(pricingShippingOverrides).values({
+				storeId: params.id, productId, shippingCostPerGram, updatedBy: locals.session!.userId
+			});
+		}
+
+		return { shippingOverrideSaved: productId };
 	},
 
 	resetAllReviewed: async ({ params, locals }) => {
