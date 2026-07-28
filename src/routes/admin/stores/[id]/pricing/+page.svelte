@@ -286,6 +286,7 @@
 							{#each product.variants as v (v.id)}
 								<Table.Row>
 									<Table.Cell class="align-top w-[12rem] max-w-[12rem]">
+										<div class="h-4 mb-1"></div>
 										<div class="flex items-center gap-2 min-w-0">
 											{#if v.imageUrl}
 												<img src={v.imageUrl} alt="" class="size-8 rounded object-cover border border-border shrink-0" />
@@ -297,6 +298,7 @@
 												{#if v.sku}<div class="text-xs text-muted-foreground truncate">{v.sku}</div>{/if}
 											</div>
 										</div>
+										<div class="h-4 mt-0.5"></div>
 									</Table.Cell>
 
 									<Table.Cell class="align-top">
@@ -376,11 +378,13 @@
 									</Table.Cell>
 
 									<Table.Cell class="align-top">
+										<div class="h-4 mb-1"></div>
 										{#if savingVariants.has(v.id)}
 											<Loader2Icon class="size-3.5 animate-spin text-muted-foreground" />
 										{:else if v.pending}
 											<span class="badge badge-pending">Changed</span>
 										{/if}
+										<div class="h-4 mt-0.5"></div>
 									</Table.Cell>
 								</Table.Row>
 							{/each}
