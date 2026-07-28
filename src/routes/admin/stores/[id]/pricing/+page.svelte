@@ -140,6 +140,22 @@
 	let bulkPrice = $state('');
 	let bulkCompareAt = $state('');
 
+	// Only computable once both weight and cost are entered here — each
+	// variant on the card may currently have different weight/cost, so there's
+	// no single "current" baseline to fall back on like the per-row hint has.
+	const bulkSuggestion = $derived(
+		bulkWeight !== '' && bulkCostAmount !== ''
+			? calcSuggestedPricing(
+					{
+						costAmount: Math.max(0, parseFloat(bulkCostAmount) || 0),
+						costCurrency: bulkCostCurrency,
+						weightGrams: Math.max(0, Math.round(parseFloat(bulkWeight) || 0))
+					},
+					liveSettings
+				)
+			: null
+	);
+
 	function openBulkEdit(productId: string) {
 		bulkEditProductId = productId;
 		bulkWeight = '';
@@ -257,9 +273,10 @@
 					<Table.Root>
 						<Table.Header>
 							<Table.Row>
-								<Table.Head class="min-w-[10rem]">Variant</Table.Head>
+								<Table.Head class="w-[12rem] max-w-[12rem]">Variant</Table.Head>
 								<Table.Head class="min-w-[6rem]">Weight (g)</Table.Head>
 								<Table.Head class="min-w-[10rem]">Buying cost</Table.Head>
+								<Table.Head class="min-w-[6rem]">Landed cost</Table.Head>
 								<Table.Head class="min-w-[7rem]">Final price</Table.Head>
 								<Table.Head class="min-w-[7rem]">Final compare-at</Table.Head>
 								<Table.Head class="w-10"></Table.Head>
@@ -268,15 +285,15 @@
 						<Table.Body>
 							{#each product.variants as v (v.id)}
 								<Table.Row>
-									<Table.Cell class="align-top">
+									<Table.Cell class="align-top w-[12rem] max-w-[12rem]">
 										<div class="flex items-center gap-2 min-w-0">
 											{#if v.imageUrl}
 												<img src={v.imageUrl} alt="" class="size-8 rounded object-cover border border-border shrink-0" />
 											{:else}
 												<div class="size-8 rounded bg-muted shrink-0 border border-border"></div>
 											{/if}
-											<div class="min-w-0">
-												<div class="truncate text-foreground font-medium">{v.title === 'Default Title' ? product.title : v.title}</div>
+											<div class="min-w-0 flex-1">
+												<div class="truncate text-foreground font-medium" title={v.title === 'Default Title' ? product.title : v.title}>{v.title === 'Default Title' ? product.title : v.title}</div>
 												{#if v.sku}<div class="text-xs text-muted-foreground truncate">{v.sku}</div>{/if}
 											</div>
 										</div>
@@ -315,6 +332,12 @@
 									</Table.Cell>
 
 									<Table.Cell class="align-top">
+										<div class="h-4 mb-1"></div>
+										<div class="text-sm">{v.suggestion ? `Rs ${v.suggestion.baseCost.toFixed(0)}` : '—'}</div>
+										<div class="h-4 mt-0.5"></div>
+									</Table.Cell>
+
+									<Table.Cell class="align-top">
 										<div class="h-4 mb-1 text-xs text-muted-foreground truncate">
 											{v.suggestion ? `Suggested Rs ${v.suggestion.price.toFixed(0)}` : 'no cost entered'}
 										</div>
@@ -325,7 +348,7 @@
 											oninput={(e) => onPriceOverrideInput(v, product.id, e.currentTarget.value)}
 										/>
 										<div class="h-4 mt-0.5">
-											{#if v.priceOverridden}
+											{#if v.priceOverridden && Math.round(v.finalPrice) !== Math.round(v.currentPrice)}
 												<button type="button" class="text-xs text-muted-foreground underline" onclick={() => resetPriceOverride(v, product.id)}>
 													reset (Rs {v.currentPrice.toFixed(0)})
 												</button>
@@ -344,7 +367,7 @@
 											oninput={(e) => onCompareAtOverrideInput(v, product.id, e.currentTarget.value)}
 										/>
 										<div class="h-4 mt-0.5">
-											{#if v.compareAtOverridden}
+											{#if v.compareAtOverridden && Math.round(v.finalCompareAtPrice) !== Math.round(v.currentCompareAtPrice ?? 0)}
 												<button type="button" class="text-xs text-muted-foreground underline" onclick={() => resetCompareAtOverride(v, product.id)}>
 													reset (Rs {(v.currentCompareAtPrice ?? 0).toFixed(0)})
 												</button>
@@ -410,10 +433,16 @@
 			<div class="space-y-1.5">
 				<Label for="bulk-price">Final price</Label>
 				<input id="bulk-price" class="input" type="number" min="0" step="1" placeholder="Keep current" bind:value={bulkPrice} />
+				<p class="text-xs text-muted-foreground">
+					{bulkSuggestion ? `Suggested Rs ${bulkSuggestion.price.toFixed(0)}` : 'Enter weight & cost above to see a suggestion'}
+				</p>
 			</div>
 			<div class="space-y-1.5">
 				<Label for="bulk-compareAt">Final compare-at</Label>
 				<input id="bulk-compareAt" class="input" type="number" min="0" step="1" placeholder="Keep current" bind:value={bulkCompareAt} />
+				<p class="text-xs text-muted-foreground">
+					{bulkSuggestion ? `Suggested Rs ${bulkSuggestion.compareAtPrice.toFixed(0)}` : 'Enter weight & cost above to see a suggestion'}
+				</p>
 			</div>
 		</div>
 		<Dialog.Footer>

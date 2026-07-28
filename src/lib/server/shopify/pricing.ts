@@ -158,7 +158,7 @@ export async function applyProductVariantPrices(
 }
 
 const INVENTORY_ITEM_UPDATE = `
-	mutation PricingWeightUpdate($id: ID!, $input: InventoryItemUpdateInput!) {
+	mutation PricingWeightUpdate($id: ID!, $input: InventoryItemInput!) {
 		inventoryItemUpdate(id: $id, input: $input) {
 			userErrors { field message }
 		}
