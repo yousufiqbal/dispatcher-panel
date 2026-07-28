@@ -32,6 +32,7 @@ export interface PricingProductView {
 	id: string;
 	title: string;
 	imageUrl: string | null;
+	lastModifiedAt: Date | null;
 	variants: PricingVariantView[];
 }
 
@@ -42,10 +43,17 @@ export function buildPricingView(
 ): PricingProductView[] {
 	const costByVariant = new Map(costRows.map((r) => [r.variantId, r]));
 
-	return shopifyProducts.map((p) => ({
+	return shopifyProducts.map((p) => {
+		const variantIds = new Set(p.variants.map((v) => v.id));
+		const lastModifiedAt = costRows
+			.filter((r) => variantIds.has(r.variantId))
+			.reduce<Date | null>((latest, r) => (!latest || r.updatedAt > latest ? r.updatedAt : latest), null);
+
+		return {
 		id: p.id,
 		title: p.title,
 		imageUrl: p.imageUrl,
+		lastModifiedAt,
 		variants: p.variants.map((v) => {
 			const cost = costByVariant.get(v.id);
 			const costAmount = cost ? parseFloat(cost.costAmount) : 0;
@@ -90,5 +98,6 @@ export function buildPricingView(
 				pending
 			};
 		})
-	}));
+		};
+	});
 }

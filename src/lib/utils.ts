@@ -45,6 +45,16 @@ export function formatRelativeDate(dateStr: string): string {
 	return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
 }
 
+// "15 July 2026 07:32 PM"
+export function formatDateTimeLong(date: Date | string): string {
+	const d = typeof date === 'string' ? new Date(date) : date;
+	const day = d.getDate();
+	const month = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(d);
+	const year = d.getFullYear();
+	const time = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }).format(d);
+	return `${day} ${month} ${year} ${time}`;
+}
+
 export function shopifyIdToNumber(gid: string): string {
 	return gid.split('/').pop() ?? gid;
 }

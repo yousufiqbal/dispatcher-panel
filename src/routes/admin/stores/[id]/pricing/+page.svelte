@@ -4,6 +4,7 @@
 	import { addToast } from '$lib/toast.svelte';
 	import { untrack } from 'svelte';
 	import { calcSuggestedPricing, type CostCurrency } from '$lib/pricing';
+	import { formatDateTimeLong } from '$lib/utils';
 	import PageHeaderBack from '$lib/components/PageHeaderBack.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
@@ -263,7 +264,12 @@
 							<ImageIcon class="size-4 text-muted-foreground" />
 						</div>
 					{/if}
-					<div class="text-sm font-semibold text-foreground flex-1 min-w-0 truncate">{product.title}</div>
+					<div class="flex-1 min-w-0">
+						<div class="text-sm font-semibold text-foreground truncate">{product.title}</div>
+						{#if product.lastModifiedAt}
+							<div class="text-xs text-muted-foreground">Last modified {formatDateTimeLong(product.lastModifiedAt)}</div>
+						{/if}
+					</div>
 					<Button variant="outline" size="sm" onclick={() => openBulkEdit(product.id)}>
 						<PencilIcon class="size-3.5" />
 						Bulk edit
