@@ -1,7 +1,7 @@
 import { error, fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
-import { stores, variantPricing } from '$lib/server/db/schema';
+import { stores, variantPricing, pricingReviewMarks } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getShopifyClient } from '$lib/server/shopify/client';
 import { fetchPricingProducts } from '$lib/server/shopify/pricing';
@@ -14,9 +14,10 @@ export const load: PageServerLoad = async ({ params }) => {
 	if (!store) error(404, 'Store not found');
 
 	const client = getShopifyClient(store);
-	const [shopifyProducts, costRows] = await Promise.all([
+	const [shopifyProducts, costRows, reviewRows] = await Promise.all([
 		fetchPricingProducts(client),
-		db.query.variantPricing.findMany({ where: eq(variantPricing.storeId, params.id) })
+		db.query.variantPricing.findMany({ where: eq(variantPricing.storeId, params.id) }),
+		db.query.pricingReviewMarks.findMany({ where: eq(pricingReviewMarks.storeId, params.id) })
 	]);
 
 	const settings: PricingSettings = {
@@ -27,7 +28,11 @@ export const load: PageServerLoad = async ({ params }) => {
 		codPercentage: parseFloat(store.codPercentage)
 	};
 
-	const products = buildPricingView(shopifyProducts, costRows, settings);
+	const reviewedIds = new Set(reviewRows.map((r) => r.productId));
+	const products = buildPricingView(shopifyProducts, costRows, settings).map((p) => ({
+		...p,
+		reviewed: reviewedIds.has(p.id)
+	}));
 	const hasPendingChanges = products.some((p) => p.variants.some((v) => v.pending));
 
 	return {
@@ -108,5 +113,39 @@ export const actions: Actions = {
 		}
 
 		return { variantSaved: variantId };
+	},
+
+	toggleReviewed: async ({ request, params, locals }) => {
+		const fd = await request.formData();
+		const productId = fd.get('productId')?.toString();
+		const checked = fd.get('checked')?.toString() === 'true';
+		if (!productId) return fail(400);
+
+		if (checked) {
+			const existing = await db.query.pricingReviewMarks.findFirst({
+				where: and(eq(pricingReviewMarks.storeId, params.id), eq(pricingReviewMarks.productId, productId))
+			});
+			if (!existing) {
+				await db.insert(pricingReviewMarks).values({ storeId: params.id, productId, markedBy: locals.session!.userId });
+			}
+		} else {
+			await db
+				.delete(pricingReviewMarks)
+				.where(and(eq(pricingReviewMarks.storeId, params.id), eq(pricingReviewMarks.productId, productId)));
+		}
+
+		return { toggled: productId };
+	},
+
+	resetAllReviewed: async ({ params, locals }) => {
+		await db.delete(pricingReviewMarks).where(eq(pricingReviewMarks.storeId, params.id));
+
+		if (locals.session) {
+			await logAudit(locals.session.userId, 'admin', 'pricing.reviewMarks.resetAll', {
+				targetType: 'store', targetId: params.id, storeId: params.id
+			});
+		}
+
+		return { resetAll: true };
 	}
 };

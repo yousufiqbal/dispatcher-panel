@@ -14,6 +14,7 @@
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import CheckIcon from '@lucide/svelte/icons/check';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -193,6 +194,46 @@
 
 		bulkEditProductId = null;
 	}
+
+	// Manual "reviewed" tick per product card — pure bookkeeping, persisted so
+	// it survives refresh, independent of the pending/apply workflow.
+	async function toggleReviewed(productId: string, checked: boolean) {
+		const product = products.find((p) => p.id === productId);
+		if (product) product.reviewed = checked;
+
+		const fd = new FormData();
+		fd.set('productId', productId);
+		fd.set('checked', String(checked));
+		try {
+			const res = await fetch('?/toggleReviewed', { method: 'POST', body: fd });
+			if (!res.ok) throw new Error('failed');
+		} catch {
+			addToast('Failed to save — check connection', 'error');
+			if (product) product.reviewed = !checked;
+		}
+	}
+
+	let resetConfirmOpen = $state(false);
+	let resetConfirmText = $state('');
+	let resettingAll = $state(false);
+	const resetConfirmed = $derived(resetConfirmText.trim().toLowerCase() === 'reset');
+
+	async function resetAllReviewed() {
+		if (!resetConfirmed) return;
+		resettingAll = true;
+		try {
+			const res = await fetch('?/resetAllReviewed', { method: 'POST', body: new FormData() });
+			if (!res.ok) throw new Error('failed');
+			for (const p of products) p.reviewed = false;
+			addToast('All review ticks reset');
+			resetConfirmOpen = false;
+			resetConfirmText = '';
+		} catch {
+			addToast('Failed to reset — check connection', 'error');
+		} finally {
+			resettingAll = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -270,6 +311,14 @@
 							<div class="text-xs text-muted-foreground">Last modified {formatDateTimeLong(product.lastModifiedAt)}</div>
 						{/if}
 					</div>
+					<button
+						type="button"
+						title={product.reviewed ? 'Mark as not reviewed' : 'Mark as reviewed'}
+						onclick={() => toggleReviewed(product.id, !product.reviewed)}
+						class="shrink-0 inline-flex items-center justify-center size-8 rounded-lg border transition-colors {product.reviewed ? 'border-green-300 bg-green-100 text-green-700 hover:bg-green-200' : 'border-border bg-card text-muted-foreground hover:bg-muted/50'}"
+					>
+						<CheckIcon class="size-4" />
+					</button>
 					<Button variant="outline" size="sm" onclick={() => openBulkEdit(product.id)}>
 						<PencilIcon class="size-3.5" />
 						Bulk edit
@@ -342,7 +391,14 @@
 									<Table.Cell class="align-top">
 										<div class="h-4 mb-1"></div>
 										<div class="text-sm">{v.suggestion ? `Rs ${v.suggestion.baseCost.toFixed(0)}` : '—'}</div>
-										<div class="h-4 mt-0.5"></div>
+										<div class="h-4 mt-0.5">
+											{#if v.suggestion}
+												{@const profit = v.finalPrice - v.suggestion.baseCost}
+												<span class="text-xs {profit >= 0 ? 'text-green-700' : 'text-destructive'}">
+													{profit >= 0 ? 'Earn' : 'Lose'} Rs {Math.abs(profit).toFixed(0)}
+												</span>
+											{/if}
+										</div>
 									</Table.Cell>
 
 									<Table.Cell class="align-top">
@@ -413,9 +469,38 @@
 			{:else}
 				<div class="card p-4 text-xs text-muted-foreground">No pending changes yet.</div>
 			{/if}
+
+			<div class="card p-4 mt-4">
+				<p class="text-xs text-muted-foreground mb-3">Clear every "Reviewed" tick on this page.</p>
+				<Button variant="outline" size="sm" class="w-full" onclick={() => { resetConfirmOpen = true; resetConfirmText = ''; }}>
+					Reset all ticks
+				</Button>
+			</div>
 		</div>
 	</div>
 </div>
+
+<Dialog.Root open={resetConfirmOpen} onOpenChange={(o) => { if (!o) resetConfirmOpen = false; }}>
+	<Dialog.Content class="sm:max-w-sm">
+		<Dialog.Header>
+			<Dialog.Title>Reset all review ticks?</Dialog.Title>
+			<Dialog.Description>
+				Un-ticks "Reviewed" on every product card for this store. Type <span class="font-mono font-semibold">reset</span> to confirm.
+			</Dialog.Description>
+		</Dialog.Header>
+		<div class="space-y-1.5">
+			<Label for="reset-confirm">Confirmation</Label>
+			<input id="reset-confirm" class="input" autocomplete="off" placeholder="reset" bind:value={resetConfirmText} />
+		</div>
+		<Dialog.Footer>
+			<Button type="button" variant="outline" onclick={() => resetConfirmOpen = false}>Cancel</Button>
+			<Button type="button" disabled={!resetConfirmed || resettingAll} onclick={resetAllReviewed}>
+				{#if resettingAll}<Loader2Icon class="size-4 animate-spin" />{/if}
+				Reset all ticks
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
 
 <Dialog.Root open={bulkEditProductId !== null} onOpenChange={(o) => { if (!o) bulkEditProductId = null; }}>
 	<Dialog.Content class="sm:max-w-sm data-[state=open]:slide-in-from-bottom-8 data-[state=closed]:slide-out-to-bottom-8">

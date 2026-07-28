@@ -524,6 +524,24 @@ export const variantPricing = sqliteTable(
 	(table) => [primaryKey({ columns: [table.storeId, table.variantId] })]
 );
 
+// Manual "I've reviewed this product's pricing" tick per product card —
+// purely a human bookkeeping aid (row presence = ticked), unrelated to the
+// pending/apply-to-Shopify workflow. Cleared in bulk via the page's reset button.
+export const pricingReviewMarks = sqliteTable(
+	'pricing_review_marks',
+	{
+		storeId: text('store_id')
+			.notNull()
+			.references(() => stores.id, { onDelete: 'cascade' }),
+		productId: text('product_id').notNull(),
+		markedBy: text('marked_by').notNull(),
+		markedAt: integer('marked_at', { mode: 'timestamp' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [primaryKey({ columns: [table.storeId, table.productId] })]
+);
+
 export const auditLog = sqliteTable('audit_log', {
 	id: text('id')
 		.primaryKey()
