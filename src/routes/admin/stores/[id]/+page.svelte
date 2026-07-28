@@ -4,6 +4,7 @@
 	import AvatarInitial from '$lib/components/AvatarInitial.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import TagIcon from '@lucide/svelte/icons/tag';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -73,8 +74,14 @@
 		</div>
 	</div>
 
-	<Button href="/admin/stores/{data.store.id}/edit">
-		<PencilIcon class="size-4" />
-		Edit Store
-	</Button>
+	<div class="flex gap-2">
+		<Button href="/admin/stores/{data.store.id}/edit">
+			<PencilIcon class="size-4" />
+			Edit Store
+		</Button>
+		<Button href="/admin/stores/{data.store.id}/pricing" variant="outline">
+			<TagIcon class="size-4" />
+			Pricing
+		</Button>
+	</div>
 </div>

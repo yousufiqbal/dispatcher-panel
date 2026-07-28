@@ -63,6 +63,14 @@ export const stores = sqliteTable('stores', {
 	// the recommended reorder quantity so stock doesn't run out before it lands.
 	airLeadDays: integer('air_lead_days').notNull().default(15),
 	seaLeadDays: integer('sea_lead_days').notNull().default(60),
+	// Pricing tool: CNY->PKR rate, per-gram shipping cost, price/compare-at
+	// multipliers applied to (cost + weight*shippingCostPerGram), and a COD
+	// buffer % layered on top of both. See src/lib/pricing.ts for the formula.
+	cnyToPkrRate: text('cny_to_pkr_rate').notNull().default('40'),
+	shippingCostPerGram: text('shipping_cost_per_gram').notNull().default('0'),
+	priceMultiplier: text('price_multiplier').notNull().default('2'),
+	compareAtMultiplier: text('compare_at_multiplier').notNull().default('3'),
+	codPercentage: text('cod_percentage').notNull().default('4'),
 	isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
 	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()
@@ -481,6 +489,39 @@ export const monthlyCloses = sqliteTable(
 			.$defaultFn(() => new Date())
 	},
 	(table) => [primaryKey({ columns: [table.storeId, table.month] })]
+);
+
+// --- Pricing tool ----------------------------------------------------------
+// Per-variant cost input the merchant enters by hand (buying cost from the
+// supplier, in whichever currency they were quoted). Everything else needed
+// to compute a suggested price (current Shopify price/compare-at, live
+// weight) is read fresh from Shopify each time, never cached here — so
+// "pending changes" is always a live diff, not a state machine to keep in sync.
+export const variantPricing = sqliteTable(
+	'variant_pricing',
+	{
+		storeId: text('store_id')
+			.notNull()
+			.references(() => stores.id, { onDelete: 'cascade' }),
+		variantId: text('variant_id').notNull(),
+		productId: text('product_id').notNull(),
+		costAmount: text('cost_amount').notNull().default('0'),
+		costCurrency: text('cost_currency', { enum: ['cny', 'pkr'] }).notNull().default('cny'),
+		// Overrides the live Shopify variant weight for the suggested-price
+		// calculation; null means "use whatever weight Shopify has". Set on
+		// apply so the two stay in sync going forward.
+		weightGramsOverride: integer('weight_grams_override'),
+		// Manual override of the computed suggested price/compare-at — null
+		// means "use the formula's number". Lets the merchant hand-tune a
+		// final price without touching cost/weight inputs.
+		priceOverride: text('price_override'),
+		compareAtOverride: text('compare_at_override'),
+		updatedBy: text('updated_by').notNull(),
+		updatedAt: integer('updated_at', { mode: 'timestamp' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [primaryKey({ columns: [table.storeId, table.variantId] })]
 );
 
 export const auditLog = sqliteTable('audit_log', {
