@@ -106,6 +106,10 @@
 	// add and tags to remove, applied on top of each selected order's own existing
 	// tags (they may differ per order) — final list computed here, one per order,
 	// submitted as tags_<id> fields so the server just applies each list as-is.
+	// Fixed suggestion list shown in the tag modals — the tags actually in
+	// regular use for order status, not whatever happens to be on this page.
+	const knownTags = ['incorrect-address', 'not-reachable', 'on-hold'];
+
 	let tagModalMode = $state<'single' | 'bulk' | null>(null);
 	let tagModalOrderId = $state('');
 	let tagModalOrderName = $state('');
@@ -114,8 +118,13 @@
 	let bulkRemoveTags = $state<string[]>([]);
 	let tagInputSingle = $state('');
 	let tagInputBulkAdd = $state('');
-	let tagInputBulkRemove = $state('');
 	let savingTags = $state(false);
+
+	// Union of tags already on any selected order, shown alongside newly-typed
+	// ones in the bulk tag modal's single chip box.
+	const bulkExistingTags = $derived(
+		Array.from(new Set(selectedOrders.flatMap((o) => o.tags))).filter((t) => !bulkAddTags.includes(t))
+	);
 
 	function openSingleTagModal(order: (typeof data.orders)[number]) {
 		tagModalMode = 'single';
@@ -130,7 +139,6 @@
 		bulkAddTags = [];
 		bulkRemoveTags = [];
 		tagInputBulkAdd = '';
-		tagInputBulkRemove = '';
 	}
 
 	function closeTagModal() {
@@ -776,7 +784,7 @@
 							{#if data.status !== 'pending'}
 								<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Delivery Status</th>
 							{/if}
-							<th class="w-8"></th>
+							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap min-w-[8rem]">Tags</th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-border">
@@ -979,14 +987,23 @@
 									{/if}
 								</td>
 								{/if}
-								<td class="px-3 py-1.5" onclick={(e) => e.stopPropagation()}>
+								<td class="px-3 py-1.5 max-w-[13rem]" onclick={(e) => e.stopPropagation()}>
 									<button
 										type="button"
 										title="Manage tags"
-										class="text-muted-foreground hover:text-foreground"
+										class="flex flex-wrap items-center gap-1 hover:opacity-80"
 										onclick={() => openSingleTagModal(order)}
 									>
-										<TagIcon class="size-4" />
+										{#if order.tags.length > 0}
+											{#each order.tags.slice(0, 2) as tag}
+												<span class="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground whitespace-nowrap">{tag}</span>
+											{/each}
+											{#if order.tags.length > 2}
+												<span class="text-xs text-muted-foreground">+{order.tags.length - 2}</span>
+											{/if}
+										{:else}
+											<TagIcon class="size-4 text-muted-foreground" />
+										{/if}
 									</button>
 								</td>
 							</tr>
@@ -1399,6 +1416,22 @@
 						}
 					}}
 				/>
+				{#if knownTags.filter((t) => !singleTags.includes(t)).length > 0}
+					<div class="mt-2">
+						<div class="text-xs text-muted-foreground mb-1">Existing tags</div>
+						<div class="flex flex-wrap gap-1.5">
+							{#each knownTags.filter((t) => !singleTags.includes(t)) as tag}
+								<button
+									type="button"
+									class="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted/70"
+									onclick={() => singleTags = addChip(singleTags, tag)}
+								>
+									+ {tag}
+								</button>
+							{/each}
+						</div>
+					</div>
+				{/if}
 
 				<Dialog.Footer class="mt-4">
 					<Button type="button" variant="outline" disabled={savingTags} onclick={closeTagModal}>Cancel</Button>
@@ -1411,7 +1444,7 @@
 		{:else if tagModalMode === 'bulk'}
 			<Dialog.Header>
 				<Dialog.Title>Manage tags — {selectedOrders.length} orders</Dialog.Title>
-				<Dialog.Description>Tags to add go on every selected order; tags to remove come off every selected order that has them.</Dialog.Description>
+				<Dialog.Description>Shows every tag currently on any selected order. Remove a tag to clear it from all of them; add a tag to apply it to all of them.</Dialog.Description>
 			</Dialog.Header>
 			<form method="POST" action="?/bulkUpdateTags" use:enhance={() => {
 				savingTags = true;
@@ -1433,79 +1466,62 @@
 					<input type="hidden" name="tags_{p.id}" value={p.finalTags.join(',')} />
 				{/each}
 
-				<div class="space-y-1.5">
-					<Label>Tags to add</Label>
-					<div class="flex flex-wrap gap-1.5 min-h-9 p-2 rounded-md border border-input">
-						{#each bulkAddTags as tag}
-							<span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2.5 py-1 text-xs font-medium">
-								{tag}
-								<button type="button" class="hover:text-destructive" onclick={() => bulkAddTags = removeChip(bulkAddTags, tag)}>
+				<div class="flex flex-wrap gap-1.5 min-h-9 p-2 rounded-md border border-input">
+					{#each bulkExistingTags as tag}
+						{@const removing = bulkRemoveTags.includes(tag)}
+						<span class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium {removing ? 'bg-red-100 text-red-700 line-through' : 'bg-muted text-foreground'}">
+							{tag}
+							{#if removing}
+								<button type="button" class="hover:text-foreground" title="Keep this tag" onclick={() => bulkRemoveTags = removeChip(bulkRemoveTags, tag)}>
 									<XIcon class="size-3" />
 								</button>
-							</span>
-						{/each}
-						{#if bulkAddTags.length === 0}
-							<span class="text-xs text-muted-foreground py-1">None</span>
-						{/if}
-					</div>
-					<Input
-						placeholder="Type a tag and press Enter"
-						bind:value={tagInputBulkAdd}
-						onkeydown={(e) => {
-							if (e.key === 'Enter' || e.key === ',') {
-								e.preventDefault();
-								bulkAddTags = addChip(bulkAddTags, tagInputBulkAdd);
-								tagInputBulkAdd = '';
-							}
-						}}
-					/>
-				</div>
-
-				<div class="space-y-1.5 mt-4">
-					<Label>Tags to remove</Label>
-					<div class="flex flex-wrap gap-1.5 min-h-9 p-2 rounded-md border border-input">
-						{#each bulkRemoveTags as tag}
-							<span class="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2.5 py-1 text-xs font-medium">
-								{tag}
-								<button type="button" class="hover:text-destructive" onclick={() => bulkRemoveTags = removeChip(bulkRemoveTags, tag)}>
+							{:else}
+								<button type="button" class="hover:text-destructive" title="Remove from all selected" onclick={() => bulkRemoveTags = addChip(bulkRemoveTags, tag)}>
 									<XIcon class="size-3" />
 								</button>
-							</span>
-						{/each}
-						{#if bulkRemoveTags.length === 0}
-							<span class="text-xs text-muted-foreground py-1">None</span>
-						{/if}
-					</div>
-					<Input
-						placeholder="Type a tag and press Enter"
-						bind:value={tagInputBulkRemove}
-						onkeydown={(e) => {
-							if (e.key === 'Enter' || e.key === ',') {
-								e.preventDefault();
-								bulkRemoveTags = addChip(bulkRemoveTags, tagInputBulkRemove);
-								tagInputBulkRemove = '';
-							}
-						}}
-					/>
-					<!-- Existing tags across the selection, for quick one-click removal -->
-					{#if selectedOrders.length > 0}
-						{@const existingTags = Array.from(new Set(selectedOrders.flatMap((o) => o.tags)))}
-						{#if existingTags.length > 0}
-							<div class="flex flex-wrap gap-1.5 pt-1">
-								{#each existingTags.filter((t) => !bulkRemoveTags.includes(t)) as tag}
-									<button
-										type="button"
-										class="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted/70"
-										onclick={() => bulkRemoveTags = addChip(bulkRemoveTags, tag)}
-										title="Click to mark for removal"
-									>
-										{tag}
-									</button>
-								{/each}
-							</div>
-						{/if}
+							{/if}
+						</span>
+					{/each}
+					{#each bulkAddTags as tag}
+						<span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2.5 py-1 text-xs font-medium">
+							{tag}
+							<button type="button" class="hover:text-destructive" onclick={() => bulkAddTags = removeChip(bulkAddTags, tag)}>
+								<XIcon class="size-3" />
+							</button>
+						</span>
+					{/each}
+					{#if bulkExistingTags.length === 0 && bulkAddTags.length === 0}
+						<span class="text-xs text-muted-foreground py-1">No tags yet</span>
 					{/if}
 				</div>
+				<Input
+					class="mt-2"
+					placeholder="Type a tag and press Enter"
+					bind:value={tagInputBulkAdd}
+					onkeydown={(e) => {
+						if (e.key === 'Enter' || e.key === ',') {
+							e.preventDefault();
+							bulkAddTags = addChip(bulkAddTags, tagInputBulkAdd);
+							tagInputBulkAdd = '';
+						}
+					}}
+				/>
+				{#if knownTags.filter((t) => !bulkAddTags.includes(t) && !bulkExistingTags.includes(t)).length > 0}
+					<div class="mt-2">
+						<div class="text-xs text-muted-foreground mb-1">Existing tags</div>
+						<div class="flex flex-wrap gap-1.5">
+							{#each knownTags.filter((t) => !bulkAddTags.includes(t) && !bulkExistingTags.includes(t)) as tag}
+								<button
+									type="button"
+									class="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted/70"
+									onclick={() => bulkAddTags = addChip(bulkAddTags, tag)}
+								>
+									+ {tag}
+								</button>
+							{/each}
+						</div>
+					</div>
+				{/if}
 
 				<Dialog.Footer class="mt-4">
 					<Button type="button" variant="outline" disabled={savingTags} onclick={closeTagModal}>Cancel</Button>
