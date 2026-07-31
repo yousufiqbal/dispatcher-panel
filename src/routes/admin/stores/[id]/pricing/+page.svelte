@@ -332,7 +332,7 @@
 						<input class="input h-8 py-1 w-16 text-sm" name="compareAtMultiplier" bind:value={settings.compareAtMultiplier} type="number" step="0.01" min="0" />
 					</label>
 					<label class="text-xs">
-						<div class="text-muted-foreground mb-1">COD %</div>
+						<div class="text-muted-foreground mb-1">Buffer %</div>
 						<input class="input h-8 py-1 w-16 text-sm" name="codPercentage" bind:value={settings.codPercentage} type="number" step="0.01" min="0" />
 					</label>
 					<Button type="submit" size="sm" disabled={savingSettings}>
@@ -341,7 +341,7 @@
 					</Button>
 				</form>
 				<p class="text-xs text-muted-foreground px-4 pb-3 leading-relaxed">
-					Suggested price = (cost + weight(g) × shipping/g) × price × (1 + COD%), rounded to nearest 10.
+					Suggested price = (cost + weight(g) × shipping/g) × price × (1 + Buffer%), rounded to nearest 10.
 					Suggested compare-at uses the same base cost with the compare-at multiplier instead. Cost in CNY is converted using the CNY → PKR rate first.
 				</p>
 			</div>

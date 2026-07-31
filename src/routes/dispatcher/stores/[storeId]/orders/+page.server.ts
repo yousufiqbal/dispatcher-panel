@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { listOrders, getTagSplitCounts, confirmOrder, cancelOrder, getOrder, updateOrderShipping, CONFIRMED_TAG, INCORRECT_ADDRESS_TAG, markAddressIncorrect, unmarkAddressIncorrect, phoneQueryVariants } from '$lib/server/shopify/orders';
+import { listOrders, getTagSplitCounts, confirmOrder, cancelOrder, getOrder, updateOrderShipping, updateOrderTags, CONFIRMED_TAG, INCORRECT_ADDRESS_TAG, markAddressIncorrect, unmarkAddressIncorrect, phoneQueryVariants } from '$lib/server/shopify/orders';
 import { orderEditBegin, orderEditAddVariant, orderEditAddCustomItem, orderEditCommit } from '$lib/server/shopify/order-edit';
 import { db } from '$lib/server/db';
 import { couriers, courierStoreAccess } from '$lib/server/db/schema';
@@ -329,6 +329,70 @@ export const actions: Actions = {
 		}
 
 		const returnStatus = (fd.get('returnStatus') as string) || 'confirmed';
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=${returnStatus}`);
+	},
+
+	updateOrderTagsSingle: async ({ params, request, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const fd = await request.formData();
+		const orderId = fd.get('orderId') as string;
+		const tagsRaw = (fd.get('tags') as string) ?? '';
+		const tags = tagsRaw.split(',').map((t) => t.trim()).filter(Boolean);
+
+		if (!orderId) return fail(400, { error: 'No order specified' });
+
+		try {
+			await updateOrderTags(client, toShopifyOrderId(orderId), tags);
+			if (locals.session) {
+				await logAudit(locals.session.userId, 'dispatcher', 'order.updateTags', {
+					targetType: 'order', targetId: orderId, storeId: params.storeId
+				});
+			}
+		} catch (e) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Failed to update tags' });
+		}
+
+		const returnStatus = (fd.get('returnStatus') as string) || 'pending';
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=${returnStatus}`);
+	},
+
+	// Client computes each order's final tag list (its existing tags, plus/minus
+	// what was added/removed in the modal) and submits it as tags_<id> — same
+	// per-id field-naming pattern as bulkUpdateAddresses, so the server here
+	// doesn't need to re-fetch or recompute anything, just apply each list.
+	bulkUpdateTags: async ({ params, request, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const fd = await request.formData();
+		const orderIds = (fd.get('orderIds') as string).split(',').filter(Boolean);
+
+		if (orderIds.length === 0) return fail(400, { error: 'No orders selected' });
+
+		const results = await Promise.allSettled(
+			orderIds.map(async (id) => {
+				const tagsRaw = (fd.get(`tags_${id}`) as string) ?? '';
+				const tags = tagsRaw.split(',').map((t) => t.trim()).filter(Boolean);
+				await updateOrderTags(client, toShopifyOrderId(id), tags);
+			})
+		);
+
+		const failed = orderIds.filter((_, i) => results[i].status === 'rejected');
+
+		if (locals.session) {
+			await logAudit(locals.session.userId, 'dispatcher', 'order.bulkUpdateTags', {
+				targetType: 'order', storeId: params.storeId,
+				metadata: { orderIds, failed }
+			});
+		}
+
+		if (failed.length > 0) {
+			return fail(400, {
+				error: `Updated tags on ${orderIds.length - failed.length} of ${orderIds.length} orders. ${failed.length} failed — try again for those.`
+			});
+		}
+
+		const returnStatus = (fd.get('returnStatus') as string) || 'pending';
 		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=${returnStatus}`);
 	},
 

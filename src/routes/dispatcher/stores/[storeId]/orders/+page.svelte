@@ -25,6 +25,9 @@
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import MapPinIcon from '@lucide/svelte/icons/map-pin';
 	import CheckCircle2Icon from '@lucide/svelte/icons/check-circle-2';
+	import TagIcon from '@lucide/svelte/icons/tag';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
+	import XIcon from '@lucide/svelte/icons/x';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -98,6 +101,62 @@
 		selectedOrders.every((o) => o.customer?.id === selectedOrders[0].customer?.id)
 	);
 
+	// Tag manager — single mode edits one order's exact tag list (chip add/remove,
+	// submitted as the full replacement list). Bulk mode instead collects tags to
+	// add and tags to remove, applied on top of each selected order's own existing
+	// tags (they may differ per order) — final list computed here, one per order,
+	// submitted as tags_<id> fields so the server just applies each list as-is.
+	let tagModalMode = $state<'single' | 'bulk' | null>(null);
+	let tagModalOrderId = $state('');
+	let tagModalOrderName = $state('');
+	let singleTags = $state<string[]>([]);
+	let bulkAddTags = $state<string[]>([]);
+	let bulkRemoveTags = $state<string[]>([]);
+	let tagInputSingle = $state('');
+	let tagInputBulkAdd = $state('');
+	let tagInputBulkRemove = $state('');
+	let savingTags = $state(false);
+
+	function openSingleTagModal(order: (typeof data.orders)[number]) {
+		tagModalMode = 'single';
+		tagModalOrderId = order.id;
+		tagModalOrderName = order.name;
+		singleTags = [...order.tags];
+		tagInputSingle = '';
+	}
+
+	function openBulkTagModal() {
+		tagModalMode = 'bulk';
+		bulkAddTags = [];
+		bulkRemoveTags = [];
+		tagInputBulkAdd = '';
+		tagInputBulkRemove = '';
+	}
+
+	function closeTagModal() {
+		tagModalMode = null;
+	}
+
+	function addChip(list: string[], value: string): string[] {
+		const tag = value.trim();
+		if (!tag || list.includes(tag)) return list;
+		return [...list, tag];
+	}
+
+	function removeChip(list: string[], tag: string): string[] {
+		return list.filter((t) => t !== tag);
+	}
+
+	const bulkPreview = $derived(
+		tagModalMode === 'bulk'
+			? selectedOrders.map((o) => ({
+					id: o.id,
+					name: o.name,
+					finalTags: Array.from(new Set([...o.tags.filter((t) => !bulkRemoveTags.includes(t)), ...bulkAddTags]))
+				}))
+			: []
+	);
+
 	function openMergeDialog() {
 		// Default to the oldest selected order as the main one — it's usually the
 		// customer's original intent, with later orders being add-ons/duplicates.
@@ -124,10 +183,17 @@
 	let showAddressCheckModal = $state(false);
 	let addressEdits = $state<Record<string, AddressEdit>>({});
 	let checkingAddresses = $state(false);
+	// Set when opened from a single row's Edit button — the modal then shows
+	// just that one order regardless of what's checkbox-selected, and reverts
+	// to the bulk selection view once cleared.
+	let singleAddressOrderId = $state<string | null>(null);
+	const addressModalOrders = $derived(
+		singleAddressOrderId ? data.orders.filter((o) => o.id === singleAddressOrderId) : selectedOrders
+	);
 
-	function openAddressCheckModal() {
+	function buildAddressEdits(orders: typeof data.orders) {
 		const edits: Record<string, AddressEdit> = {};
-		for (const o of selectedOrders) {
+		for (const o of orders) {
 			const addr = o.shippingAddress;
 			const [firstName, ...rest] = (addr?.name ?? '').split(' ');
 			edits[o.id] = {
@@ -143,7 +209,18 @@
 				incorrectAddress: o.tags.includes(INCORRECT_ADDRESS_TAG)
 			};
 		}
-		addressEdits = edits;
+		return edits;
+	}
+
+	function openAddressCheckModal() {
+		singleAddressOrderId = null;
+		addressEdits = buildAddressEdits(selectedOrders);
+		showAddressCheckModal = true;
+	}
+
+	function openSingleAddressModal(order: (typeof data.orders)[number]) {
+		singleAddressOrderId = order.id;
+		addressEdits = buildAddressEdits([order]);
 		showAddressCheckModal = true;
 	}
 
@@ -518,6 +595,14 @@
 				{#if mergeEligible}
 					<Button variant="outline" size="sm" onclick={openMergeDialog}>Merge Orders</Button>
 				{/if}
+				<Button variant="outline" size="sm" onclick={openAddressCheckModal}>
+					<MapPinIcon class="size-4" />
+					Check Addresses
+				</Button>
+				<Button variant="outline" size="sm" onclick={openBulkTagModal}>
+					<TagIcon class="size-4" />
+					Manage Tags
+				</Button>
 				<Button size="sm" onclick={() => showBulkConfirmDialog = true}>Confirm Selected</Button>
 			</div>
 		</div>
@@ -530,6 +615,10 @@
 				<Button variant="outline" size="sm" onclick={openAddressCheckModal}>
 					<MapPinIcon class="size-4" />
 					Check Addresses
+				</Button>
+				<Button variant="outline" size="sm" onclick={openBulkTagModal}>
+					<TagIcon class="size-4" />
+					Manage Tags
 				</Button>
 			</div>
 		</div>
@@ -552,6 +641,10 @@
 						Picking List
 					</Button>
 				{/if}
+				<Button variant="outline" size="sm" onclick={openBulkTagModal}>
+					<TagIcon class="size-4" />
+					Manage Tags
+				</Button>
 				{#each data.couriers as courier}
 					<Button variant="outline" size="sm" onclick={() => bookSelected(courier.id)}>Book with {courier.name}</Button>
 				{/each}
@@ -565,10 +658,16 @@
 	{#if ['fulfilled', 'attempted', 'failed'].includes(data.status) && selectedIds.size > 0}
 		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
 			<span class="text-sm font-medium">{selectedIds.size} selected</span>
-			<Button size="sm" onclick={printLabels}>
-				<PrinterIcon class="size-4" />
-				Print Labels
-			</Button>
+			<div class="flex items-center gap-2">
+				<Button variant="outline" size="sm" onclick={openBulkTagModal}>
+					<TagIcon class="size-4" />
+					Manage Tags
+				</Button>
+				<Button size="sm" onclick={printLabels}>
+					<PrinterIcon class="size-4" />
+					Print Labels
+				</Button>
+			</div>
 		</div>
 	{/if}
 
@@ -690,13 +789,16 @@
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Order</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Date</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Customer</th>
+							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Destination</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Phone</th>
 							<th class="text-center px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Items</th>
 							<th class="text-right px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Total</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Payment</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Fulfillment</th>
-							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Destination</th>
-							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Delivery Status</th>
+							{#if data.status !== 'pending'}
+								<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Delivery Status</th>
+							{/if}
+							<th class="w-8"></th>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-border">
@@ -724,6 +826,35 @@
 									{:else}
 										<div class="font-medium text-foreground {isCancelled ? 'line-through' : ''}">Guest</div>
 									{/if}
+								</td>
+								<td class="px-3 py-1.5 {['pending', 'confirmed'].includes(data.status ?? '') ? 'max-w-[16rem]' : 'whitespace-nowrap'} {isCancelled ? 'line-through' : ''}" onclick={(e) => e.stopPropagation()}>
+									<div class="flex items-start gap-1.5">
+										<div class="flex-1 min-w-0">
+											{#if order.shippingAddress}
+												{#if ['pending', 'confirmed'].includes(data.status ?? '')}
+													{@const addr = order.shippingAddress}
+													<div class="font-medium text-foreground">{addr.name}</div>
+													<div class="text-xs text-foreground/70">
+														{addr.address1}{#if addr.address2}, {addr.address2}{/if}
+													</div>
+													<div class="text-xs text-foreground/60">{addr.city}, {addr.province} {addr.zip}, {addr.country}</div>
+												{:else}
+													<div class="font-medium text-foreground">{order.shippingAddress.city}</div>
+													<div class="text-xs text-foreground/60">{order.shippingAddress.country}</div>
+												{/if}
+											{:else}
+												<span class="text-foreground/40">—</span>
+											{/if}
+										</div>
+										<button
+											type="button"
+											title="Edit address"
+											class="text-muted-foreground hover:text-foreground shrink-0"
+											onclick={() => openSingleAddressModal(order)}
+										>
+											<PencilIcon class="size-3.5" />
+										</button>
+									</div>
 								</td>
 								<td class="px-3 py-1.5 text-foreground/70 whitespace-nowrap font-mono text-xs">
 									{#if order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}
@@ -809,14 +940,7 @@
 										</span>
 									{/if}
 								</td>
-								<td class="px-3 py-1.5 whitespace-nowrap {isCancelled ? 'line-through' : ''}">
-									{#if order.shippingAddress}
-										<div class="font-medium text-foreground">{order.shippingAddress.city}</div>
-										<div class="text-xs text-foreground/60">{order.shippingAddress.country}</div>
-									{:else}
-										<span class="text-foreground/40">—</span>
-									{/if}
-								</td>
+								{#if data.status !== 'pending'}
 								<td class="px-3 py-1.5 whitespace-nowrap" onclick={(e) => e.stopPropagation()}>
 									{#if delivery}
 										{@const tracking = order.fulfillments.flatMap((f) => f.trackingInfo).find((t) => t.number || t.company)}
@@ -880,6 +1004,17 @@
 									{:else}
 										<span class="text-foreground/40">—</span>
 									{/if}
+								</td>
+								{/if}
+								<td class="px-3 py-1.5" onclick={(e) => e.stopPropagation()}>
+									<button
+										type="button"
+										title="Manage tags"
+										class="text-muted-foreground hover:text-foreground"
+										onclick={() => openSingleTagModal(order)}
+									>
+										<TagIcon class="size-4" />
+									</button>
 								</td>
 							</tr>
 						{/each}
@@ -1156,7 +1291,7 @@
 <Dialog.Root bind:open={showAddressCheckModal}>
 	<Dialog.Content class="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
 		<Dialog.Header>
-			<Dialog.Title>Check addresses — {selectedOrders.length} orders</Dialog.Title>
+			<Dialog.Title>{singleAddressOrderId ? `Edit address — ${addressModalOrders[0]?.name ?? ''}` : `Check addresses — ${addressModalOrders.length} orders`}</Dialog.Title>
 			<Dialog.Description>Review and fix any incorrect customer name, phone, or address before booking.</Dialog.Description>
 		</Dialog.Header>
 		<form method="POST" action="?/bulkUpdateAddresses" use:enhance={() => {
@@ -1165,16 +1300,16 @@
 				await update();
 				checkingAddresses = false;
 				if (result.type === 'redirect') {
-					addToast('Addresses updated');
+					addToast('Address updated');
 					showAddressCheckModal = false;
 				} else {
-					addToast('Failed to update addresses', 'error');
+					addToast('Failed to update address', 'error');
 				}
 			};
 		}} class="space-y-4">
-			<input type="hidden" name="orderIds" value={selectedOrders.map((o) => o.id).join(',')} />
+			<input type="hidden" name="orderIds" value={addressModalOrders.map((o) => o.id).join(',')} />
 			<input type="hidden" name="returnStatus" value={data.status} />
-			{#each selectedOrders as o}
+			{#each addressModalOrders as o}
 				{@const e = addressEdits[o.id]}
 				{#if e}
 					<div class="card p-4 space-y-3 {e.incorrectAddress ? 'border-red-500' : ''}">
@@ -1227,7 +1362,7 @@
 			<Dialog.Footer class="sm:justify-between items-center">
 				{@const markedCount = Object.values(addressEdits).filter((e) => e.incorrectAddress).length}
 				<span class="text-xs text-muted-foreground {markedCount > 0 ? 'text-red-600 font-medium' : ''}">
-					{markedCount} of {selectedOrders.length} marked incorrect
+					{markedCount} of {addressModalOrders.length} marked incorrect
 				</span>
 				<div class="flex items-center gap-2">
 					<Button type="button" variant="outline" disabled={checkingAddresses} onclick={() => showAddressCheckModal = false}>Cancel</Button>
@@ -1238,5 +1373,175 @@
 				</div>
 			</Dialog.Footer>
 		</form>
+	</Dialog.Content>
+</Dialog.Root>
+
+<!-- Tags dialog: single order (exact chip list) or bulk (add/remove sets) -->
+<Dialog.Root open={tagModalMode !== null} onOpenChange={(o) => { if (!o) closeTagModal(); }}>
+	<Dialog.Content class="sm:max-w-md">
+		{#if tagModalMode === 'single'}
+			<Dialog.Header>
+				<Dialog.Title>Tags — {tagModalOrderName}</Dialog.Title>
+				<Dialog.Description>Add or remove tags on this order.</Dialog.Description>
+			</Dialog.Header>
+			<form method="POST" action="?/updateOrderTagsSingle" use:enhance={() => {
+				savingTags = true;
+				return async ({ result, update }) => {
+					await update();
+					savingTags = false;
+					if (result.type === 'redirect') {
+						addToast('Tags updated');
+						closeTagModal();
+					} else {
+						addToast('Failed to update tags', 'error');
+					}
+				};
+			}}>
+				<input type="hidden" name="orderId" value={tagModalOrderId} />
+				<input type="hidden" name="tags" value={singleTags.join(',')} />
+				<input type="hidden" name="returnStatus" value={data.status ?? 'pending'} />
+
+				<div class="flex flex-wrap gap-1.5 min-h-9 p-2 rounded-md border border-input">
+					{#each singleTags as tag}
+						<span class="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground">
+							{tag}
+							<button type="button" class="hover:text-destructive" onclick={() => singleTags = removeChip(singleTags, tag)}>
+								<XIcon class="size-3" />
+							</button>
+						</span>
+					{/each}
+					{#if singleTags.length === 0}
+						<span class="text-xs text-muted-foreground py-1">No tags yet</span>
+					{/if}
+				</div>
+				<Input
+					class="mt-2"
+					placeholder="Type a tag and press Enter"
+					bind:value={tagInputSingle}
+					onkeydown={(e) => {
+						if (e.key === 'Enter' || e.key === ',') {
+							e.preventDefault();
+							singleTags = addChip(singleTags, tagInputSingle);
+							tagInputSingle = '';
+						}
+					}}
+				/>
+
+				<Dialog.Footer class="mt-4">
+					<Button type="button" variant="outline" disabled={savingTags} onclick={closeTagModal}>Cancel</Button>
+					<Button type="submit" disabled={savingTags}>
+						{#if savingTags}<Loader2Icon class="size-4 animate-spin" />{/if}
+						{savingTags ? 'Saving…' : 'Save Tags'}
+					</Button>
+				</Dialog.Footer>
+			</form>
+		{:else if tagModalMode === 'bulk'}
+			<Dialog.Header>
+				<Dialog.Title>Manage tags — {selectedOrders.length} orders</Dialog.Title>
+				<Dialog.Description>Tags to add go on every selected order; tags to remove come off every selected order that has them.</Dialog.Description>
+			</Dialog.Header>
+			<form method="POST" action="?/bulkUpdateTags" use:enhance={() => {
+				savingTags = true;
+				return async ({ result, update }) => {
+					await update();
+					savingTags = false;
+					if (result.type === 'redirect') {
+						selectedIds = new Set();
+						addToast('Tags updated');
+						closeTagModal();
+					} else {
+						addToast('Failed to update tags', 'error');
+					}
+				};
+			}}>
+				<input type="hidden" name="orderIds" value={selectedOrders.map((o) => o.id).join(',')} />
+				<input type="hidden" name="returnStatus" value={data.status ?? 'pending'} />
+				{#each bulkPreview as p}
+					<input type="hidden" name="tags_{p.id}" value={p.finalTags.join(',')} />
+				{/each}
+
+				<div class="space-y-1.5">
+					<Label>Tags to add</Label>
+					<div class="flex flex-wrap gap-1.5 min-h-9 p-2 rounded-md border border-input">
+						{#each bulkAddTags as tag}
+							<span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2.5 py-1 text-xs font-medium">
+								{tag}
+								<button type="button" class="hover:text-destructive" onclick={() => bulkAddTags = removeChip(bulkAddTags, tag)}>
+									<XIcon class="size-3" />
+								</button>
+							</span>
+						{/each}
+						{#if bulkAddTags.length === 0}
+							<span class="text-xs text-muted-foreground py-1">None</span>
+						{/if}
+					</div>
+					<Input
+						placeholder="Type a tag and press Enter"
+						bind:value={tagInputBulkAdd}
+						onkeydown={(e) => {
+							if (e.key === 'Enter' || e.key === ',') {
+								e.preventDefault();
+								bulkAddTags = addChip(bulkAddTags, tagInputBulkAdd);
+								tagInputBulkAdd = '';
+							}
+						}}
+					/>
+				</div>
+
+				<div class="space-y-1.5 mt-4">
+					<Label>Tags to remove</Label>
+					<div class="flex flex-wrap gap-1.5 min-h-9 p-2 rounded-md border border-input">
+						{#each bulkRemoveTags as tag}
+							<span class="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2.5 py-1 text-xs font-medium">
+								{tag}
+								<button type="button" class="hover:text-destructive" onclick={() => bulkRemoveTags = removeChip(bulkRemoveTags, tag)}>
+									<XIcon class="size-3" />
+								</button>
+							</span>
+						{/each}
+						{#if bulkRemoveTags.length === 0}
+							<span class="text-xs text-muted-foreground py-1">None</span>
+						{/if}
+					</div>
+					<Input
+						placeholder="Type a tag and press Enter"
+						bind:value={tagInputBulkRemove}
+						onkeydown={(e) => {
+							if (e.key === 'Enter' || e.key === ',') {
+								e.preventDefault();
+								bulkRemoveTags = addChip(bulkRemoveTags, tagInputBulkRemove);
+								tagInputBulkRemove = '';
+							}
+						}}
+					/>
+					<!-- Existing tags across the selection, for quick one-click removal -->
+					{#if selectedOrders.length > 0}
+						{@const existingTags = Array.from(new Set(selectedOrders.flatMap((o) => o.tags)))}
+						{#if existingTags.length > 0}
+							<div class="flex flex-wrap gap-1.5 pt-1">
+								{#each existingTags.filter((t) => !bulkRemoveTags.includes(t)) as tag}
+									<button
+										type="button"
+										class="inline-flex items-center rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted/70"
+										onclick={() => bulkRemoveTags = addChip(bulkRemoveTags, tag)}
+										title="Click to mark for removal"
+									>
+										{tag}
+									</button>
+								{/each}
+							</div>
+						{/if}
+					{/if}
+				</div>
+
+				<Dialog.Footer class="mt-4">
+					<Button type="button" variant="outline" disabled={savingTags} onclick={closeTagModal}>Cancel</Button>
+					<Button type="submit" disabled={savingTags || (bulkAddTags.length === 0 && bulkRemoveTags.length === 0)}>
+						{#if savingTags}<Loader2Icon class="size-4 animate-spin" />{/if}
+						{savingTags ? 'Saving…' : `Apply to ${selectedOrders.length} orders`}
+					</Button>
+				</Dialog.Footer>
+			</form>
+		{/if}
 	</Dialog.Content>
 </Dialog.Root>
