@@ -293,9 +293,6 @@ export async function unconfirmOrder(client: ShopifyClient, orderId: string): Pr
 }
 
 export const INCORRECT_ADDRESS_TAG = 'incorrect-address';
-// Distinct from "untagged" (= not yet reviewed) so the dispatcher's explicit
-// "Correct" choice actually records something, instead of being a no-op.
-export const ADDRESS_CHECKED_TAG = 'address-checked';
 
 export async function markAddressIncorrect(client: ShopifyClient, orderId: string): Promise<void> {
 	const gql = `
@@ -325,53 +322,6 @@ export async function unmarkAddressIncorrect(client: ShopifyClient, orderId: str
 	const data = await shopifyRequest<{
 		tagsRemove: { userErrors: { field: string[]; message: string }[] };
 	}>(client, gql, { id: orderId, tags: [INCORRECT_ADDRESS_TAG] });
-
-	if (data.tagsRemove.userErrors.length > 0) {
-		throw new Error(data.tagsRemove.userErrors.map((e) => e.message).join(', '));
-	}
-}
-
-// Explicit correct/incorrect review from the orders list's Destination-cell
-// dropdown — sets one tag, clears the other, so "Correct" is a real recorded
-// state rather than just the absence of "Incorrect".
-export async function setAddressCheckStatus(client: ShopifyClient, orderId: string, status: 'correct' | 'incorrect'): Promise<void> {
-	if (status === 'correct') {
-		await markAddressCorrect(client, orderId);
-		await unmarkAddressIncorrect(client, orderId);
-	} else {
-		await markAddressIncorrect(client, orderId);
-		await unmarkAddressCorrect(client, orderId);
-	}
-}
-
-async function markAddressCorrect(client: ShopifyClient, orderId: string): Promise<void> {
-	const gql = `
-    mutation TagsAdd($id: ID!, $tags: [String!]!) {
-      tagsAdd(id: $id, tags: $tags) {
-        userErrors { field message }
-      }
-    }
-  `;
-	const data = await shopifyRequest<{
-		tagsAdd: { userErrors: { field: string[]; message: string }[] };
-	}>(client, gql, { id: orderId, tags: [ADDRESS_CHECKED_TAG] });
-
-	if (data.tagsAdd.userErrors.length > 0) {
-		throw new Error(data.tagsAdd.userErrors.map((e) => e.message).join(', '));
-	}
-}
-
-async function unmarkAddressCorrect(client: ShopifyClient, orderId: string): Promise<void> {
-	const gql = `
-    mutation TagsRemove($id: ID!, $tags: [String!]!) {
-      tagsRemove(id: $id, tags: $tags) {
-        userErrors { field message }
-      }
-    }
-  `;
-	const data = await shopifyRequest<{
-		tagsRemove: { userErrors: { field: string[]; message: string }[] };
-	}>(client, gql, { id: orderId, tags: [ADDRESS_CHECKED_TAG] });
 
 	if (data.tagsRemove.userErrors.length > 0) {
 		throw new Error(data.tagsRemove.userErrors.map((e) => e.message).join(', '));

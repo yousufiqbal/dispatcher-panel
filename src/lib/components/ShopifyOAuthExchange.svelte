@@ -79,7 +79,7 @@
 			disabled={!clientId || !redirectUri || authorizing}
 			onclick={getCode}
 		>
-			{authorizing ? 'Saving…' : 'Get Code'}
+			{authorizing ? 'Saving app…' : 'Get Code'}
 		</button>
 		{#if authorizeError}
 			<p class="text-xs text-destructive mt-2">{authorizeError}</p>

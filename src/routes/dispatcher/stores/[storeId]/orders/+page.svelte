@@ -55,7 +55,6 @@
 
 	const selectableStatuses = ['pending', 'confirmed', 'fulfilled', 'attempted', 'failed'];
 	const INCORRECT_ADDRESS_TAG = 'incorrect-address';
-	const ADDRESS_CHECKED_TAG = 'address-checked';
 	let showBulkConfirmDialog = $state(false);
 	let bulkConfirming = $state(false);
 
@@ -223,41 +222,6 @@
 		singleAddressOrderId = order.id;
 		addressEdits = buildAddressEdits([order]);
 		showAddressCheckModal = true;
-	}
-
-	// Correct/Incorrect/unchecked status right in the Destination cell — no modal.
-	// Three real states: untagged (never reviewed), address-checked (explicitly
-	// correct), incorrect-address (flagged). Optimistic: flips the local override
-	// immediately, reverts if the request fails.
-	type AddressStatus = 'correct' | 'incorrect' | 'unchecked';
-	let addressStatusOverride = $state<Record<string, AddressStatus>>({});
-	let togglingAddressId = $state<string | null>(null);
-
-	function addressStatus(order: (typeof data.orders)[number]): AddressStatus {
-		if (order.id in addressStatusOverride) return addressStatusOverride[order.id];
-		if (order.tags.includes(INCORRECT_ADDRESS_TAG)) return 'incorrect';
-		if (order.tags.includes(ADDRESS_CHECKED_TAG)) return 'correct';
-		return 'unchecked';
-	}
-
-	async function setAddressCorrectness(order: (typeof data.orders)[number], status: 'correct' | 'incorrect') {
-		if (status === addressStatus(order)) return;
-		const previous = addressStatus(order);
-		addressStatusOverride = { ...addressStatusOverride, [order.id]: status };
-		togglingAddressId = order.id;
-		try {
-			const fd = new FormData();
-			fd.set('orderId', order.id);
-			fd.set('status', status);
-			const res = await fetch('?/setAddressCheckStatus', { method: 'POST', body: fd });
-			if (!res.ok) throw new Error('failed');
-			addToast(status === 'incorrect' ? 'Marked address as incorrect' : 'Marked address as correct');
-		} catch {
-			addressStatusOverride = { ...addressStatusOverride, [order.id]: previous };
-			addToast('Failed to update address status', 'error');
-		} finally {
-			togglingAddressId = null;
-		}
 	}
 
 	function printLabels() {
@@ -842,56 +806,18 @@
 										<div class="font-medium text-foreground {isCancelled ? 'line-through' : ''}">Guest</div>
 									{/if}
 								</td>
-								<td class="px-3 py-1.5 {['pending', 'confirmed'].includes(data.status ?? '') ? 'max-w-[16rem]' : 'whitespace-nowrap'} {isCancelled ? 'line-through' : ''}" onclick={(e) => e.stopPropagation()}>
+								<td class="px-3 py-1.5 max-w-[16rem] {isCancelled ? 'line-through' : ''}" onclick={(e) => e.stopPropagation()}>
 									<div class="flex items-start gap-1.5">
 										<div class="flex-1 min-w-0">
 											{#if order.shippingAddress}
-												{#if ['pending', 'confirmed'].includes(data.status ?? '')}
-													{@const addr = order.shippingAddress}
-													<div class="text-xs text-foreground/70">
-														{addr.address1}{#if addr.address2}, {addr.address2}{/if}
-													</div>
-													<div class="text-xs font-semibold text-foreground">{addr.city}, {addr.province} {addr.zip}, {addr.country}</div>
-												{:else}
-													<div class="font-medium text-foreground">{order.shippingAddress.city}</div>
-													<div class="text-xs text-foreground/60">{order.shippingAddress.country}</div>
-												{/if}
+												{@const addr = order.shippingAddress}
+												<div class="text-xs text-foreground/70">
+													{addr.address1}{#if addr.address2}, {addr.address2}{/if}
+												</div>
+												<div class="text-xs font-semibold text-foreground">{[addr.city, addr.province, addr.country].filter(Boolean).join(', ')}</div>
 											{:else}
 												<span class="text-foreground/40">—</span>
 											{/if}
-										{#if order.shippingAddress}
-											{@const status = addressStatus(order)}
-											<DropdownMenu.Root>
-												<DropdownMenu.Trigger>
-													{#snippet child({ props })}
-														<button
-															{...props}
-															type="button"
-															disabled={togglingAddressId === order.id}
-															title="Set address status"
-															class="mt-1 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full transition-colors disabled:opacity-50
-																{status === 'incorrect' ? 'bg-red-100 text-red-700 hover:bg-red-200' :
-																 status === 'correct' ? 'bg-green-100 text-green-800 hover:bg-green-200' :
-																 'bg-amber-100 text-amber-800 hover:bg-amber-200'}"
-														>
-															<span class="size-1.5 rounded-full bg-current shrink-0"></span>
-															{status === 'incorrect' ? 'Incorrect' : status === 'correct' ? 'Correct' : 'Check Address'}
-															<ChevronDownIcon class="size-3" />
-														</button>
-													{/snippet}
-												</DropdownMenu.Trigger>
-												<DropdownMenu.Content align="start" class="w-40">
-													<DropdownMenu.Item onclick={() => setAddressCorrectness(order, 'correct')}>
-														<span class="size-1.5 rounded-full bg-green-600 shrink-0"></span>
-														Correct
-													</DropdownMenu.Item>
-													<DropdownMenu.Item onclick={() => setAddressCorrectness(order, 'incorrect')}>
-														<span class="size-1.5 rounded-full bg-red-600 shrink-0"></span>
-														Incorrect
-													</DropdownMenu.Item>
-												</DropdownMenu.Content>
-											</DropdownMenu.Root>
-										{/if}
 										</div>
 										<button
 											type="button"

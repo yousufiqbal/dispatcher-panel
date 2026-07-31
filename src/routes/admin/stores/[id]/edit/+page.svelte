@@ -25,7 +25,14 @@
 	let savingOAuth = $state(false);
 	let oauthSaved = $state(false);
 
+	// "Get Code" just needs to open a link — but the token-exchange step later
+	// reads Client ID/Secret back from the DB, so if Client ID or Redirect URI
+	// were edited but not saved yet, silently persist them first. Skipped
+	// entirely (no "Saving…" flash) when they already match what's stored.
 	async function saveOAuthApp() {
+		if (oauthClientId === (data.store.oauthClientId ?? '') && oauthRedirectUri === (data.store.oauthRedirectUri ?? '')) {
+			return;
+		}
 		const fd = new FormData(oauthFormEl);
 		const res = await fetch(oauthFormEl.action, { method: 'POST', body: fd });
 		if (!res.ok) throw new Error('Failed to save OAuth app settings');
@@ -136,7 +143,24 @@
 			</p>
 		</div>
 		<div class="card-content space-y-5">
-			<form method="POST" action="?/update" use:enhance bind:this={oauthFormEl} class="space-y-5">
+			<form
+				method="POST"
+				action="?/update"
+				bind:this={oauthFormEl}
+				class="space-y-5"
+				use:enhance={() => {
+					savingOAuth = true;
+					oauthSaved = false;
+					return async ({ result, update }) => {
+						if (result.type === 'redirect') {
+							oauthSaved = true;
+							addToast('OAuth app saved');
+						}
+						await update();
+						savingOAuth = false;
+					};
+				}}
+			>
 				<input type="hidden" name="name" value={data.store.name} />
 				<input type="hidden" name="shopifyDomain" value={data.store.shopifyDomain} />
 				<input type="hidden" name="apiAccessToken" value="" />
@@ -159,7 +183,14 @@
 					<Label for="oauthRedirectUri">Redirect URI</Label>
 					<Input id="oauthRedirectUri" name="oauthRedirectUri" class="font-mono" autocomplete="off" bind:value={oauthRedirectUri} />
 				</div>
-				<Button type="submit" variant="secondary" size="sm">Save OAuth App</Button>
+				<Button type="submit" variant="secondary" size="sm" disabled={savingOAuth}>
+					{#if savingOAuth}
+						<Loader2Icon class="size-4 animate-spin" />
+					{:else if oauthSaved}
+						<CheckIcon class="size-4" />
+					{/if}
+					Save OAuth App
+				</Button>
 			</form>
 
 			{#if oauthClientId && oauthRedirectUri}
