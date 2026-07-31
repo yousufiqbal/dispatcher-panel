@@ -17,7 +17,7 @@
 
 <div class="p-3 sm:p-6">
 	<div class="mb-6 flex items-center gap-3">
-		<Button href="/dispatcher/stores/{storeId}/customers" variant="outline" size="icon" class="shrink-0" title="Back to Customers">
+		<Button href="/dispatcher/stores/{storeId}/orders" variant="outline" size="icon" class="shrink-0" title="Back to Customers">
 			<ArrowLeftIcon class="size-4" />
 		</Button>
 		<h1 class="text-2xl font-bold">New Customer</h1>
@@ -50,7 +50,7 @@
 				</div>
 				<div class="flex gap-3 pt-2">
 					<Button type="submit">Create Customer</Button>
-					<Button href="/dispatcher/stores/{storeId}/customers" variant="outline">Cancel</Button>
+					<Button href="/dispatcher/stores/{storeId}/orders" variant="outline">Cancel</Button>
 				</div>
 			</form>
 		</div>
