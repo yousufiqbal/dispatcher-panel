@@ -328,8 +328,35 @@ export const actions: Actions = {
 			});
 		}
 
-		const returnStatus = (fd.get('returnStatus') as string) || 'confirmed';
+		const returnStatus = (fd.get('returnStatus') as string) || 'pending';
 		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=${returnStatus}`);
+	},
+
+	// No redirect — this is the quick toggle in the Destination cell, meant to
+	// update in place without a full page reload. Client applies it optimistically.
+	toggleIncorrectAddress: async ({ params, request, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const fd = await request.formData();
+		const orderId = fd.get('orderId') as string;
+		const mark = fd.get('mark') === 'true';
+
+		if (!orderId) return fail(400, { error: 'No order specified' });
+
+		try {
+			const shopifyId = toShopifyOrderId(orderId);
+			if (mark) await markAddressIncorrect(client, shopifyId);
+			else await unmarkAddressIncorrect(client, shopifyId);
+			if (locals.session) {
+				await logAudit(locals.session.userId, 'dispatcher', mark ? 'order.markIncorrectAddress' : 'order.unmarkIncorrectAddress', {
+					targetType: 'order', targetId: orderId, storeId: params.storeId
+				});
+			}
+		} catch (e) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Failed to update address status' });
+		}
+
+		return { toggled: orderId, mark };
 	},
 
 	updateOrderTagsSingle: async ({ params, request, locals }) => {

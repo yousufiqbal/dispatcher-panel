@@ -224,6 +224,34 @@
 		showAddressCheckModal = true;
 	}
 
+	// Quick correct/incorrect toggle right in the Destination cell — no modal.
+	// Optimistic: flips the local override immediately, reverts if the request fails.
+	let incorrectOverride = $state<Record<string, boolean>>({});
+	let togglingAddressId = $state<string | null>(null);
+
+	function isIncorrectAddress(order: (typeof data.orders)[number]): boolean {
+		return incorrectOverride[order.id] ?? order.tags.includes(INCORRECT_ADDRESS_TAG);
+	}
+
+	async function toggleAddressCorrectness(order: (typeof data.orders)[number]) {
+		const next = !isIncorrectAddress(order);
+		incorrectOverride = { ...incorrectOverride, [order.id]: next };
+		togglingAddressId = order.id;
+		try {
+			const fd = new FormData();
+			fd.set('orderId', order.id);
+			fd.set('mark', String(next));
+			const res = await fetch('?/toggleIncorrectAddress', { method: 'POST', body: fd });
+			if (!res.ok) throw new Error('failed');
+			addToast(next ? 'Marked address as incorrect' : 'Marked address as correct');
+		} catch {
+			incorrectOverride = { ...incorrectOverride, [order.id]: !next };
+			addToast('Failed to update address status', 'error');
+		} finally {
+			togglingAddressId = null;
+		}
+	}
+
 	function printLabels() {
 		const ids = [...selectedIds].map((gid) => gid.split('/').pop()).join(',');
 		window.open(`/dispatcher/stores/${storeId}/orders/labels?ids=${ids}`, '_blank');
@@ -833,17 +861,29 @@
 											{#if order.shippingAddress}
 												{#if ['pending', 'confirmed'].includes(data.status ?? '')}
 													{@const addr = order.shippingAddress}
-													<div class="font-medium text-foreground">{addr.name}</div>
 													<div class="text-xs text-foreground/70">
 														{addr.address1}{#if addr.address2}, {addr.address2}{/if}
 													</div>
-													<div class="text-xs text-foreground/60">{addr.city}, {addr.province} {addr.zip}, {addr.country}</div>
+													<div class="text-xs font-semibold text-foreground">{addr.city}, {addr.province} {addr.zip}, {addr.country}</div>
 												{:else}
 													<div class="font-medium text-foreground">{order.shippingAddress.city}</div>
 													<div class="text-xs text-foreground/60">{order.shippingAddress.country}</div>
 												{/if}
 											{:else}
 												<span class="text-foreground/40">—</span>
+											{/if}
+											{#if order.shippingAddress}
+												{@const incorrect = isIncorrectAddress(order)}
+												<button
+													type="button"
+													disabled={togglingAddressId === order.id}
+													title={incorrect ? 'Mark address as correct' : 'Mark address as incorrect'}
+													onclick={() => toggleAddressCorrectness(order)}
+													class="mt-1 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full transition-colors disabled:opacity-50 {incorrect ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-800 hover:bg-green-200'}"
+												>
+													<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+													{incorrect ? 'Incorrect' : 'Correct'}
+												</button>
 											{/if}
 										</div>
 										<button
