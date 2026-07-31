@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { addToast } from '$lib/toast.svelte';
 	import ShopifyOAuthExchange from '$lib/components/ShopifyOAuthExchange.svelte';
 	import PageHeaderBack from '$lib/components/PageHeaderBack.svelte';
 	import DangerZoneCard from '$lib/components/DangerZoneCard.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import Loader2Icon from '@lucide/svelte/icons/loader-2';
+	import CheckIcon from '@lucide/svelte/icons/check';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -16,6 +19,11 @@
 
 	let iconPreview = $state<string | null>(data.store.iconUrl ?? null);
 	let oauthFormEl: HTMLFormElement;
+
+	let savingChanges = $state(false);
+	let changesSaved = $state(false);
+	let savingOAuth = $state(false);
+	let oauthSaved = $state(false);
 
 	async function saveOAuthApp() {
 		const fd = new FormData(oauthFormEl);
@@ -54,7 +62,24 @@
 
 	<div class="card mb-6">
 		<div class="card-content pt-6">
-			<form method="POST" action="?/update" use:enhance enctype="multipart/form-data" class="space-y-5">
+			<form
+				method="POST"
+				action="?/update"
+				enctype="multipart/form-data"
+				class="space-y-5"
+				use:enhance={() => {
+					savingChanges = true;
+					changesSaved = false;
+					return async ({ result, update }) => {
+						if (result.type === 'redirect') {
+							changesSaved = true;
+							addToast('Store saved');
+						}
+						await update();
+						savingChanges = false;
+					};
+				}}
+			>
 				<div class="space-y-1.5">
 					<Label for="name">Store Name</Label>
 					<Input id="name" name="name" value={data.store.name} required />
@@ -88,7 +113,14 @@
 					/>
 				</div>
 				<div class="flex items-center gap-3 pt-2">
-					<Button type="submit">Save Changes</Button>
+					<Button type="submit" disabled={savingChanges}>
+						{#if savingChanges}
+							<Loader2Icon class="size-4 animate-spin" />
+						{:else if changesSaved}
+							<CheckIcon class="size-4" />
+						{/if}
+						Save Changes
+					</Button>
 					<Button href="/admin/stores/{data.store.id}" variant="secondary">Cancel</Button>
 				</div>
 			</form>

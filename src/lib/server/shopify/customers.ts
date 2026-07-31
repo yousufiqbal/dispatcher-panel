@@ -44,30 +44,38 @@ export async function listCustomers(
 	return data.customers;
 }
 
+// Two gotchas here, both silent (no error, just fewer results):
+// 1. Customer.orders (the connection) can under-report vs. the admin UI, so we
+//    use a top-level `orders` search instead, filtered on customer_id.
+// 2. Shopify's order search defaults to `status:open` when the query string
+//    doesn't mention status at all — closed/archived orders (e.g. old
+//    fulfilled-and-closed ones) silently vanish unless `status:any` is added.
 export async function getCustomer(
 	client: ShopifyClient,
 	customerId: string
 ): Promise<CustomerNode & { orders: { nodes: { id: string; name: string; createdAt: string; totalPriceSet: { shopMoney: { amount: string; currencyCode: string } }; displayFinancialStatus: string }[] } }> {
+	const numericId = customerId.split('/').pop();
 	const gql = `
-    query GetCustomer($id: ID!) {
+    query GetCustomer($id: ID!, $ordersQuery: String) {
       customer(id: $id) {
         id displayName firstName lastName email phone numberOfOrders
         defaultAddress { address1 city province country zip }
-        orders(first: 20, sortKey: CREATED_AT, reverse: true) {
-          nodes {
-            id name createdAt displayFinancialStatus
-            totalPriceSet { shopMoney { amount currencyCode } }
-          }
+      }
+      orders(first: 20, sortKey: CREATED_AT, reverse: true, query: $ordersQuery) {
+        nodes {
+          id name createdAt displayFinancialStatus
+          totalPriceSet { shopMoney { amount currencyCode } }
         }
       }
     }
   `;
-	const data = await shopifyRequest<{ customer: CustomerNode & { orders: { nodes: { id: string; name: string; createdAt: string; totalPriceSet: { shopMoney: { amount: string; currencyCode: string } }; displayFinancialStatus: string }[] } } }>(
-		client,
-		gql,
-		{ id: customerId }
-	);
-	return data.customer;
+	const data = await shopifyRequest<{
+		customer: CustomerNode | null;
+		orders: { nodes: { id: string; name: string; createdAt: string; totalPriceSet: { shopMoney: { amount: string; currencyCode: string } }; displayFinancialStatus: string }[] };
+	}>(client, gql, { id: customerId, ordersQuery: `customer_id:"${numericId}" status:any` });
+
+	if (!data.customer) throw new Error('Customer not found');
+	return { ...data.customer, orders: data.orders };
 }
 
 export async function createCustomer(

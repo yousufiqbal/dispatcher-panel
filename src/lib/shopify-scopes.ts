@@ -8,6 +8,7 @@ export const SHOPIFY_SCOPES = [
 	{ scope: 'read_merchant_managed_fulfillment_orders', why: 'Required separately from write_fulfillments to read fulfillmentOrders — needed to fulfill/unfulfill orders' },
 	{ scope: 'write_merchant_managed_fulfillment_orders', why: 'Required separately from write_fulfillments to actually create/cancel a fulfillment (fulfillmentCreate/fulfillmentCancel)' },
 	{ scope: 'write_orders', why: 'View orders, cancel, refund, edit shipping (write implies read)' },
+	{ scope: 'read_all_orders', why: 'Without this, orders older than 60 days (and not created by this app) are invisible to every order query/search — customer order history silently truncates' },
 	{ scope: 'write_shipping', why: 'Edit order shipping address/lines' },
 	{ scope: 'write_order_edits', why: 'Order editing — orderEditBegin/AddVariant/Commit, used by the edit-order page and Merge Orders' }
 ] as const;

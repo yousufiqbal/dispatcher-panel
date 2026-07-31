@@ -33,12 +33,16 @@ export const actions: Actions = {
 		const existing = await db.query.stores.findFirst({ where: eq(stores.id, params.id) });
 		if (!existing) throw error(404, 'Store not found');
 
-		// If token/secret blank, keep existing
+		// If token/secret/client id/redirect uri blank, keep existing — the top
+		// "Save Changes" form only carries name/domain/token, not the OAuth App
+		// fields, so without this fallback saving from there would wipe them.
 		const tokenToUse = raw.apiAccessToken.trim() || decrypt(existing.apiAccessToken);
 		const clientSecretToUse =
 			raw.oauthClientSecret.trim() ||
 			(existing.oauthClientSecret ? decrypt(existing.oauthClientSecret) : '');
-		const dataToValidate = { ...raw, apiAccessToken: tokenToUse };
+		const clientIdToUse = raw.oauthClientId.trim() || existing.oauthClientId || '';
+		const redirectUriToUse = raw.oauthRedirectUri.trim() || existing.oauthRedirectUri || '';
+		const dataToValidate = { ...raw, apiAccessToken: tokenToUse, oauthClientId: clientIdToUse, oauthRedirectUri: redirectUriToUse };
 
 		const result = safeParse(StoreSchema, dataToValidate);
 		if (!result.success) {
@@ -54,9 +58,9 @@ export const actions: Actions = {
 			iconUrl: uploadedIcon ?? existing.iconUrl,
 			shopifyDomain: result.output.shopifyDomain,
 			apiAccessToken: encrypt(tokenToUse),
-			oauthClientId: raw.oauthClientId.trim() || null,
+			oauthClientId: clientIdToUse || null,
 			oauthClientSecret: clientSecretToUse ? encrypt(clientSecretToUse) : null,
-			oauthRedirectUri: raw.oauthRedirectUri.trim() || null,
+			oauthRedirectUri: redirectUriToUse || null,
 			updatedAt: new Date()
 		}).where(eq(stores.id, params.id));
 

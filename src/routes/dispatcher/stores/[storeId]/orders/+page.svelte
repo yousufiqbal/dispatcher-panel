@@ -53,8 +53,9 @@
 		goto(`/dispatcher/stores/${storeId}/orders/book/${courierId}?ids=${ids}`);
 	}
 
-	const selectableStatuses = ['pending', 'confirmed', 'incorrect-address', 'fulfilled', 'attempted', 'failed'];
+	const selectableStatuses = ['pending', 'confirmed', 'fulfilled', 'attempted', 'failed'];
 	const INCORRECT_ADDRESS_TAG = 'incorrect-address';
+	const ADDRESS_CHECKED_TAG = 'address-checked';
 	let showBulkConfirmDialog = $state(false);
 	let bulkConfirming = $state(false);
 
@@ -224,28 +225,35 @@
 		showAddressCheckModal = true;
 	}
 
-	// Quick correct/incorrect toggle right in the Destination cell — no modal.
-	// Optimistic: flips the local override immediately, reverts if the request fails.
-	let incorrectOverride = $state<Record<string, boolean>>({});
+	// Correct/Incorrect/unchecked status right in the Destination cell — no modal.
+	// Three real states: untagged (never reviewed), address-checked (explicitly
+	// correct), incorrect-address (flagged). Optimistic: flips the local override
+	// immediately, reverts if the request fails.
+	type AddressStatus = 'correct' | 'incorrect' | 'unchecked';
+	let addressStatusOverride = $state<Record<string, AddressStatus>>({});
 	let togglingAddressId = $state<string | null>(null);
 
-	function isIncorrectAddress(order: (typeof data.orders)[number]): boolean {
-		return incorrectOverride[order.id] ?? order.tags.includes(INCORRECT_ADDRESS_TAG);
+	function addressStatus(order: (typeof data.orders)[number]): AddressStatus {
+		if (order.id in addressStatusOverride) return addressStatusOverride[order.id];
+		if (order.tags.includes(INCORRECT_ADDRESS_TAG)) return 'incorrect';
+		if (order.tags.includes(ADDRESS_CHECKED_TAG)) return 'correct';
+		return 'unchecked';
 	}
 
-	async function toggleAddressCorrectness(order: (typeof data.orders)[number]) {
-		const next = !isIncorrectAddress(order);
-		incorrectOverride = { ...incorrectOverride, [order.id]: next };
+	async function setAddressCorrectness(order: (typeof data.orders)[number], status: 'correct' | 'incorrect') {
+		if (status === addressStatus(order)) return;
+		const previous = addressStatus(order);
+		addressStatusOverride = { ...addressStatusOverride, [order.id]: status };
 		togglingAddressId = order.id;
 		try {
 			const fd = new FormData();
 			fd.set('orderId', order.id);
-			fd.set('mark', String(next));
-			const res = await fetch('?/toggleIncorrectAddress', { method: 'POST', body: fd });
+			fd.set('status', status);
+			const res = await fetch('?/setAddressCheckStatus', { method: 'POST', body: fd });
 			if (!res.ok) throw new Error('failed');
-			addToast(next ? 'Marked address as incorrect' : 'Marked address as correct');
+			addToast(status === 'incorrect' ? 'Marked address as incorrect' : 'Marked address as correct');
 		} catch {
-			incorrectOverride = { ...incorrectOverride, [order.id]: !next };
+			addressStatusOverride = { ...addressStatusOverride, [order.id]: previous };
 			addToast('Failed to update address status', 'error');
 		} finally {
 			togglingAddressId = null;
@@ -391,7 +399,6 @@
 	const tabs = [
 		{ key: 'all', label: 'All' },
 		{ key: 'pending', label: 'Pending' },
-		{ key: 'incorrect-address', label: 'Incorrect Address' },
 		{ key: 'confirmed', label: 'Confirmed' },
 		{ key: 'fulfilled', label: 'Fulfilled' },
 		{ key: 'attempted', label: 'Attempted' },
@@ -595,11 +602,6 @@
 								{data.pendingCount}
 							</span>
 						{/if}
-						{#if tab.key === 'incorrect-address'}
-							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.incorrectAddressCount > 0 ? 'bg-red-100 text-red-700' : 'bg-zinc-100 text-zinc-500'}">
-								{data.incorrectAddressCount}
-							</span>
-						{/if}
 						{#if tab.key === 'confirmed'}
 							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.confirmedCount > 0 ? 'bg-green-100 text-green-800' : 'bg-zinc-100 text-zinc-500'}">
 								{data.confirmedCount}
@@ -632,22 +634,6 @@
 					Manage Tags
 				</Button>
 				<Button size="sm" onclick={() => showBulkConfirmDialog = true}>Confirm Selected</Button>
-			</div>
-		</div>
-	{/if}
-
-	{#if data.status === 'incorrect-address' && selectedIds.size > 0}
-		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
-			<span class="text-sm font-medium">{selectedIds.size} selected</span>
-			<div class="flex items-center gap-2">
-				<Button variant="outline" size="sm" onclick={openAddressCheckModal}>
-					<MapPinIcon class="size-4" />
-					Check Addresses
-				</Button>
-				<Button variant="outline" size="sm" onclick={openBulkTagModal}>
-					<TagIcon class="size-4" />
-					Manage Tags
-				</Button>
 			</div>
 		</div>
 	{/if}
@@ -851,6 +837,7 @@
 											rel="noopener"
 											class="font-medium text-foreground hover:text-primary hover:underline {isCancelled ? 'line-through' : ''}"
 										>{order.customer.displayName}</a>
+										<div class="text-xs text-muted-foreground">{order.customer.numberOfOrders} order{order.customer.numberOfOrders === 1 ? '' : 's'}</div>
 									{:else}
 										<div class="font-medium text-foreground {isCancelled ? 'line-through' : ''}">Guest</div>
 									{/if}
@@ -872,19 +859,39 @@
 											{:else}
 												<span class="text-foreground/40">—</span>
 											{/if}
-											{#if order.shippingAddress}
-												{@const incorrect = isIncorrectAddress(order)}
-												<button
-													type="button"
-													disabled={togglingAddressId === order.id}
-													title={incorrect ? 'Mark address as correct' : 'Mark address as incorrect'}
-													onclick={() => toggleAddressCorrectness(order)}
-													class="mt-1 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full transition-colors disabled:opacity-50 {incorrect ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-800 hover:bg-green-200'}"
-												>
-													<span class="size-1.5 rounded-full bg-current shrink-0"></span>
-													{incorrect ? 'Incorrect' : 'Correct'}
-												</button>
-											{/if}
+										{#if order.shippingAddress}
+											{@const status = addressStatus(order)}
+											<DropdownMenu.Root>
+												<DropdownMenu.Trigger>
+													{#snippet child({ props })}
+														<button
+															{...props}
+															type="button"
+															disabled={togglingAddressId === order.id}
+															title="Set address status"
+															class="mt-1 inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full transition-colors disabled:opacity-50
+																{status === 'incorrect' ? 'bg-red-100 text-red-700 hover:bg-red-200' :
+																 status === 'correct' ? 'bg-green-100 text-green-800 hover:bg-green-200' :
+																 'bg-amber-100 text-amber-800 hover:bg-amber-200'}"
+														>
+															<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+															{status === 'incorrect' ? 'Incorrect' : status === 'correct' ? 'Correct' : 'Check Address'}
+															<ChevronDownIcon class="size-3" />
+														</button>
+													{/snippet}
+												</DropdownMenu.Trigger>
+												<DropdownMenu.Content align="start" class="w-40">
+													<DropdownMenu.Item onclick={() => setAddressCorrectness(order, 'correct')}>
+														<span class="size-1.5 rounded-full bg-green-600 shrink-0"></span>
+														Correct
+													</DropdownMenu.Item>
+													<DropdownMenu.Item onclick={() => setAddressCorrectness(order, 'incorrect')}>
+														<span class="size-1.5 rounded-full bg-red-600 shrink-0"></span>
+														Incorrect
+													</DropdownMenu.Item>
+												</DropdownMenu.Content>
+											</DropdownMenu.Root>
+										{/if}
 										</div>
 										<button
 											type="button"

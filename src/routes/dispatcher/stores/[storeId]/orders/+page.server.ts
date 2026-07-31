@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { listOrders, getTagSplitCounts, confirmOrder, cancelOrder, getOrder, updateOrderShipping, updateOrderTags, CONFIRMED_TAG, INCORRECT_ADDRESS_TAG, markAddressIncorrect, unmarkAddressIncorrect, phoneQueryVariants } from '$lib/server/shopify/orders';
+import { listOrders, getTagSplitCounts, confirmOrder, cancelOrder, getOrder, updateOrderShipping, updateOrderTags, CONFIRMED_TAG, INCORRECT_ADDRESS_TAG, ADDRESS_CHECKED_TAG, markAddressIncorrect, unmarkAddressIncorrect, setAddressCheckStatus, phoneQueryVariants } from '$lib/server/shopify/orders';
 import { orderEditBegin, orderEditAddVariant, orderEditAddCustomItem, orderEditCommit } from '$lib/server/shopify/order-edit';
 import { db } from '$lib/server/db';
 import { couriers, courierStoreAccess } from '$lib/server/db/schema';
@@ -36,7 +36,6 @@ function orderDisplayStatus(o: { fulfillments: { displayStatus: string | null }[
 const STATUS_QUERIES: Record<string, string> = {
 	pending: 'fulfillment_status:unfulfilled status:open',
 	confirmed: 'fulfillment_status:unfulfilled status:open',
-	'incorrect-address': 'status:open',
 	fulfilled: 'fulfillment_status:shipped',
 	attempted: 'fulfillment_status:shipped',
 	failed: 'fulfillment_status:shipped',
@@ -86,16 +85,14 @@ async function getAttemptedCount(client: ReturnType<typeof getShopifyClient>): P
 // the search index lags a few seconds behind a tagsAdd mutation, which made these
 // badges show stale numbers right after a bulk-confirm.
 async function getBadgeCounts(client: ReturnType<typeof getShopifyClient>) {
-	const [{ withTag, withoutTag }, attemptedCount, incorrectAddressSplit] = await Promise.all([
+	const [{ withTag, withoutTag }, attemptedCount] = await Promise.all([
 		getTagSplitCounts(client, STATUS_QUERIES.pending, CONFIRMED_TAG),
-		getAttemptedCount(client),
-		getTagSplitCounts(client, STATUS_QUERIES['incorrect-address'], INCORRECT_ADDRESS_TAG)
+		getAttemptedCount(client)
 	]);
 	return {
 		pendingCount: withoutTag,
 		confirmedCount: withTag,
-		attemptedCount,
-		incorrectAddressCount: incorrectAddressSplit.withTag
+		attemptedCount
 	};
 }
 
@@ -131,7 +128,7 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 		};
 	}
 
-	const isTagFiltered = status === 'pending' || status === 'confirmed' || status === 'incorrect-address' || status === 'attempted' || status === 'failed';
+	const isTagFiltered = status === 'pending' || status === 'confirmed' || status === 'attempted' || status === 'failed';
 
 	let shopifyQuery = STATUS_QUERIES[status] ?? '';
 	if (searchQ) {
@@ -157,7 +154,6 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 	let orders = result.nodes;
 	if (status === 'pending') orders = orders.filter((o) => !o.tags.includes(CONFIRMED_TAG));
 	else if (status === 'confirmed') orders = orders.filter((o) => o.tags.includes(CONFIRMED_TAG));
-	else if (status === 'incorrect-address') orders = orders.filter((o) => o.tags.includes(INCORRECT_ADDRESS_TAG));
 
 	// "Attempted"/"Failed" filter on Shopify's fulfillment displayStatus (no search
 	// syntax exists for it, so filter client-side after fetching shipped orders).
@@ -332,23 +328,21 @@ export const actions: Actions = {
 		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=${returnStatus}`);
 	},
 
-	// No redirect — this is the quick toggle in the Destination cell, meant to
-	// update in place without a full page reload. Client applies it optimistically.
-	toggleIncorrectAddress: async ({ params, request, locals }) => {
+	// No redirect — this is the quick dropdown choice in the Destination cell,
+	// meant to update in place without a full page reload. Client applies it optimistically.
+	setAddressCheckStatus: async ({ params, request, locals }) => {
 		const store = await getAuthorizedStore(locals.session, params.storeId);
 		const client = getShopifyClient(store);
 		const fd = await request.formData();
 		const orderId = fd.get('orderId') as string;
-		const mark = fd.get('mark') === 'true';
+		const status = fd.get('status') as string;
 
-		if (!orderId) return fail(400, { error: 'No order specified' });
+		if (!orderId || (status !== 'correct' && status !== 'incorrect')) return fail(400, { error: 'No order specified' });
 
 		try {
-			const shopifyId = toShopifyOrderId(orderId);
-			if (mark) await markAddressIncorrect(client, shopifyId);
-			else await unmarkAddressIncorrect(client, shopifyId);
+			await setAddressCheckStatus(client, toShopifyOrderId(orderId), status);
 			if (locals.session) {
-				await logAudit(locals.session.userId, 'dispatcher', mark ? 'order.markIncorrectAddress' : 'order.unmarkIncorrectAddress', {
+				await logAudit(locals.session.userId, 'dispatcher', status === 'correct' ? 'order.markAddressCorrect' : 'order.markIncorrectAddress', {
 					targetType: 'order', targetId: orderId, storeId: params.storeId
 				});
 			}
@@ -356,7 +350,7 @@ export const actions: Actions = {
 			return fail(400, { error: e instanceof Error ? e.message : 'Failed to update address status' });
 		}
 
-		return { toggled: orderId, mark };
+		return { orderId, status };
 	},
 
 	updateOrderTagsSingle: async ({ params, request, locals }) => {
@@ -470,6 +464,6 @@ export const actions: Actions = {
 			});
 		}
 
-		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=incorrect-address&autoChecked=${tagged}`);
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=pending&autoChecked=${tagged}`);
 	}
 };
