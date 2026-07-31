@@ -1,19 +1,32 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { page } from '$app/stores';
-	import { formatCurrency, formatDateShort, shopifyIdToNumber } from '$lib/utils';
+	import { formatCurrency, formatRelativeDate, shopifyIdToNumber } from '$lib/utils';
+	import { deliveryPill } from '$lib/delivery-status';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
-	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import CopyIcon from '@lucide/svelte/icons/copy';
+	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	const storeId = $derived($page.params.storeId);
 	let editing = $state(false);
+	let copiedTracking = $state<string | null>(null);
 	const customer = $derived(data.customer);
+
+	function deliveryStatusInfo(order: {
+		fulfillments: { displayStatus: string | null; trackingInfo: { number: string | null }[] }[];
+	}): { label: string; class: string } | null {
+		const hasTracking = order.fulfillments.some((f) => f.trackingInfo.some((t) => t.number));
+		return deliveryPill(order.fulfillments.find((f) => f.displayStatus)?.displayStatus, hasTracking);
+	}
 </script>
 
 <svelte:head>
@@ -31,14 +44,6 @@
 				<p class="text-sm text-muted-foreground">{customer.numberOfOrders} order{customer.numberOfOrders !== 1 ? 's' : ''}</p>
 			</div>
 		</div>
-		<div class="flex gap-2 mt-3">
-			<Button href="/dispatcher/stores/{storeId}/orders/new?customerId={encodeURIComponent(customer.id)}">
-				New Order
-			</Button>
-			<Button variant="outline" onclick={() => editing = !editing}>
-				{editing ? 'Cancel Edit' : 'Edit'}
-			</Button>
-		</div>
 	</div>
 
 	{#if form?.error}
@@ -50,10 +55,13 @@
 
 	<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 		<!-- Customer info -->
-		<div class="lg:col-span-1 space-y-4">
+		<div class="lg:col-span-1 lg:order-2 space-y-4">
 			{#if editing}
 				<div class="card p-5">
-					<h2 class="font-semibold mb-4">Edit Customer</h2>
+					<div class="flex items-center justify-between mb-4">
+						<h2 class="font-semibold">Edit Customer</h2>
+						<Button variant="outline" size="sm" onclick={() => editing = false}>Cancel</Button>
+					</div>
 					<form method="POST" action="?/update" use:enhance class="space-y-3">
 						<div class="space-y-1.5">
 							<Label class="text-xs">First Name</Label>
@@ -76,7 +84,13 @@
 				</div>
 			{:else}
 				<div class="card p-5">
-					<h2 class="font-semibold mb-3">Contact Info</h2>
+					<div class="flex items-center justify-between mb-3">
+						<h2 class="font-semibold">Contact Info</h2>
+						<Button variant="outline" size="sm" onclick={() => editing = true}>
+							<PencilIcon class="size-3.5" />
+							Edit
+						</Button>
+					</div>
 					<dl class="space-y-3 text-sm">
 						{#if customer.email}
 							<div>
@@ -109,7 +123,7 @@
 		</div>
 
 		<!-- Order history -->
-		<div class="lg:col-span-2">
+		<div class="lg:col-span-2 lg:order-1">
 			<div class="card">
 				<div class="card-header pb-3">
 					<h2 class="font-semibold">Order History</h2>
@@ -119,23 +133,167 @@
 						<p class="text-sm text-muted-foreground">No orders yet</p>
 					</div>
 				{:else}
-					<div class="divide-y divide-border">
-						{#each customer.orders.nodes as order}
-							<a
-								href="/dispatcher/stores/{storeId}/orders/{encodeURIComponent(order.id)}"
-								class="flex items-center justify-between px-6 py-3 hover:bg-muted/30 transition-colors"
-							>
-								<div>
-									<span class="font-semibold text-sm text-foreground">{order.name}</span>
-									<div class="text-xs text-muted-foreground">{formatDateShort(order.createdAt)}</div>
-								</div>
-								<div class="flex items-center gap-3">
-									<span class="badge badge-partial text-xs">{order.displayFinancialStatus}</span>
-									<span class="font-medium text-sm">{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}</span>
-									<ChevronRightIcon class="size-4 text-muted-foreground" />
-								</div>
-							</a>
-						{/each}
+					<div class="overflow-x-auto">
+						<table class="w-full text-sm">
+							<thead>
+								<tr class="border-b border-border bg-muted/30">
+									<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Order</th>
+									<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Date</th>
+									<th class="text-center px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Items</th>
+									<th class="text-right px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Total</th>
+									<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Payment</th>
+									<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Fulfillment</th>
+									<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Destination</th>
+									<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Delivery Status</th>
+								</tr>
+							</thead>
+							<tbody class="divide-y divide-border">
+								{#each customer.orders.nodes as order}
+									{@const delivery = deliveryStatusInfo(order)}
+									{@const isCancelled = !!order.cancelledAt}
+									<tr class="hover:bg-muted/40 transition-colors {isCancelled ? 'opacity-60 bg-muted/30' : ''}">
+										<td class="px-3 py-1.5 font-bold whitespace-nowrap {isCancelled ? 'line-through' : ''}">
+											<a href="/dispatcher/stores/{storeId}/orders/{shopifyIdToNumber(order.id)}" class="text-foreground hover:text-primary hover:underline">{order.name}</a>
+										</td>
+										<td class="px-3 py-1.5 text-foreground/70 whitespace-nowrap {isCancelled ? 'line-through' : ''}">{formatRelativeDate(order.createdAt)}</td>
+										<td class="px-3 py-1.5 text-center text-foreground/70" onclick={(e) => e.stopPropagation()}>
+											<Popover.Root>
+												<Popover.Trigger>
+													{#snippet child({ props })}
+														<button type="button" {...props} class="inline-flex items-center gap-1 hover:text-primary rounded-md px-1.5 -mx-1.5 data-[state=open]:ring-2 data-[state=open]:ring-primary/40 data-[state=open]:bg-primary/5 {isCancelled ? 'line-through' : ''}">
+															{order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)}
+															<ChevronDownIcon class="size-3.5" />
+														</button>
+													{/snippet}
+												</Popover.Trigger>
+												<Popover.Content class="w-80 p-0 gap-0 overflow-hidden" align="center">
+													<div class="divide-y divide-border overflow-y-auto" style="max-height: min(60vh, var(--bits-floating-available-height, 60vh));">
+														{#each order.lineItems.nodes as item}
+															{@const img = item.variant?.image ?? item.image}
+															<div class="flex items-center gap-3 px-3 py-2.5">
+																{#if img}
+																	<img src={img.url} alt={img.altText ?? item.title} class="size-10 rounded-md object-cover border border-border shrink-0" />
+																{:else}
+																	<div class="size-10 rounded-md bg-muted border border-border shrink-0"></div>
+																{/if}
+																<div class="min-w-0 flex-1">
+																	<div class="text-sm font-medium text-foreground leading-snug">{item.title}</div>
+																	{#if item.variant?.title && item.variant.title !== 'Default Title'}
+																		<span class="inline-flex items-center mt-1 px-1.5 py-0.5 rounded bg-muted text-xs text-muted-foreground">{item.variant.title}</span>
+																	{/if}
+																</div>
+																<span class="text-sm text-muted-foreground shrink-0">×{item.quantity}</span>
+															</div>
+														{/each}
+													</div>
+												</Popover.Content>
+											</Popover.Root>
+										</td>
+										<td class="px-3 py-1.5 text-right font-semibold text-foreground whitespace-nowrap {isCancelled ? 'line-through' : ''}">
+											{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
+										</td>
+										<td class="px-3 py-1.5">
+											<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full
+												{order.displayFinancialStatus === 'PAID' ? 'bg-green-100 text-green-800' :
+												 order.displayFinancialStatus === 'PENDING' ? 'bg-amber-100 text-amber-800' :
+												 order.displayFinancialStatus === 'REFUNDED' ? 'bg-red-100 text-red-700' :
+												 'bg-zinc-100 text-zinc-700'}">
+												<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+												{order.displayFinancialStatus.replace(/_/g,' ')}
+											</span>
+										</td>
+										<td class="px-3 py-1.5">
+											{#if isCancelled}
+												<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700">
+													<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+													Not required
+												</span>
+											{:else}
+												<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full
+													{order.displayFulfillmentStatus === 'FULFILLED' ? 'bg-green-100 text-green-800' :
+													 order.displayFulfillmentStatus === 'UNFULFILLED' ? 'bg-amber-100 text-amber-800' :
+													 'bg-zinc-100 text-zinc-700'}">
+													<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+													{order.displayFulfillmentStatus.replace(/_/g,' ')}
+												</span>
+											{/if}
+										</td>
+										<td class="px-3 py-1.5 whitespace-nowrap {isCancelled ? 'line-through' : ''}">
+											{#if order.shippingAddress}
+												<div class="font-medium text-foreground">{order.shippingAddress.city}</div>
+												<div class="text-xs text-foreground/60">{order.shippingAddress.country}</div>
+											{:else}
+												<span class="text-foreground/40">—</span>
+											{/if}
+										</td>
+										<td class="px-3 py-1.5 whitespace-nowrap" onclick={(e) => e.stopPropagation()}>
+											{#if delivery}
+												{@const tracking = order.fulfillments.flatMap((f) => f.trackingInfo).find((t) => t.number || t.company)}
+												<Popover.Root>
+													<Popover.Trigger>
+														{#snippet child({ props })}
+															<button type="button" {...props} class="inline-flex items-center gap-1 hover:opacity-80 rounded-md px-1 -mx-1 data-[state=open]:ring-2 data-[state=open]:ring-primary/40 data-[state=open]:bg-primary/5">
+																<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
+																	<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+																	{delivery.label}
+																</span>
+																<ChevronDownIcon class="size-3.5 text-muted-foreground" />
+															</button>
+														{/snippet}
+													</Popover.Trigger>
+													<Popover.Content class="w-64 p-3" align="end">
+														<div class="text-sm font-semibold mb-2">Delivery</div>
+														{#if tracking}
+															<div class="space-y-2 text-sm">
+																<div>
+																	<div class="text-xs text-muted-foreground uppercase tracking-wide">Courier</div>
+																	<div class="font-medium text-foreground">{tracking.company ?? 'Unknown courier'}</div>
+																</div>
+																<div>
+																	<div class="text-xs text-muted-foreground uppercase tracking-wide">Tracking</div>
+																	<div class="flex items-center gap-1.5">
+																		{#if tracking.url}
+																			<a href={tracking.url} target="_blank" rel="noopener" class="font-mono text-primary hover:underline">
+																				{tracking.number ?? tracking.url}
+																			</a>
+																		{:else}
+																			<div class="font-mono text-foreground">{tracking.number ?? '—'}</div>
+																		{/if}
+																		{#if tracking.number}
+																			<button
+																				type="button"
+																				class="text-muted-foreground hover:text-primary shrink-0"
+																				title="Copy tracking number"
+																				onclick={() => {
+																					const num = tracking.number ?? '';
+																					navigator.clipboard.writeText(num);
+																					copiedTracking = num;
+																					setTimeout(() => copiedTracking === num && (copiedTracking = null), 1200);
+																				}}
+																			>
+																				{#if copiedTracking === tracking.number}
+																					<CheckIcon class="size-3.5 text-green-600" />
+																				{:else}
+																					<CopyIcon class="size-3.5" />
+																				{/if}
+																			</button>
+																		{/if}
+																	</div>
+																</div>
+															</div>
+														{:else}
+															<p class="text-sm text-muted-foreground">No tracking information yet.</p>
+														{/if}
+													</Popover.Content>
+												</Popover.Root>
+											{:else}
+												<span class="text-foreground/40">—</span>
+											{/if}
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
 					</div>
 				{/if}
 			</div>

@@ -20,7 +20,7 @@ export function getShopifyClient(store: {
 			key,
 			createAdminApiClient({
 				storeDomain: store.shopifyDomain,
-				apiVersion: '2025-07',
+				apiVersion: '2025-10',
 				accessToken: token
 			})
 		);

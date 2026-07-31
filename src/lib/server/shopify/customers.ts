@@ -50,10 +50,30 @@ export async function listCustomers(
 // 2. Shopify's order search defaults to `status:open` when the query string
 //    doesn't mention status at all — closed/archived orders (e.g. old
 //    fulfilled-and-closed ones) silently vanish unless `status:any` is added.
+export interface CustomerOrderNode {
+	id: string;
+	name: string;
+	createdAt: string;
+	cancelledAt: string | null;
+	displayFinancialStatus: string;
+	displayFulfillmentStatus: string;
+	totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+	shippingAddress: { city: string; country: string } | null;
+	lineItems: {
+		nodes: {
+			title: string;
+			quantity: number;
+			variant: { title: string; sku: string | null; image: { url: string; altText: string | null } | null } | null;
+			image: { url: string; altText: string | null } | null;
+		}[];
+	};
+	fulfillments: { displayStatus: string | null; trackingInfo: { company: string | null; number: string | null; url: string | null }[] }[];
+}
+
 export async function getCustomer(
 	client: ShopifyClient,
 	customerId: string
-): Promise<CustomerNode & { orders: { nodes: { id: string; name: string; createdAt: string; totalPriceSet: { shopMoney: { amount: string; currencyCode: string } }; displayFinancialStatus: string }[] } }> {
+): Promise<CustomerNode & { orders: { nodes: CustomerOrderNode[] } }> {
 	const numericId = customerId.split('/').pop();
 	const gql = `
     query GetCustomer($id: ID!, $ordersQuery: String) {
@@ -63,15 +83,24 @@ export async function getCustomer(
       }
       orders(first: 20, sortKey: CREATED_AT, reverse: true, query: $ordersQuery) {
         nodes {
-          id name createdAt displayFinancialStatus
+          id name createdAt cancelledAt displayFinancialStatus displayFulfillmentStatus
           totalPriceSet { shopMoney { amount currencyCode } }
+          shippingAddress { city country }
+          lineItems(first: 50) {
+            nodes {
+              title quantity
+              variant { title sku image { url altText } }
+              image { url altText }
+            }
+          }
+          fulfillments(first: 5) { displayStatus trackingInfo { company number url } }
         }
       }
     }
   `;
 	const data = await shopifyRequest<{
 		customer: CustomerNode | null;
-		orders: { nodes: { id: string; name: string; createdAt: string; totalPriceSet: { shopMoney: { amount: string; currencyCode: string } }; displayFinancialStatus: string }[] };
+		orders: { nodes: CustomerOrderNode[] };
 	}>(client, gql, { id: customerId, ordersQuery: `customer_id:"${numericId}" status:any` });
 
 	if (!data.customer) throw new Error('Customer not found');
