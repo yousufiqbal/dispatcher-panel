@@ -101,7 +101,7 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 	const client = getShopifyClient(currentStore);
 
 	const searchQ = url.searchParams.get('q') ?? '';
-	const status = url.searchParams.get('status') ?? 'all';
+	const status = url.searchParams.get('status') ?? 'pending';
 	const cursor = url.searchParams.get('after') ?? undefined;
 
 	if (locals.session) {

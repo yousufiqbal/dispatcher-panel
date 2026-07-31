@@ -6,7 +6,7 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import LogOutIcon from '@lucide/svelte/icons/log-out';
-	import MenuIcon from '@lucide/svelte/icons/menu';
+	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
@@ -14,7 +14,7 @@
 	const storeSheetOpen = $derived(isStoreSwitcherOpen());
 	let logoutConfirmOpen = $state(false);
 	let switcherPanelEl = $state<HTMLDivElement | null>(null);
-	let mobileNavOpen = $state(false);
+	let mobileMoreOpen = $state(false);
 
 	function isStoreActive(storeId: string) {
 		return $page.url.pathname.includes(`/dispatcher/stores/${storeId}`);
@@ -37,16 +37,26 @@
 		return $page.url.pathname.includes(`/${sub}/`) || $page.url.pathname.endsWith(`/${sub}`);
 	}
 
+	const NAV_ITEMS = [
+		{ href: 'orders', label: 'Orders', d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
+		{ href: 'products', label: 'Products', d: 'M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z' },
+		{ href: 'inventory', label: 'Inventory', d: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7' },
+		{ href: 'restock', label: 'Restock', d: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99' },
+		{ href: 'inventory-count', label: 'Audit', d: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z' }
+	];
+	const bottomBarItems = NAV_ITEMS.slice(0, 5);
+	const moreNavItems = NAV_ITEMS.slice(5);
+
 	async function logout() {
 		await fetch('/api/auth/logout', { method: 'POST' });
 		goto('/login');
 	}
 
-	// close store switcher + mobile drawer on navigation
+	// close store switcher + mobile "More" dropup on navigation
 	$effect(() => {
 		$page.url.pathname;
 		closeStoreSwitcher();
-		mobileNavOpen = false;
+		mobileMoreOpen = false;
 	});
 
 	// Click-outside-to-close, driven directly off the panel element rather than a
@@ -106,13 +116,7 @@
 {/snippet}
 
 {#snippet navLinks()}
-	{#each [
-		{ href: 'orders', label: 'Orders', d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
-		{ href: 'products', label: 'Products', d: 'M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z' },
-		{ href: 'inventory', label: 'Inventory', d: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7' },
-		{ href: 'restock', label: 'Restock', d: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99' },
-		{ href: 'inventory-count', label: 'Inventory Audit', d: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z' }
-	] as item}
+	{#each NAV_ITEMS as item}
 		<a
 			href={tabHref(item.href)}
 			class="flex items-center gap-3 mx-1 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150
@@ -130,11 +134,8 @@
 {/snippet}
 
 <div class="min-h-screen bg-zinc-50 flex">
-	<!-- Sidebar — fixed on desktop, slide-in drawer on mobile -->
-	<aside
-		class="fixed inset-y-0 left-0 z-50 flex flex-col bg-card border-r border-border w-64 shadow-sm transition-transform duration-200
-			{mobileNavOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0"
-	>
+	<!-- Sidebar — desktop only; mobile navigation is the bottom bar below -->
+	<aside class="hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col bg-card border-r border-border w-64 shadow-sm">
 		<!-- Store selector -->
 		<div class="relative shrink-0">
 			<button
@@ -192,38 +193,72 @@
 		</div>
 	</aside>
 
-	<!-- Backdrop for mobile drawer -->
-	{#if mobileNavOpen}
-		<div
-			class="lg:hidden fixed inset-0 z-40 bg-black/40"
-			role="button"
-			tabindex="-1"
-			onclick={() => mobileNavOpen = false}
-			onkeydown={(e) => e.key === 'Escape' && (mobileNavOpen = false)}
-		></div>
-	{/if}
-
 	<!-- Main -->
 	<div class="flex-1 flex flex-col min-h-screen min-w-0 lg:ml-64">
-		<!-- Mobile top bar with hamburger -->
-		<div class="lg:hidden sticky top-0 z-30 flex items-center gap-3 px-3 h-14 bg-card border-b border-border shadow-sm">
-			<Button onclick={() => mobileNavOpen = true} variant="ghost" size="icon" title="Open menu">
-				<MenuIcon class="size-5" />
-			</Button>
-			<div class="flex items-center gap-2 min-w-0">
-				{#if currentStoreLogo}
-					<img src={currentStoreLogo} alt="" class="size-6 rounded-md object-contain shrink-0 border border-border" />
-				{/if}
-				<span class="text-sm font-semibold text-foreground truncate">{currentStoreName ?? 'Pro Shipper'}</span>
-			</div>
-		</div>
-
-		<main class="flex-1">
+		<main class="flex-1 pb-16 lg:pb-0">
 			{#key $page.url.pathname}
 				{@render children()}
 			{/key}
 		</main>
 	</div>
+
+	<!-- Mobile bottom bar: first 4 sections + "More" (remaining sections, store switcher, logout) -->
+	<nav class="lg:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch h-16 bg-card border-t border-border shadow-[0_-1px_4px_rgba(0,0,0,0.06)]">
+		{#each bottomBarItems as item}
+			<a
+				href={tabHref(item.href)}
+				class="flex-1 flex flex-col items-center justify-center gap-0.5 text-[11px] transition-colors duration-150
+					{!currentStoreId ? 'pointer-events-none opacity-40' : ''}
+					{isTabActive(item.href) ? 'text-primary font-medium' : 'text-muted-foreground'}"
+			>
+				<svg class="size-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+					<path stroke-linecap="round" stroke-linejoin="round" d={item.d} />
+				</svg>
+				{item.label}
+			</a>
+		{/each}
+		<button
+			onclick={() => mobileMoreOpen = !mobileMoreOpen}
+			class="flex-1 flex flex-col items-center justify-center gap-0.5 text-[11px] transition-colors duration-150
+				{mobileMoreOpen || moreNavItems.some((i) => isTabActive(i.href)) ? 'text-primary font-medium' : 'text-muted-foreground'}"
+		>
+			<MoreHorizontalIcon class="size-5 shrink-0" />
+			More
+		</button>
+	</nav>
+
+	<!-- Mobile "More" dropup: remaining nav sections + store switcher + logout -->
+	{#if mobileMoreOpen}
+		<div
+			class="lg:hidden fixed inset-0 z-40 bg-black/40"
+			role="button"
+			tabindex="-1"
+			onclick={() => mobileMoreOpen = false}
+			onkeydown={(e) => e.key === 'Escape' && (mobileMoreOpen = false)}
+		></div>
+		<div
+			transition:slide={{ duration: 150 }}
+			class="lg:hidden fixed bottom-16 left-2 right-2 z-50 bg-card border border-border rounded-xl shadow-lg p-1.5 space-y-0.5 max-h-[70vh] overflow-y-auto"
+		>
+			{#each moreNavItems as item}
+				<a
+					href={tabHref(item.href)}
+					class="flex items-center gap-3 mx-1 px-3 py-2.5 rounded-lg text-sm transition-colors duration-150
+						{!currentStoreId ? 'pointer-events-none opacity-40' : ''}
+						{isTabActive(item.href)
+							? 'bg-primary/10 text-primary font-medium'
+							: 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'}"
+				>
+					<svg class="size-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+						<path stroke-linecap="round" stroke-linejoin="round" d={item.d} />
+					</svg>
+					{item.label}
+				</a>
+			{/each}
+			<div class="border-t border-border my-1"></div>
+			{@render storeList()}
+		</div>
+	{/if}
 </div>
 
 <!-- Logout confirm modal -->

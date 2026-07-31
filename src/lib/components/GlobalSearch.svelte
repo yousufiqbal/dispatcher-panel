@@ -161,7 +161,7 @@
 
 {#if storeId}
 	<div bind:this={containerEl} class="relative w-full max-w-md">
-		<div class="flex items-center rounded-lg border border-input bg-background shadow-xs overflow-hidden focus-within:ring-[3px] focus-within:ring-ring/50 focus-within:border-ring">
+		<div class="flex items-center border border-input bg-background shadow-xs overflow-hidden focus-within:ring-[3px] focus-within:ring-ring/50 focus-within:border-ring">
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
 					{#snippet child({ props })}

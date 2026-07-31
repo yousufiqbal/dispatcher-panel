@@ -3,9 +3,17 @@
 	import { addToast } from '$lib/toast.svelte';
 	import { subscribeToPush } from '$lib/push-client';
 	import GlobalSearch from '$lib/components/GlobalSearch.svelte';
+	import SearchIcon from '@lucide/svelte/icons/search';
+	import XIcon from '@lucide/svelte/icons/x';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: import('svelte').Snippet } = $props();
+
+	// Collapsible mobile search — icon button next to the heading that expands
+	// to fill the row (heading hidden) with a close button. Piloting on Orders
+	// only for now; once we're happy with it, drop the currentSection check
+	// and it applies everywhere.
+	let mobileSearchOpen = $state(false);
 
 	const sectionLabels: Record<string, string> = {
 		orders: 'Orders',
@@ -43,7 +51,10 @@
 	const sectionIconPath = $derived(sectionIconPaths[currentSection] ?? sectionIconPaths.orders);
 
 	// Not relevant on these sections — they don't search orders/products/customers.
-	const showGlobalSearch = $derived(currentSection !== 'restock' && currentSection !== 'inventory-count');
+	// Search only makes sense scoped to what it's actually searching — Orders
+	// or Products (and their detail sub-pages, which share the same section
+	// segment) — hidden everywhere else (Inventory, Restock, Audit, ...).
+	const showGlobalSearch = $derived(currentSection === 'orders' || currentSection === 'products');
 
 	// Real push (service worker + web-push, triggered by the Shopify orders/create
 	// webhook) delivers notifications even when the tab/app is closed — see
@@ -81,9 +92,10 @@
 </script>
 
 <div class="flex flex-col h-full">
-	<!-- Page heading + global search (desktop only — mobile has its own top bar with hamburger) -->
-	<div class="hidden md:flex items-center justify-between gap-4 px-6 pt-5 pb-3">
-		<div class="flex items-center gap-3 shrink-0">
+	<!-- Page heading (all sizes) + global search (desktop inline, mobile below —
+	     except Orders, piloting a collapsible icon-toggle search instead) -->
+	<div class="flex items-center justify-between gap-4 px-3 md:px-6 pt-4 md:pt-5 pb-3">
+		<div class="items-center gap-3 shrink-0 {mobileSearchOpen && currentSection === 'orders' ? 'hidden md:flex' : 'flex'}">
 			<div class="flex items-center justify-center size-9 rounded-lg bg-primary/10 text-primary shrink-0">
 				<svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
 					<path stroke-linecap="round" stroke-linejoin="round" d={sectionIconPath} />
@@ -94,13 +106,37 @@
 				<p class="text-xs text-muted-foreground leading-tight">{data.currentStore.name}</p>
 			</div>
 		</div>
+
+		{#if mobileSearchOpen && currentSection === 'orders'}
+			<div class="flex md:hidden items-center gap-2 flex-1 min-w-0">
+				<div class="flex-1 min-w-0"><GlobalSearch /></div>
+				<button
+					onclick={() => mobileSearchOpen = false}
+					class="shrink-0 flex items-center justify-center size-9 rounded-lg text-muted-foreground hover:bg-accent transition-colors duration-150"
+					title="Close search"
+				>
+					<XIcon class="size-5" />
+				</button>
+			</div>
+		{/if}
+
 		{#if showGlobalSearch}
-			<GlobalSearch />
+			<div class="hidden md:block">
+				<GlobalSearch />
+			</div>
+			{#if currentSection === 'orders' && !mobileSearchOpen}
+				<button
+					onclick={() => mobileSearchOpen = true}
+					class="md:hidden shrink-0 flex items-center justify-center size-9 rounded-lg text-muted-foreground hover:bg-accent transition-colors duration-150"
+					title="Search"
+				>
+					<SearchIcon class="size-5" />
+				</button>
+			{/if}
 		{/if}
 	</div>
-	{#if showGlobalSearch}
-		<!-- Mobile: search only, section identity lives in the top bar -->
-		<div class="md:hidden px-3 pt-3">
+	{#if showGlobalSearch && currentSection !== 'orders'}
+		<div class="md:hidden px-3 pb-1">
 			<GlobalSearch />
 		</div>
 	{/if}

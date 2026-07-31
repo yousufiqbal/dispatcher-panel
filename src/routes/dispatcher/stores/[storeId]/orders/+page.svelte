@@ -369,7 +369,6 @@
 	});
 
 	const tabs = [
-		{ key: 'all', label: 'All' },
 		{ key: 'pending', label: 'Pending' },
 		{ key: 'confirmed', label: 'Confirmed' },
 		{ key: 'fulfilled', label: 'Fulfilled' },
@@ -438,7 +437,7 @@
 	// Shopify's GraphQL API only offers forward cursor pagination (no arbitrary
 	// page offsets), so we cache the cursor seen at each page number per filter
 	// combo and let numeric buttons jump back to any page already visited.
-	const cursorKey = $derived(`orders-pager:${storeId}:${data.status ?? 'all'}:${data.searchQ ?? ''}`);
+	const cursorKey = $derived(`orders-pager:${storeId}:${data.status ?? 'pending'}:${data.searchQ ?? ''}`);
 	const currentPage = $derived(Number($page.url.searchParams.get('page') ?? '1'));
 	let cursors = $state<Record<number, string | undefined>>({ 1: undefined });
 
@@ -526,9 +525,9 @@
 	<!-- Toolbar -->
 	<div class="flex items-center justify-start gap-3 sm:gap-4 mb-5">
 		<div class="flex items-center gap-2 shrink-0">
-			<Button href="/dispatcher/stores/{storeId}/orders/new" class="size-9 p-0 sm:size-auto sm:px-4 sm:py-2">
+			<Button href="/dispatcher/stores/{storeId}/orders/new">
 				<PlusIcon class="size-4" />
-				<span class="hidden sm:inline">New Order</span>
+				New Order
 			</Button>
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
@@ -561,7 +560,7 @@
 		<div class="overflow-x-auto overflow-y-hidden">
 			<div class="inline-flex items-center gap-2 flex-nowrap">
 				{#each tabs as tab}
-					{@const isActive = (data.status ?? 'all') === tab.key}
+					{@const isActive = (data.status ?? 'pending') === tab.key}
 					<a
 						href={tabHref(tab.key)}
 						onclick={() => selectedIds = new Set()}
