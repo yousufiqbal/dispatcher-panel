@@ -1014,76 +1014,150 @@
 		</div>
 
 		<!-- Mobile card list -->
-		<div class="md:hidden card overflow-hidden">
-			<div class="divide-y divide-border">
-				{#each data.orders as order}
-					{@const delivery = deliveryStatusInfo(order)}
-					{@const isCancelled = !!order.cancelledAt}
-					<div class="flex items-stretch {isCancelled ? 'opacity-60 bg-muted/30' : ''}">
-						{#if selectableStatuses.includes(data.status)}
-							<div class="flex items-center pl-4 pr-1">
+		<div class="md:hidden space-y-3">
+			{#each data.orders as order}
+				{@const delivery = deliveryStatusInfo(order)}
+				{@const isCancelled = !!order.cancelledAt}
+				{@const phone = order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}
+				{@const qty = order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)}
+				<div class="card p-4 space-y-3 {isCancelled ? 'opacity-60 bg-muted/30' : ''}">
+					<!-- Order + status -->
+					<div class="flex items-start justify-between gap-2">
+						<div class="flex items-center gap-2 min-w-0">
+							{#if selectableStatuses.includes(data.status)}
 								<Checkbox checked={selectedIds.has(order.id)} onCheckedChange={() => toggleSelect(order.id)} />
-							</div>
+							{/if}
+							<a
+								href="/dispatcher/stores/{storeId}/orders/{order.id.split('/').pop()}"
+								class="font-bold text-foreground hover:text-primary hover:underline {isCancelled ? 'line-through' : ''}"
+							>{order.name}</a>
+						</div>
+						{#if isCancelled}
+							<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700 shrink-0">
+								<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+								Not required
+							</span>
+						{:else}
+							<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full shrink-0
+								{order.displayFulfillmentStatus === 'FULFILLED' ? 'bg-green-100 text-green-800' :
+								 order.displayFulfillmentStatus === 'UNFULFILLED' ? 'bg-amber-100 text-amber-800' :
+								 'bg-zinc-100 text-zinc-700'}">
+								<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+								{order.displayFulfillmentStatus.replace(/_/g,' ')}
+							</span>
 						{/if}
-						<div class="flex-1 min-w-0 p-4">
-							<div class="flex items-start justify-between gap-2 mb-2">
-								<a
-									href="/dispatcher/stores/{storeId}/orders/{order.id.split('/').pop()}"
-									class="font-bold text-foreground hover:text-primary hover:underline {isCancelled ? 'line-through' : ''}"
-								>{order.name}</a>
-								<span class="{getStatusClass(order.displayFinancialStatus, order.displayFulfillmentStatus)} shrink-0">
-									{getStatusLabel(order.displayFinancialStatus, order.displayFulfillmentStatus)}
-								</span>
-							</div>
-							<div class="flex items-end justify-between gap-2">
-								<div>
-									{#if order.customer}
-										<a
-											href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}"
-											target="_blank"
-											rel="noopener"
-											class="text-sm text-muted-foreground hover:text-primary hover:underline {isCancelled ? 'line-through' : ''}"
-										>{order.customer.displayName}</a>
-									{:else}
-										<div class="text-sm text-muted-foreground {isCancelled ? 'line-through' : ''}">Unknown</div>
-									{/if}
-									{#if order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}<div class="text-xs text-muted-foreground">{order.customer?.phone ?? order.phone ?? order.shippingAddress?.phone}</div>{/if}
-									<div class="text-xs text-muted-foreground mt-0.5 {isCancelled ? 'line-through' : ''}">
-										{formatDate(order.createdAt)} · {order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0)} item{order.lineItems.nodes.reduce((s, i) => s + i.quantity, 0) === 1 ? '' : 's'}
-									</div>
-									{#if isCancelled}
-										<div class="mt-1">
-											<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700">
-												<span class="size-1.5 rounded-full bg-current shrink-0"></span>
-												Not required
-											</span>
-										</div>
-									{:else if delivery}
-										<div class="mt-1">
-											<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
-												<span class="size-1.5 rounded-full bg-current shrink-0"></span>
-												{delivery.label}
-											</span>
-										</div>
-									{/if}
-								</div>
-								<span class="font-semibold text-foreground shrink-0 {isCancelled ? 'line-through' : ''}">
-									{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
-								</span>
+					</div>
+
+					<!-- Customer + date -->
+					<div class="flex items-center justify-between gap-2 text-sm">
+						{#if order.customer}
+							<a
+								href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}"
+								target="_blank"
+								rel="noopener"
+								class="font-medium text-foreground hover:text-primary hover:underline truncate {isCancelled ? 'line-through' : ''}"
+							>{order.customer.displayName}</a>
+						{:else}
+							<span class="font-medium text-foreground {isCancelled ? 'line-through' : ''}">Guest</span>
+						{/if}
+						<span class="text-xs text-muted-foreground shrink-0">{formatRelativeDate(order.createdAt)}</span>
+					</div>
+
+					<!-- Destination + phone -->
+					{#if order.shippingAddress || phone}
+						<div class="text-sm text-muted-foreground">
+							<div class="min-w-0 space-y-0.5">
+								{#if order.shippingAddress}
+									{@const addr = order.shippingAddress}
+									<div>{addr.address1}{#if addr.address2}, {addr.address2}{/if}</div>
+									<div class="font-medium text-foreground">{[addr.city, addr.province, addr.country].filter(Boolean).join(', ')}</div>
+								{/if}
+								{#if phone}
+									<a href="tel:{phone}" class="hover:text-primary hover:underline" onclick={(e) => e.stopPropagation()}>{phone}</a>
+								{/if}
 							</div>
 						</div>
+					{/if}
+
+					<!-- Items + total -->
+					<div class="flex items-center justify-between gap-2 pt-1 border-t border-border">
+						<Popover.Root>
+							<Popover.Trigger>
+								{#snippet child({ props })}
+									<button type="button" {...props} class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary pt-2">
+										{qty} item{qty === 1 ? '' : 's'}
+										<ChevronDownIcon class="size-3.5" />
+									</button>
+								{/snippet}
+							</Popover.Trigger>
+							<Popover.Content class="w-80 p-0 gap-0 overflow-hidden" align="start">
+								<div class="divide-y divide-border overflow-y-auto" style="max-height: min(60vh, var(--bits-floating-available-height, 60vh));">
+									{#each order.lineItems.nodes as item}
+										{@const img = item.variant?.image ?? item.image}
+										<div class="flex items-center gap-3 px-3 py-2.5">
+											{#if img}
+												<img src={img.url} alt={img.altText ?? item.title} class="size-10 rounded-md object-cover border border-border shrink-0" />
+											{:else}
+												<div class="size-10 rounded-md bg-muted border border-border shrink-0"></div>
+											{/if}
+											<div class="min-w-0 flex-1">
+												<div class="text-sm font-medium text-foreground leading-snug">{item.title}</div>
+												{#if item.variant?.title && item.variant.title !== 'Default Title'}
+													<span class="inline-flex items-center mt-1 px-1.5 py-0.5 rounded bg-muted text-xs text-muted-foreground">{item.variant.title}</span>
+												{/if}
+											</div>
+											<span class="text-sm text-muted-foreground shrink-0">×{item.quantity}</span>
+										</div>
+									{/each}
+								</div>
+							</Popover.Content>
+						</Popover.Root>
+						<span class="font-semibold text-foreground pt-2 {isCancelled ? 'line-through' : ''}">
+							{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
+						</span>
 					</div>
-				{/each}
-			</div>
-			{#if data.pageInfo.hasNextPage}
-				<div class="p-3 border-t border-border">
-					<Button variant="outline" class="w-full" disabled={loadingMore} onclick={nextPage}>
-						{#if loadingMore}
-							<Loader2Icon class="size-4 animate-spin" />
+
+					<!-- Fulfillment + delivery status -->
+					<div class="flex flex-wrap items-center gap-1.5">
+						{#if isCancelled}
+							<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700">
+								<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+								Not required
+							</span>
+						{:else}
+							<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full
+								{order.displayFulfillmentStatus === 'FULFILLED' ? 'bg-green-100 text-green-800' :
+								 order.displayFulfillmentStatus === 'UNFULFILLED' ? 'bg-amber-100 text-amber-800' :
+								 'bg-zinc-100 text-zinc-700'}">
+								<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+								{order.displayFulfillmentStatus.replace(/_/g,' ')}
+							</span>
 						{/if}
-						{loadingMore ? 'Loading…' : 'Load more'}
-					</Button>
+						{#if delivery}
+							<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
+								<span class="size-1.5 rounded-full bg-current shrink-0"></span>
+								{delivery.label}
+							</span>
+						{/if}
+					</div>
+
+					<!-- Tags -->
+					{#if order.tags.length > 0}
+						<button type="button" class="flex flex-wrap items-center gap-1" onclick={() => openSingleTagModal(order)}>
+							{#each order.tags as tag}
+								<span class="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">{tag}</span>
+							{/each}
+						</button>
+					{/if}
 				</div>
+			{/each}
+			{#if data.pageInfo.hasNextPage}
+				<Button variant="outline" class="w-full" disabled={loadingMore} onclick={nextPage}>
+					{#if loadingMore}
+						<Loader2Icon class="size-4 animate-spin" />
+					{/if}
+					{loadingMore ? 'Loading…' : 'Load more'}
+				</Button>
 			{/if}
 		</div>
 	{/if}
