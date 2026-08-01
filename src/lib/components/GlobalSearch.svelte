@@ -22,7 +22,9 @@
 
 	let scope = $state<Scope>('orders');
 	let query = $state('');
-	let results = $state<{ id: string; title: string; subtitle: string; url: string }[]>([]);
+	let results = $state<
+		{ id: string; title: string; subtitle: string; url: string; image?: string | null; badge?: string; meta?: string[] }[]
+	>([]);
 	let loading = $state(false);
 	let open = $state(false);
 	let activeIndex = $state(-1);
@@ -160,7 +162,7 @@
 </script>
 
 {#if storeId}
-	<div bind:this={containerEl} class="relative w-full max-w-md">
+	<div bind:this={containerEl} class="relative w-full max-w-md md:max-w-xl">
 		<div class="flex items-center border border-input bg-background shadow-xs overflow-hidden focus-within:ring-[3px] focus-within:ring-ring/50 focus-within:border-ring">
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger>
@@ -211,17 +213,37 @@
 				{:else if results.length === 0}
 					<div class="px-3 py-3 text-sm text-muted-foreground">No {SCOPES.find((s) => s.key === scope)?.label.toLowerCase()} found</div>
 				{:else}
-					<ul class="max-h-80 overflow-y-auto py-1">
+					<ul class="max-h-96 overflow-y-auto py-1">
 						{#each results as r, i}
 							<li>
 								<button
 									type="button"
-									class="w-full text-left px-3 py-2 flex items-center justify-between gap-2 text-sm hover:bg-accent {activeIndex === i ? 'bg-accent' : ''}"
+									class="w-full text-left px-3 py-2 flex items-center gap-3 text-sm hover:bg-accent {activeIndex === i ? 'bg-accent' : ''}"
 									onmouseenter={() => activeIndex = i}
 									onclick={() => selectResult(r)}
 								>
-									<span class="font-medium text-foreground truncate">{r.title}</span>
-									<span class="text-xs text-muted-foreground truncate shrink-0 max-w-[45%]">{r.subtitle}</span>
+									{#if r.image}
+										<img src={r.image} alt="" class="size-9 rounded-md object-cover shrink-0 border border-border" />
+									{:else if scope === 'customers'}
+										<div class="size-9 rounded-full bg-muted flex items-center justify-center shrink-0 text-muted-foreground">
+											<UserIcon class="size-4" />
+										</div>
+									{/if}
+									<div class="min-w-0 flex-1">
+										<div class="flex items-center justify-between gap-2">
+											<span class="font-medium text-foreground truncate">{r.title}</span>
+											{#if r.badge}
+												<span class="text-[10px] uppercase tracking-wide font-medium text-muted-foreground bg-muted rounded px-1.5 py-0.5 shrink-0">{r.badge}</span>
+											{/if}
+										</div>
+										<div class="flex items-center gap-2 text-xs text-muted-foreground truncate">
+											<span class="truncate">{r.subtitle}</span>
+											{#if r.meta?.length}
+												<span class="shrink-0">·</span>
+												<span class="truncate">{r.meta.join(' · ')}</span>
+											{/if}
+										</div>
+									</div>
 								</button>
 							</li>
 						{/each}

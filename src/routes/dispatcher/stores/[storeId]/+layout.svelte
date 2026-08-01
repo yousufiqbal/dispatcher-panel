@@ -121,7 +121,7 @@
 		{/if}
 
 		{#if showGlobalSearch}
-			<div class="hidden md:block">
+			<div class="hidden md:flex flex-1 min-w-0 justify-end">
 				<GlobalSearch />
 			</div>
 			{#if currentSection === 'orders' && !mobileSearchOpen}

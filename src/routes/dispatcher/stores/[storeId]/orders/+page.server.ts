@@ -10,8 +10,42 @@ import { getAuthorizedStore } from '$lib/server/store-access';
 import { logAudit } from '$lib/server/audit';
 import { checkAddress } from '$lib/server/address-check';
 
+const ON_HOLD_TAG = 'on-hold';
+
+// User-controlled date bound — the single biggest lever on how much a tab's
+// full-scan (see fetchAllOrders/getTagSplitCounts/getAttemptedCount) costs.
+// 'all' means no clause at all (matches pre-filter behavior exactly).
+function dateFilterClause(days: string | null): string {
+	const n = days ? parseInt(days, 10) : NaN;
+	if (!n || n <= 0) return '';
+	const cutoff = new Date(Date.now() - n * 86400_000).toISOString().slice(0, 10);
+	return `created_at:>=${cutoff}`;
+}
+
+function mergeQuery(...parts: (string | undefined)[]): string {
+	return parts.filter(Boolean).join(' AND ');
+}
+
 function toShopifyOrderId(orderId: string): string {
 	return orderId.startsWith('gid://') ? orderId : `gid://shopify/Order/${orderId}`;
+}
+
+// Pending/Confirmed/Incorrect Address/On Hold/Attempted/Failed are all
+// client-filtered (tag or displayStatus, neither is a reliable search clause —
+// see comments below), so unlike a real Shopify search these tabs can't page
+// normally: a fixed-size page filtered client-side risks showing a partial,
+// order-dependent slice. Fetching every matching order up front instead — no
+// "Load more", the tab always shows its complete set in one go.
+async function fetchAllOrders(client: ReturnType<typeof getShopifyClient>, query: string | undefined) {
+	const all: Awaited<ReturnType<typeof listOrders>>['nodes'] = [];
+	let after: string | undefined;
+	while (true) {
+		const page = await listOrders(client, { first: 250, after, query });
+		all.push(...page.nodes);
+		if (!page.pageInfo.hasNextPage) break;
+		after = page.pageInfo.endCursor;
+	}
+	return all;
 }
 
 async function getStoreCouriers(storeId: string) {
@@ -36,11 +70,11 @@ function orderDisplayStatus(o: { fulfillments: { displayStatus: string | null }[
 const STATUS_QUERIES: Record<string, string> = {
 	pending: 'fulfillment_status:unfulfilled status:open',
 	confirmed: 'fulfillment_status:unfulfilled status:open',
+	'incorrect-address': 'status:open',
+	'on-hold': 'status:open',
 	fulfilled: 'fulfillment_status:shipped',
 	attempted: 'fulfillment_status:shipped',
-	failed: 'fulfillment_status:shipped',
 	cancelled: 'status:cancelled',
-	returned: 'financial_status:refunded',
 	all: ''
 };
 
@@ -66,33 +100,50 @@ async function listDraftOrders(client: ReturnType<typeof getShopifyClient>, { fi
 
 // No search syntax exists for fulfillment displayStatus (courier-pushed field), so
 // count client-side over shipped orders — same reasoning as the attempted/failed
-// filter below, kept light by only requesting the displayStatus field.
-async function getAttemptedCount(client: ReturnType<typeof getShopifyClient>): Promise<number> {
+// filter below, kept light by only requesting the displayStatus field. Paginates
+// through every shipped order rather than capping at one page — this query has
+// no sortKey, so Shopify's default ordering isn't guaranteed chronological, and
+// a store with 250+ shipped orders could otherwise miss one arbitrarily
+// (same class of bug the on-hold/incorrect-address badge counts had).
+async function getAttemptedCount(client: ReturnType<typeof getShopifyClient>, dateClause: string): Promise<number> {
 	const gql = `
-		query AttemptedCount($query: String) {
-			orders(first: 250, query: $query) {
-				nodes { fulfillments(first: 5) { displayStatus } }
+		query AttemptedCount($query: String, $after: String) {
+			orders(first: 250, after: $after, query: $query) {
+				nodes { cancelledAt fulfillments(first: 5) { displayStatus } }
+				pageInfo { hasNextPage endCursor }
 			}
 		}
 	`;
-	const data = await shopifyRequest<{ orders: { nodes: { fulfillments: { displayStatus: string | null }[] }[] } }>(
-		client, gql, { query: STATUS_QUERIES.attempted }
-	);
-	return data.orders.nodes.filter((o) => orderDisplayStatus(o) === 'ATTEMPTED_DELIVERY').length;
+	let count = 0;
+	let after: string | undefined;
+	const query = mergeQuery(STATUS_QUERIES.attempted, dateClause);
+	while (true) {
+		const data = await shopifyRequest<{
+			orders: { nodes: { cancelledAt: string | null; fulfillments: { displayStatus: string | null }[] }[]; pageInfo: { hasNextPage: boolean; endCursor: string } };
+		}>(client, gql, { query, after });
+		count += data.orders.nodes.filter((o) => orderDisplayStatus(o) === 'ATTEMPTED_DELIVERY' && !o.cancelledAt).length;
+		if (!data.orders.pageInfo.hasNextPage) break;
+		after = data.orders.pageInfo.endCursor;
+	}
+	return count;
 }
 
 // Splits by the live `tags` field (getTagSplitCounts), not a `tag:` search clause —
 // the search index lags a few seconds behind a tagsAdd mutation, which made these
 // badges show stale numbers right after a bulk-confirm.
-async function getBadgeCounts(client: ReturnType<typeof getShopifyClient>) {
-	const [{ withTag, withoutTag }, attemptedCount] = await Promise.all([
-		getTagSplitCounts(client, STATUS_QUERIES.pending, CONFIRMED_TAG),
-		getAttemptedCount(client)
+async function getBadgeCounts(client: ReturnType<typeof getShopifyClient>, dateClause: string) {
+	const [{ withTag, withoutTag }, attemptedCount, incorrectAddressSplit, onHoldSplit] = await Promise.all([
+		getTagSplitCounts(client, mergeQuery(STATUS_QUERIES.pending, dateClause), CONFIRMED_TAG),
+		getAttemptedCount(client, dateClause),
+		getTagSplitCounts(client, mergeQuery(STATUS_QUERIES['incorrect-address'], dateClause), INCORRECT_ADDRESS_TAG),
+		getTagSplitCounts(client, mergeQuery(STATUS_QUERIES['on-hold'], dateClause), ON_HOLD_TAG)
 	]);
 	return {
 		pendingCount: withoutTag,
 		confirmedCount: withTag,
-		attemptedCount
+		attemptedCount,
+		incorrectAddressCount: incorrectAddressSplit.withTag,
+		onHoldCount: onHoldSplit.withTag
 	};
 }
 
@@ -103,6 +154,8 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 	const searchQ = url.searchParams.get('q') ?? '';
 	const status = url.searchParams.get('status') ?? 'pending';
 	const cursor = url.searchParams.get('after') ?? undefined;
+	const days = url.searchParams.get('days') ?? '30';
+	const dateClause = dateFilterClause(days);
 
 	if (locals.session) {
 		await logAudit(locals.session.userId, 'dispatcher', 'orders.list.view', { storeId: params.storeId, metadata: { status } });
@@ -111,10 +164,11 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 	if (status === 'drafts') {
 		// customer_name isn't a valid draft-order search field — the bare/default
 		// term is what matches customer name (same as Shopify admin's search box).
-		const query = searchQ ? `name:${searchQ}* OR ${searchQ}*` : undefined;
+		const searchPart = searchQ ? `name:${searchQ}* OR ${searchQ}*` : undefined;
+		const query = mergeQuery(searchPart, dateClause) || undefined;
 		const [result, badgeCounts, couriers] = await Promise.all([
 			listDraftOrders(client, { first: 30, after: cursor, query }),
-			getBadgeCounts(client),
+			getBadgeCounts(client, dateClause),
 			getStoreCouriers(params.storeId)
 		]);
 		return {
@@ -123,12 +177,13 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 			pageInfo: result.pageInfo,
 			searchQ,
 			status,
+			days,
 			...badgeCounts,
 			couriers
 		};
 	}
 
-	const isTagFiltered = status === 'pending' || status === 'confirmed' || status === 'attempted' || status === 'failed';
+	const isTagFiltered = status === 'pending' || status === 'confirmed' || status === 'incorrect-address' || status === 'on-hold' || status === 'attempted';
 
 	let shopifyQuery = STATUS_QUERIES[status] ?? '';
 	if (searchQ) {
@@ -139,37 +194,50 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 		const searchPart = `(name:${searchQ}* OR ${searchQ}* OR ${phoneClauses} OR tag:${searchQ}*)`;
 		shopifyQuery = shopifyQuery ? `${shopifyQuery} AND ${searchPart}` : searchPart;
 	}
+	shopifyQuery = mergeQuery(shopifyQuery, dateClause);
 
-	// Fetch extra when tag-filtering client-side, since some fetched orders get
-	// dropped by the tag split below (pagination becomes approximate as a result).
-	// attempted/failed fetch as many as the badge count scans (getAttemptedCount
-	// below), otherwise the visible list and its own badge count disagree.
-	const isDisplayStatusFiltered = status === 'attempted' || status === 'failed';
-	const [result, badgeCounts, couriers] = await Promise.all([
-		listOrders(client, { first: isDisplayStatusFiltered ? 250 : isTagFiltered ? 60 : 30, after: cursor, query: shopifyQuery || undefined }),
-		getBadgeCounts(client),
+	const isDisplayStatusFiltered = status === 'attempted';
+	// These tabs filter client-side (tag or displayStatus, neither a reliable
+	// search clause), so they fetch every matching order up front instead of
+	// paging — see fetchAllOrders' comment. Everything else keeps normal
+	// cursor pagination.
+	const fetchesEverything = isTagFiltered || isDisplayStatusFiltered;
+
+	async function loadOrdersPage() {
+		if (fetchesEverything) {
+			return {
+				nodes: await fetchAllOrders(client, shopifyQuery || undefined),
+				pageInfo: { hasNextPage: false, hasPreviousPage: false, startCursor: '', endCursor: '' }
+			};
+		}
+		return listOrders(client, { first: 30, after: cursor, query: shopifyQuery || undefined });
+	}
+
+	const [{ nodes: rawOrders, pageInfo }, badgeCounts, couriers] = await Promise.all([
+		loadOrdersPage(),
+		getBadgeCounts(client, dateClause),
 		getStoreCouriers(params.storeId)
 	]);
 
-	let orders = result.nodes;
+	let orders = rawOrders;
 	if (status === 'pending') orders = orders.filter((o) => !o.tags.includes(CONFIRMED_TAG));
 	else if (status === 'confirmed') orders = orders.filter((o) => o.tags.includes(CONFIRMED_TAG));
+	else if (status === 'incorrect-address') orders = orders.filter((o) => o.tags.includes(INCORRECT_ADDRESS_TAG));
+	else if (status === 'on-hold') orders = orders.filter((o) => o.tags.includes(ON_HOLD_TAG));
 
-	// "Attempted"/"Failed" filter on Shopify's fulfillment displayStatus (no search
+	// "Attempted" filters on Shopify's fulfillment displayStatus (no search
 	// syntax exists for it, so filter client-side after fetching shipped orders).
 	if (status === 'attempted') {
-		orders = orders.filter((o) => orderDisplayStatus(o) === 'ATTEMPTED_DELIVERY');
-	} else if (status === 'failed') {
-		const failed = new Set(['FAILURE', 'NOT_DELIVERED']);
-		orders = orders.filter((o) => failed.has(orderDisplayStatus(o) ?? ''));
+		orders = orders.filter((o) => orderDisplayStatus(o) === 'ATTEMPTED_DELIVERY' && !o.cancelledAt);
 	}
 
 	return {
 		orders,
 		drafts: [],
-		pageInfo: result.pageInfo,
+		pageInfo,
 		searchQ,
 		status,
+		days,
 		...badgeCounts,
 		couriers
 	};

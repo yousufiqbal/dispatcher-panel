@@ -53,7 +53,7 @@
 		goto(`/dispatcher/stores/${storeId}/orders/book/${courierId}?ids=${ids}`);
 	}
 
-	const selectableStatuses = ['pending', 'confirmed', 'fulfilled', 'attempted', 'failed'];
+	const selectableStatuses = ['pending', 'confirmed', 'incorrect-address', 'on-hold', 'fulfilled', 'attempted'];
 	const INCORRECT_ADDRESS_TAG = 'incorrect-address';
 	let showBulkConfirmDialog = $state(false);
 	let bulkConfirming = $state(false);
@@ -371,11 +371,11 @@
 	const tabs = [
 		{ key: 'pending', label: 'Pending' },
 		{ key: 'confirmed', label: 'Confirmed' },
+		{ key: 'incorrect-address', label: 'Incorrect Address' },
+		{ key: 'on-hold', label: 'On Hold' },
 		{ key: 'fulfilled', label: 'Fulfilled' },
 		{ key: 'attempted', label: 'Attempted' },
-		{ key: 'failed', label: 'Failed' },
-		{ key: 'cancelled', label: 'Cancelled' },
-		{ key: 'returned', label: 'Returned' }
+		{ key: 'cancelled', label: 'Cancelled' }
 	];
 
 	function getStatusClass(financial: string, fulfillment: string): string {
@@ -432,12 +432,30 @@
 		return qs ? `?${qs}` : '?';
 	}
 
+	const DAY_PRESETS = [
+		{ key: '7', label: '7d' },
+		{ key: '30', label: '30d' },
+		{ key: '90', label: '90d' },
+		{ key: 'all', label: 'All time' }
+	];
+	const currentDays = $derived($page.url.searchParams.get('days') ?? '30');
+
+	function setDays(d: string) {
+		navigate({ days: d === '30' ? null : d });
+	}
+
 	const storeId = $derived($page.params.storeId);
 
 	// Shopify's GraphQL API only offers forward cursor pagination (no arbitrary
 	// page offsets), so we cache the cursor seen at each page number per filter
 	// combo and let numeric buttons jump back to any page already visited.
-	const cursorKey = $derived(`orders-pager:${storeId}:${data.status ?? 'pending'}:${data.searchQ ?? ''}`);
+	const cursorKey = $derived(`orders-pager:${storeId}:${data.status ?? 'pending'}:${data.searchQ ?? ''}:${data.days ?? '30'}`);
+	// These tabs now fetch every matching order server-side (no cursor
+	// pagination at all) — hide the page picker entirely rather than show a
+	// permanently-disabled "Page 1" bar.
+	const fullyFetchedStatuses = ['pending', 'confirmed', 'incorrect-address', 'on-hold', 'attempted'];
+	const showsPagination = $derived(!fullyFetchedStatuses.includes(data.status ?? 'pending'));
+
 	const currentPage = $derived(Number($page.url.searchParams.get('page') ?? '1'));
 	let cursors = $state<Record<number, string | undefined>>({ 1: undefined });
 
@@ -578,6 +596,16 @@
 								{data.confirmedCount}
 							</span>
 						{/if}
+						{#if tab.key === 'incorrect-address'}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.incorrectAddressCount > 0 ? 'bg-red-100 text-red-700' : 'bg-zinc-100 text-zinc-500'}">
+								{data.incorrectAddressCount}
+							</span>
+						{/if}
+						{#if tab.key === 'on-hold'}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.onHoldCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-500'}">
+								{data.onHoldCount}
+							</span>
+						{/if}
 						{#if tab.key === 'attempted'}
 							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.attemptedCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-500'}">
 								{data.attemptedCount}
@@ -586,6 +614,17 @@
 					</a>
 				{/each}
 			</div>
+		</div>
+		<div class="inline-flex items-center rounded-lg border border-border bg-muted/40 p-0.5 text-xs shrink-0 ml-auto">
+			{#each DAY_PRESETS as preset}
+				<button
+					type="button"
+					onclick={() => setDays(preset.key)}
+					class="px-2.5 py-1.5 rounded-md font-medium transition-colors {currentDays === preset.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
+				>
+					{preset.label}
+				</button>
+			{/each}
 		</div>
 	</div>
 
@@ -640,7 +679,25 @@
 		</div>
 	{/if}
 
-	{#if ['fulfilled', 'attempted', 'failed'].includes(data.status) && selectedIds.size > 0}
+	{#if ['incorrect-address', 'on-hold'].includes(data.status) && selectedIds.size > 0}
+		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
+			<span class="text-sm font-medium">{selectedIds.size} selected</span>
+			<div class="flex items-center gap-2">
+				{#if data.status === 'incorrect-address'}
+					<Button variant="outline" size="sm" onclick={openAddressCheckModal}>
+						<MapPinIcon class="size-4" />
+						Check Addresses
+					</Button>
+				{/if}
+				<Button variant="outline" size="sm" onclick={openBulkTagModal}>
+					<TagIcon class="size-4" />
+					Manage Tags
+				</Button>
+			</div>
+		</div>
+	{/if}
+
+	{#if ['fulfilled', 'attempted'].includes(data.status) && selectedIds.size > 0}
 		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
 			<span class="text-sm font-medium">{selectedIds.size} selected</span>
 			<div class="flex items-center gap-2">
@@ -1010,7 +1067,9 @@
 					</tbody>
 				</table>
 			</div>
-			{@render pagination()}
+			{#if showsPagination}
+				{@render pagination()}
+			{/if}
 		</div>
 
 		<!-- Mobile card list -->

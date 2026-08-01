@@ -85,20 +85,34 @@ export async function getOrdersCount(client: ShopifyClient, query?: string): Pro
 // Unlike ordersCount with a `tag:` search clause, `tags` isn't index-backed and
 // reflects a tagsAdd/tagsRemove mutation instantly — used for badge counts right
 // after bulk-confirm, where the search index would still show stale numbers.
+// Paginates through every matching order rather than capping at one page —
+// a store with 250+ open orders would otherwise silently undercount (or miss
+// entirely) whatever falls past the first page, since there's no sort here
+// to guarantee what that first page contains.
 export async function getTagSplitCounts(client: ShopifyClient, query: string, tag: string): Promise<{ withTag: number; withoutTag: number }> {
 	const gql = `
-		query TagSplit($query: String) {
-			orders(first: 250, query: $query) {
+		query TagSplit($query: String, $after: String) {
+			orders(first: 250, after: $after, query: $query) {
 				nodes { tags }
+				pageInfo { hasNextPage endCursor }
 			}
 		}
 	`;
-	const data = await shopifyRequest<{ orders: { nodes: { tags: string[] }[] } }>(client, gql, { query });
 	let withTag = 0;
-	for (const node of data.orders.nodes) {
-		if (node.tags.includes(tag)) withTag++;
+	let total = 0;
+	let after: string | undefined;
+	while (true) {
+		const data = await shopifyRequest<{
+			orders: { nodes: { tags: string[] }[]; pageInfo: { hasNextPage: boolean; endCursor: string } };
+		}>(client, gql, { query, after });
+		for (const node of data.orders.nodes) {
+			if (node.tags.includes(tag)) withTag++;
+		}
+		total += data.orders.nodes.length;
+		if (!data.orders.pageInfo.hasNextPage) break;
+		after = data.orders.pageInfo.endCursor;
 	}
-	return { withTag, withoutTag: data.orders.nodes.length - withTag };
+	return { withTag, withoutTag: total - withTag };
 }
 
 export async function listOrders(
