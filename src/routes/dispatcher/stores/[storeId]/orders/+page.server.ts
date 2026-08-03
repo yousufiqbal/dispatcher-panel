@@ -1,7 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
-import { listOrders, getTagSplitCounts, confirmOrder, cancelOrder, getOrder, updateOrderShipping, updateOrderTags, CONFIRMED_TAG, INCORRECT_ADDRESS_TAG, markAddressIncorrect, unmarkAddressIncorrect, phoneQueryVariants } from '$lib/server/shopify/orders';
+import { listOrders, getTagSplitCounts, getExcludingTagsCount, confirmOrder, cancelOrder, getOrder, updateOrderShipping, updateOrderTags, CONFIRMED_TAG, INCORRECT_ADDRESS_TAG, markAddressIncorrect, unmarkAddressIncorrect, phoneQueryVariants } from '$lib/server/shopify/orders';
 import { orderEditBegin, orderEditAddVariant, orderEditAddCustomItem, orderEditCommit } from '$lib/server/shopify/order-edit';
 import { db } from '$lib/server/db';
 import { couriers, courierStoreAccess } from '$lib/server/db/schema';
@@ -11,6 +11,7 @@ import { logAudit } from '$lib/server/audit';
 import { checkAddress } from '$lib/server/address-check';
 
 const ON_HOLD_TAG = 'on-hold';
+const NOT_REACHABLE_TAG = 'not-reachable';
 
 // User-controlled date bound — the single biggest lever on how much a tab's
 // full-scan (see fetchAllOrders/getTagSplitCounts/getAttemptedCount) costs.
@@ -70,8 +71,9 @@ function orderDisplayStatus(o: { fulfillments: { displayStatus: string | null }[
 const STATUS_QUERIES: Record<string, string> = {
 	pending: 'fulfillment_status:unfulfilled status:open',
 	confirmed: 'fulfillment_status:unfulfilled status:open',
-	'incorrect-address': 'status:open',
-	'on-hold': 'status:open',
+	'incorrect-address': 'fulfillment_status:unfulfilled status:open',
+	'on-hold': 'fulfillment_status:unfulfilled status:open',
+	'not-reachable': 'fulfillment_status:unfulfilled status:open',
 	fulfilled: 'fulfillment_status:shipped',
 	attempted: 'fulfillment_status:shipped',
 	cancelled: 'status:cancelled',
@@ -132,18 +134,21 @@ async function getAttemptedCount(client: ReturnType<typeof getShopifyClient>, da
 // the search index lags a few seconds behind a tagsAdd mutation, which made these
 // badges show stale numbers right after a bulk-confirm.
 async function getBadgeCounts(client: ReturnType<typeof getShopifyClient>, dateClause: string) {
-	const [{ withTag, withoutTag }, attemptedCount, incorrectAddressSplit, onHoldSplit] = await Promise.all([
+	const [pendingCount, { withTag: confirmedCount }, attemptedCount, incorrectAddressSplit, onHoldSplit, notReachableSplit] = await Promise.all([
+		getExcludingTagsCount(client, mergeQuery(STATUS_QUERIES.pending, dateClause), [CONFIRMED_TAG, INCORRECT_ADDRESS_TAG, ON_HOLD_TAG, NOT_REACHABLE_TAG]),
 		getTagSplitCounts(client, mergeQuery(STATUS_QUERIES.pending, dateClause), CONFIRMED_TAG),
 		getAttemptedCount(client, dateClause),
 		getTagSplitCounts(client, mergeQuery(STATUS_QUERIES['incorrect-address'], dateClause), INCORRECT_ADDRESS_TAG),
-		getTagSplitCounts(client, mergeQuery(STATUS_QUERIES['on-hold'], dateClause), ON_HOLD_TAG)
+		getTagSplitCounts(client, mergeQuery(STATUS_QUERIES['on-hold'], dateClause), ON_HOLD_TAG),
+		getTagSplitCounts(client, mergeQuery(STATUS_QUERIES['not-reachable'], dateClause), NOT_REACHABLE_TAG)
 	]);
 	return {
-		pendingCount: withoutTag,
-		confirmedCount: withTag,
+		pendingCount,
+		confirmedCount,
 		attemptedCount,
 		incorrectAddressCount: incorrectAddressSplit.withTag,
-		onHoldCount: onHoldSplit.withTag
+		onHoldCount: onHoldSplit.withTag,
+		notReachableCount: notReachableSplit.withTag
 	};
 }
 
@@ -183,7 +188,7 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 		};
 	}
 
-	const isTagFiltered = status === 'pending' || status === 'confirmed' || status === 'incorrect-address' || status === 'on-hold' || status === 'attempted';
+	const isTagFiltered = status === 'pending' || status === 'confirmed' || status === 'incorrect-address' || status === 'on-hold' || status === 'not-reachable' || status === 'attempted';
 
 	let shopifyQuery = STATUS_QUERIES[status] ?? '';
 	if (searchQ) {
@@ -220,10 +225,14 @@ export const load: PageServerLoad = async ({ parent, url, params, locals }) => {
 	]);
 
 	let orders = rawOrders;
-	if (status === 'pending') orders = orders.filter((o) => !o.tags.includes(CONFIRMED_TAG));
-	else if (status === 'confirmed') orders = orders.filter((o) => o.tags.includes(CONFIRMED_TAG));
+	if (status === 'pending') {
+		orders = orders.filter(
+			(o) => !o.tags.includes(CONFIRMED_TAG) && !o.tags.includes(INCORRECT_ADDRESS_TAG) && !o.tags.includes(ON_HOLD_TAG) && !o.tags.includes(NOT_REACHABLE_TAG)
+		);
+	} else if (status === 'confirmed') orders = orders.filter((o) => o.tags.includes(CONFIRMED_TAG));
 	else if (status === 'incorrect-address') orders = orders.filter((o) => o.tags.includes(INCORRECT_ADDRESS_TAG));
 	else if (status === 'on-hold') orders = orders.filter((o) => o.tags.includes(ON_HOLD_TAG));
+	else if (status === 'not-reachable') orders = orders.filter((o) => o.tags.includes(NOT_REACHABLE_TAG));
 
 	// "Attempted" filters on Shopify's fulfillment displayStatus (no search
 	// syntax exists for it, so filter client-side after fetching shipped orders).

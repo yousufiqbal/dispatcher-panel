@@ -115,6 +115,33 @@ export async function getTagSplitCounts(client: ShopifyClient, query: string, ta
 	return { withTag, withoutTag: total - withTag };
 }
 
+// Counts orders matching `query` that carry NONE of `excludeTags` — used for
+// Pending, which (unlike a simple with/without split) must exclude several
+// tags at once (Confirmed, incorrect-address, on-hold, not-reachable).
+export async function getExcludingTagsCount(client: ShopifyClient, query: string, excludeTags: string[]): Promise<number> {
+	const gql = `
+		query ExcludingTagsCount($query: String, $after: String) {
+			orders(first: 250, after: $after, query: $query) {
+				nodes { tags }
+				pageInfo { hasNextPage endCursor }
+			}
+		}
+	`;
+	let count = 0;
+	let after: string | undefined;
+	while (true) {
+		const data = await shopifyRequest<{
+			orders: { nodes: { tags: string[] }[]; pageInfo: { hasNextPage: boolean; endCursor: string } };
+		}>(client, gql, { query, after });
+		for (const node of data.orders.nodes) {
+			if (!excludeTags.some((t) => node.tags.includes(t))) count++;
+		}
+		if (!data.orders.pageInfo.hasNextPage) break;
+		after = data.orders.pageInfo.endCursor;
+	}
+	return count;
+}
+
 export async function listOrders(
 	client: ShopifyClient,
 	opts: { first?: number; after?: string; before?: string; query?: string }

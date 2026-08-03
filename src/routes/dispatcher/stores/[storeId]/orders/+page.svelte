@@ -53,7 +53,7 @@
 		goto(`/dispatcher/stores/${storeId}/orders/book/${courierId}?ids=${ids}`);
 	}
 
-	const selectableStatuses = ['pending', 'confirmed', 'incorrect-address', 'on-hold', 'fulfilled', 'attempted'];
+	const selectableStatuses = ['pending', 'confirmed', 'incorrect-address', 'on-hold', 'not-reachable', 'fulfilled', 'attempted'];
 	const INCORRECT_ADDRESS_TAG = 'incorrect-address';
 	let showBulkConfirmDialog = $state(false);
 	let bulkConfirming = $state(false);
@@ -373,6 +373,7 @@
 		{ key: 'confirmed', label: 'Confirmed' },
 		{ key: 'incorrect-address', label: 'Incorrect Address' },
 		{ key: 'on-hold', label: 'On Hold' },
+		{ key: 'not-reachable', label: 'Not Reachable' },
 		{ key: 'fulfilled', label: 'Fulfilled' },
 		{ key: 'attempted', label: 'Attempted' },
 		{ key: 'cancelled', label: 'Cancelled' }
@@ -453,7 +454,7 @@
 	// These tabs now fetch every matching order server-side (no cursor
 	// pagination at all) — hide the page picker entirely rather than show a
 	// permanently-disabled "Page 1" bar.
-	const fullyFetchedStatuses = ['pending', 'confirmed', 'incorrect-address', 'on-hold', 'attempted'];
+	const fullyFetchedStatuses = ['pending', 'confirmed', 'incorrect-address', 'on-hold', 'not-reachable', 'attempted'];
 	const showsPagination = $derived(!fullyFetchedStatuses.includes(data.status ?? 'pending'));
 
 	const currentPage = $derived(Number($page.url.searchParams.get('page') ?? '1'));
@@ -606,6 +607,11 @@
 								{data.onHoldCount}
 							</span>
 						{/if}
+						{#if tab.key === 'not-reachable'}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.notReachableCount > 0 ? 'bg-red-100 text-red-700' : 'bg-zinc-100 text-zinc-500'}">
+								{data.notReachableCount}
+							</span>
+						{/if}
 						{#if tab.key === 'attempted'}
 							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.attemptedCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-500'}">
 								{data.attemptedCount}
@@ -679,7 +685,7 @@
 		</div>
 	{/if}
 
-	{#if ['incorrect-address', 'on-hold'].includes(data.status) && selectedIds.size > 0}
+	{#if ['incorrect-address', 'on-hold', 'not-reachable'].includes(data.status) && selectedIds.size > 0}
 		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
 			<span class="text-sm font-medium">{selectedIds.size} selected</span>
 			<div class="flex items-center gap-2">
