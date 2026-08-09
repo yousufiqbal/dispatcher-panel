@@ -45,6 +45,25 @@ export function formatRelativeDate(dateStr: string): string {
 	return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
 }
 
+// Same buckets as formatRelativeDate, but splits the time onto its own line
+// for Today/Yesterday instead of "Today, 3:45 PM" — used in dense table cells.
+export function formatRelativeDateParts(dateStr: string): { label: string; time: string | null } {
+	const date = new Date(dateStr);
+	const now = new Date();
+	const diffMs = now.getTime() - date.getTime();
+	const diffMins = Math.floor(diffMs / 60000);
+	const diffDays = Math.floor(diffMs / 86400000);
+
+	const timeStr = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+	if (diffMins < 1) return { label: 'Just now', time: null };
+	if (diffMins < 60) return { label: `${diffMins}m ago`, time: null };
+	if (diffDays === 0) return { label: 'Today', time: timeStr };
+	if (diffDays === 1) return { label: 'Yesterday', time: timeStr };
+	if (diffDays < 7) return { label: `${diffDays} days ago`, time: null };
+	return { label: new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date), time: null };
+}
+
 // "15 July 2026 07:32 PM"
 export function formatDateTimeLong(date: Date | string): string {
 	const d = typeof date === 'string' ? new Date(date) : date;

@@ -12,7 +12,7 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
-	import { formatCurrency, formatDate, formatRelativeDate } from '$lib/utils';
+	import { formatCurrency, formatDate, formatRelativeDate, formatRelativeDateParts } from '$lib/utils';
 	import { deliveryPill } from '$lib/delivery-status';
 	import RefreshCwIcon from '@lucide/svelte/icons/refresh-cw';
 	import FileTextIcon from '@lucide/svelte/icons/file-text';
@@ -53,7 +53,7 @@
 		goto(`/dispatcher/stores/${storeId}/orders/book/${courierId}?ids=${ids}`);
 	}
 
-	const selectableStatuses = ['pending', 'confirmed', 'incorrect-address', 'on-hold', 'not-reachable', 'fulfilled', 'attempted'];
+	const selectableStatuses = ['pending', 'confirmed', 'between', 'fulfilled', 'attempted'];
 	const INCORRECT_ADDRESS_TAG = 'incorrect-address';
 	let showBulkConfirmDialog = $state(false);
 	let bulkConfirming = $state(false);
@@ -371,9 +371,7 @@
 	const tabs = [
 		{ key: 'pending', label: 'Pending' },
 		{ key: 'confirmed', label: 'Confirmed' },
-		{ key: 'incorrect-address', label: 'Incorrect Address' },
-		{ key: 'on-hold', label: 'On Hold' },
-		{ key: 'not-reachable', label: 'Not Reachable' },
+		{ key: 'between', label: 'Between' },
 		{ key: 'fulfilled', label: 'Fulfilled' },
 		{ key: 'attempted', label: 'Attempted' },
 		{ key: 'cancelled', label: 'Cancelled' }
@@ -447,6 +445,12 @@
 
 	const storeId = $derived($page.params.storeId);
 
+	// Delivery status is a courier-pushed field that only ever gets set once an
+	// order ships — meaningless (always "Not required"/empty) on tabs that are
+	// inherently unfulfilled, so hide the column there instead of showing noise.
+	const UNFULFILLED_STATUSES = ['pending', 'confirmed', 'between'];
+	const showDeliveryStatus = $derived(!UNFULFILLED_STATUSES.includes(data.status));
+
 	// Shopify's GraphQL API only offers forward cursor pagination (no arbitrary
 	// page offsets), so we cache the cursor seen at each page number per filter
 	// combo and let numeric buttons jump back to any page already visited.
@@ -454,7 +458,7 @@
 	// These tabs now fetch every matching order server-side (no cursor
 	// pagination at all) — hide the page picker entirely rather than show a
 	// permanently-disabled "Page 1" bar.
-	const fullyFetchedStatuses = ['pending', 'confirmed', 'incorrect-address', 'on-hold', 'not-reachable', 'attempted'];
+	const fullyFetchedStatuses = ['pending', 'confirmed', 'between', 'attempted'];
 	const showsPagination = $derived(!fullyFetchedStatuses.includes(data.status ?? 'pending'));
 
 	const currentPage = $derived(Number($page.url.searchParams.get('page') ?? '1'));
@@ -597,19 +601,9 @@
 								{data.confirmedCount}
 							</span>
 						{/if}
-						{#if tab.key === 'incorrect-address'}
-							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.incorrectAddressCount > 0 ? 'bg-red-100 text-red-700' : 'bg-zinc-100 text-zinc-500'}">
-								{data.incorrectAddressCount}
-							</span>
-						{/if}
-						{#if tab.key === 'on-hold'}
-							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.onHoldCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-500'}">
-								{data.onHoldCount}
-							</span>
-						{/if}
-						{#if tab.key === 'not-reachable'}
-							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.notReachableCount > 0 ? 'bg-red-100 text-red-700' : 'bg-zinc-100 text-zinc-500'}">
-								{data.notReachableCount}
+						{#if tab.key === 'between'}
+							<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {data.betweenCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-zinc-100 text-zinc-500'}">
+								{data.betweenCount}
 							</span>
 						{/if}
 						{#if tab.key === 'attempted'}
@@ -685,16 +679,14 @@
 		</div>
 	{/if}
 
-	{#if ['incorrect-address', 'on-hold', 'not-reachable'].includes(data.status) && selectedIds.size > 0}
+	{#if data.status === 'between' && selectedIds.size > 0}
 		<div class="flex items-center justify-between gap-3 mb-4 px-4 py-2.5 rounded-lg bg-primary/5 border border-primary/20">
 			<span class="text-sm font-medium">{selectedIds.size} selected</span>
 			<div class="flex items-center gap-2">
-				{#if data.status === 'incorrect-address'}
-					<Button variant="outline" size="sm" onclick={openAddressCheckModal}>
-						<MapPinIcon class="size-4" />
-						Check Addresses
-					</Button>
-				{/if}
+				<Button variant="outline" size="sm" onclick={openAddressCheckModal}>
+					<MapPinIcon class="size-4" />
+					Check Addresses
+				</Button>
 				<Button variant="outline" size="sm" onclick={openBulkTagModal}>
 					<TagIcon class="size-4" />
 					Manage Tags
@@ -837,13 +829,13 @@
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Order</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Date</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Customer</th>
-							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Destination</th>
+							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap w-full">Destination</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Phone</th>
 							<th class="text-center px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Items</th>
 							<th class="text-right px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Total</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Payment</th>
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Fulfillment</th>
-							{#if data.status !== 'pending'}
+							{#if showDeliveryStatus}
 								<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap">Delivery Status</th>
 							{/if}
 							<th class="text-left px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-wide whitespace-nowrap min-w-[8rem]">Tags</th>
@@ -853,6 +845,7 @@
 						{#each data.orders as order}
 							{@const delivery = deliveryStatusInfo(order)}
 							{@const isCancelled = !!order.cancelledAt}
+							{@const dateParts = formatRelativeDateParts(order.createdAt)}
 							<tr class="hover:bg-muted/40 transition-colors {isCancelled ? 'opacity-60 bg-muted/30' : ''}">
 								{#if selectableStatuses.includes(data.status)}
 									<td class="px-3 py-1.5">
@@ -862,21 +855,26 @@
 								<td class="px-3 py-1.5 font-bold whitespace-nowrap {isCancelled ? 'line-through' : ''}">
 									<a href="/dispatcher/stores/{storeId}/orders/{order.id.split('/').pop()}" class="text-foreground hover:text-primary hover:underline">{order.name}</a>
 								</td>
-								<td class="px-3 py-1.5 text-foreground/70 whitespace-nowrap {isCancelled ? 'line-through' : ''}">{formatRelativeDate(order.createdAt)}</td>
-								<td class="px-3 py-1.5">
+								<td class="px-3 py-1.5 text-foreground/70 whitespace-nowrap {isCancelled ? 'line-through' : ''}">
+									{dateParts.label}
+									{#if dateParts.time}
+										<div class="text-xs text-muted-foreground/70">{dateParts.time}</div>
+									{/if}
+								</td>
+								<td class="px-3 py-1.5 max-w-[10rem]">
 									{#if order.customer}
 										<a
 											href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}"
 											target="_blank"
 											rel="noopener"
-											class="font-medium text-foreground hover:text-primary hover:underline {isCancelled ? 'line-through' : ''}"
+											class="font-medium text-foreground hover:text-primary hover:underline line-clamp-2 break-words {isCancelled ? 'line-through' : ''}"
 										>{order.customer.displayName}</a>
 										<div class="text-xs text-muted-foreground">{order.customer.numberOfOrders} order{order.customer.numberOfOrders === 1 ? '' : 's'}</div>
 									{:else}
 										<div class="font-medium text-foreground {isCancelled ? 'line-through' : ''}">Guest</div>
 									{/if}
 								</td>
-								<td class="px-3 py-1.5 max-w-[16rem] {isCancelled ? 'line-through' : ''}" onclick={(e) => e.stopPropagation()}>
+								<td class="px-3 py-1.5 {isCancelled ? 'line-through' : ''}" onclick={(e) => e.stopPropagation()}>
 									<div class="flex items-start gap-1.5">
 										<div class="flex-1 min-w-0">
 											{#if order.shippingAddress}
@@ -983,7 +981,7 @@
 										</span>
 									{/if}
 								</td>
-								{#if data.status !== 'pending'}
+								{#if showDeliveryStatus}
 								<td class="px-3 py-1.5 whitespace-nowrap" onclick={(e) => e.stopPropagation()}>
 									{#if delivery}
 										{@const tracking = order.fulfillments.flatMap((f) => f.trackingInfo).find((t) => t.number || t.company)}
@@ -1198,7 +1196,7 @@
 								{order.displayFulfillmentStatus.replace(/_/g,' ')}
 							</span>
 						{/if}
-						{#if delivery}
+						{#if showDeliveryStatus && delivery}
 							<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
 								<span class="size-1.5 rounded-full bg-current shrink-0"></span>
 								{delivery.label}
