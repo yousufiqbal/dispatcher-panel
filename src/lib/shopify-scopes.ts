@@ -10,6 +10,7 @@ export const SHOPIFY_SCOPES = [
 	{ scope: 'write_orders', why: 'View orders, cancel, refund, edit shipping (write implies read)' },
 	{ scope: 'read_all_orders', why: 'Without this, orders older than 60 days (and not created by this app) are invisible to every order query/search — customer order history silently truncates' },
 	{ scope: 'write_shipping', why: 'Edit order shipping address/lines' },
+	{ scope: 'read_locations', why: 'Inventory Audit — location name on each variant\'s inventory level' },
 	{ scope: 'write_order_edits', why: 'Order editing — orderEditBegin/AddVariant/Commit, used by the edit-order page and Merge Orders' }
 ] as const;
 
