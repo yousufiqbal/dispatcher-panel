@@ -47,10 +47,26 @@ export const actions: Actions = {
 			if (key.startsWith('newStock_')) {
 				const id = key.replace('newStock_', '');
 				const newStock = value === '' ? null : parseInt(value as string, 10);
-				updates.push(db.update(inventoryItems).set({ newStock }).where(eq(inventoryItems.id, id)));
+				// A real count coming in means this variant has been (re)counted —
+				// clear any earlier "skipped" mark so it stops showing up as skipped.
+				updates.push(db.update(inventoryItems).set({ newStock, skipped: newStock == null ? undefined : false }).where(eq(inventoryItems.id, id)));
 			}
 		}
 		await Promise.all(updates);
+		return { success: true };
+	},
+
+	// Distinct from Next — Next fills blanks with the current stock and marks
+	// the product done, which would silently record "unchanged" for a product
+	// the dispatcher couldn't actually find (e.g. hidden from view). Skip leaves
+	// newStock untouched and flags every variant at this position as skipped,
+	// so it's visible separately and can be jumped back to for a real recount.
+	skip: async ({ params }) => {
+		const index = parseInt(params.productIndex, 10);
+		await db
+			.update(inventoryItems)
+			.set({ skipped: true })
+			.where(and(eq(inventoryItems.sessionId, params.sessionId), eq(inventoryItems.position, index)));
 		return { success: true };
 	},
 

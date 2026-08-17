@@ -1,6 +1,7 @@
 <script lang="ts" module>
-	type ProductRef = { index: number; title: string; done: boolean };
+	type ProductRef = { index: number; title: string; done: boolean; skipped: boolean };
 	const sessionDone = new Map<string, Set<number>>();
+	const sessionSkipped = new Map<string, Set<number>>();
 	const productsCache = new Map<string, ProductRef[]>();
 </script>
 
@@ -16,12 +17,34 @@
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
+	import EyeOffIcon from '@lucide/svelte/icons/eye-off';
+	import Lightbox from '$lib/components/Lightbox.svelte';
 
 	let { data } = $props();
 	const storeId = $derived($page.params.storeId);
 
 	let saving = $state(false);
 	let doneVersion = $state(0);
+
+	let lightboxUrl = $state<string | null>(null);
+	let lightboxAlt = $state('');
+
+	// Mirrors each variant's input value in reactive state (the +/- buttons used
+	// to poke the DOM input directly) so we can show a live +N/-N delta badge
+	// against currentStock as the dispatcher types or taps +/-.
+	let stockInputs = $state<Record<string, string>>({});
+	$effect(() => {
+		const obj: Record<string, string> = {};
+		for (const v of data.variants) obj[v.id] = v.newStock != null ? String(v.newStock) : '';
+		stockInputs = obj;
+	});
+	function stockDelta(v: { id: string; currentStock: number }): number | null {
+		const raw = stockInputs[v.id];
+		if (raw === undefined || raw === '') return null;
+		const n = parseInt(raw, 10);
+		if (isNaN(n)) return null;
+		return n - v.currentStock;
+	}
 
 	function markDoneLocal(index: number) {
 		let set = sessionDone.get(data.session.id);
@@ -31,6 +54,15 @@
 	}
 	function localDone(index: number) {
 		return sessionDone.get(data.session.id)?.has(index) ?? false;
+	}
+	function markSkippedLocal(index: number) {
+		let set = sessionSkipped.get(data.session.id);
+		if (!set) sessionSkipped.set(data.session.id, (set = new Set()));
+		set.add(index);
+		doneVersion++;
+	}
+	function localSkipped(index: number) {
+		return sessionSkipped.get(data.session.id)?.has(index) ?? false;
 	}
 
 	let formEl = $state<HTMLFormElement>();
@@ -53,9 +85,14 @@
 
 	const productsView = $derived.by(() => {
 		doneVersion;
-		return products.map((p) => ({ ...p, done: p.done || localDone(p.index) }));
+		return products.map((p) => {
+			const done = p.done || localDone(p.index);
+			const skipped = !done && (p.skipped || localSkipped(p.index));
+			return { ...p, done, skipped };
+		});
 	});
 	const doneCount = $derived(productsView.filter((p) => p.done).length);
+	const skippedCount = $derived(productsView.filter((p) => p.skipped).length);
 	const filteredProducts = $derived.by(() => {
 		const q = jumpQuery.trim().toLowerCase();
 		return q ? productsView.filter((p) => p.title.toLowerCase().includes(q)) : productsView;
@@ -94,6 +131,23 @@
 	function navTo(targetIndex: number, markDone = false) {
 		saveForm(markDone);
 		goto(`../${data.session.id}/${targetIndex}`);
+	}
+
+	// Leaves newStock untouched (unlike Next, which fills blanks with the
+	// current stock and marks the product done) — for when the product
+	// physically can't be found/counted right now.
+	let skipping = $state(false);
+	async function skipCurrent() {
+		skipping = true;
+		markSkippedLocal(data.index);
+		await fetch('?/skip', { method: 'POST', body: new FormData() }).catch(() => {});
+		if (data.nextIndex !== null) {
+			goto(`../${data.session.id}/${data.nextIndex}`);
+		} else {
+			await fetch('?/complete', { method: 'POST', body: new FormData() }).catch(() => {});
+			goto(`/dispatcher/stores/${storeId}/inventory-count/${data.session.id}/complete`);
+		}
+		skipping = false;
 	}
 
 	let completeBtnEl = $state<HTMLButtonElement | null>(null);
@@ -151,6 +205,9 @@
 				>
 					<span><span class="font-semibold">{data.index + 1}</span><span class="text-muted-foreground"> / {data.totalProducts}</span></span>
 					<span class="text-xs text-primary bg-primary/10 border border-primary/20 px-1.5 py-0.5 rounded-full tabular-nums">{doneCount} done</span>
+					{#if skippedCount > 0}
+						<span class="text-xs text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded-full tabular-nums">{skippedCount} skipped</span>
+					{/if}
 					<ChevronDownIcon class="size-3.5 text-muted-foreground" />
 				</button>
 
@@ -172,6 +229,8 @@
 								>
 									{#if p.done}
 										<CheckIcon class="size-3.5 text-primary shrink-0" />
+									{:else if p.skipped}
+										<EyeOffIcon class="size-3.5 text-amber-600 shrink-0" />
 									{:else}
 										<span class="size-3.5 shrink-0 rounded-full border border-border"></span>
 									{/if}
@@ -200,12 +259,20 @@
 		<div class="flex-1 max-w-2xl mx-auto w-full px-4 py-5">
 			<div class="flex items-center gap-3 mb-4">
 				{#if data.productImageUrl}
-					<img src={data.productImageUrl} alt={data.productTitle} class="size-12 object-cover rounded-lg border border-border shrink-0 bg-muted" />
+					<button type="button" onclick={() => { lightboxUrl = data.productImageUrl; lightboxAlt = data.productTitle; }} class="shrink-0 cursor-zoom-in">
+						<img src={data.productImageUrl} alt={data.productTitle} class="size-12 object-cover rounded-lg border border-border bg-muted" />
+					</button>
 				{/if}
 				<div>
 					<h1 class="text-base font-semibold text-foreground leading-snug">{data.productTitle}</h1>
 					<p class="text-xs text-muted-foreground mt-0.5">{data.variants.length} variant{data.variants.length > 1 ? 's' : ''}</p>
 				</div>
+				{#if data.variants.some((v) => v.skipped) || localSkipped(data.index)}
+					<span class="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-100 border border-amber-200 px-2 py-0.5 rounded-full shrink-0">
+						<EyeOffIcon class="size-3" />
+						Skipped
+					</span>
+				{/if}
 			</div>
 
 			<form method="POST" action="?/save" bind:this={formEl} use:enhance={() => {
@@ -221,7 +288,9 @@
 						<div class="px-4 py-3 flex flex-wrap items-center gap-3 transition-colors hover:bg-yellow-50 focus-within:bg-yellow-50">
 							<div class="flex items-center gap-2.5 flex-1 min-w-0">
 								{#if v.variantImageUrl}
-									<img src={v.variantImageUrl} alt={v.variantTitle ?? ''} class="size-8 object-cover rounded-md border border-border bg-muted shrink-0" />
+									<button type="button" onclick={() => { lightboxUrl = v.variantImageUrl; lightboxAlt = v.variantTitle ?? data.productTitle; }} class="shrink-0 cursor-zoom-in">
+										<img src={v.variantImageUrl} alt={v.variantTitle ?? ''} class="size-8 object-cover rounded-md border border-border bg-muted" />
+									</button>
 								{:else}
 									<div class="size-8 rounded-md bg-muted shrink-0"></div>
 								{/if}
@@ -240,17 +309,17 @@
 									<button
 										type="button"
 										tabindex="-1"
-										onclick={(e) => {
-											const input = e.currentTarget.nextElementSibling as HTMLInputElement;
-											const val = parseInt(input.value !== '' ? input.value : String(v.currentStock), 10);
-											input.value = String(Math.max(0, val - 1));
+										onclick={() => {
+											const val = parseInt(stockInputs[v.id] !== '' ? stockInputs[v.id] : String(v.currentStock), 10);
+											stockInputs[v.id] = String(Math.max(0, val - 1));
 										}}
 										class="px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-lg leading-none select-none border-r border-border"
 									>−</button>
 									<input
 										type="number"
 										name="newStock_{v.id}"
-										value={v.newStock ?? ''}
+										value={stockInputs[v.id] ?? ''}
+										oninput={(e) => stockInputs[v.id] = e.currentTarget.value}
 										min="0"
 										placeholder={String(v.currentStock)}
 										class="w-12 text-foreground py-1.5 text-center text-sm font-semibold bg-transparent focus:outline-none placeholder:text-muted-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
@@ -258,14 +327,18 @@
 									<button
 										type="button"
 										tabindex="-1"
-										onclick={(e) => {
-											const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-											const val = parseInt(input.value !== '' ? input.value : String(v.currentStock), 10);
-											input.value = String(val + 1);
+										onclick={() => {
+											const val = parseInt(stockInputs[v.id] !== '' ? stockInputs[v.id] : String(v.currentStock), 10);
+											stockInputs[v.id] = String(val + 1);
 										}}
 										class="px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-lg leading-none select-none border-l border-border"
 									>+</button>
 								</div>
+
+								<span class="inline-flex items-center justify-center text-xs font-semibold tabular-nums shrink-0 w-10 h-6 rounded-md
+									{stockDelta(v) && stockDelta(v)! > 0 ? 'bg-green-100 text-green-700' : stockDelta(v) && stockDelta(v)! < 0 ? 'bg-red-100 text-red-700' : 'bg-muted text-muted-foreground/50'}">
+									{stockDelta(v) && stockDelta(v)! > 0 ? '+' : ''}{stockDelta(v) ? stockDelta(v) : '—'}
+								</span>
 							</div>
 						</div>
 					{/each}
@@ -280,6 +353,11 @@
 					<Button type="submit" variant="outline" disabled={saving}>
 						{#if saving}<Loader2Icon class="size-3.5 animate-spin" />{/if}
 						Save
+					</Button>
+
+					<Button type="button" variant="outline" disabled={skipping} onclick={skipCurrent} class="text-amber-700 border-amber-200 hover:bg-amber-50">
+						{#if skipping}<Loader2Icon class="size-3.5 animate-spin" />{:else}<EyeOffIcon class="size-3.5" />{/if}
+						Skip
 					</Button>
 
 					{#if data.nextIndex !== null}
@@ -304,3 +382,5 @@
 		Saved
 	</div>
 {/if}
+
+<Lightbox bind:url={lightboxUrl} alt={lightboxAlt} />

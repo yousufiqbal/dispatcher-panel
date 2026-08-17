@@ -279,6 +279,7 @@ export const inventoryItems = sqliteTable('inventory_items', {
 	variantImageUrl: text('variant_image_url'),
 	currentStock: integer('current_stock').notNull().default(0),
 	newStock: integer('new_stock'),
+	skipped: integer('skipped', { mode: 'boolean' }).notNull().default(false),
 	position: integer('position').notNull().default(0),
 	variantPosition: integer('variant_position').notNull().default(0),
 	// Fields below exist only to reproduce Shopify's own "Export inventory" CSV

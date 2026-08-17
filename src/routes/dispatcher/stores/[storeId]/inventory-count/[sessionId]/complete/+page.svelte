@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button/index.js';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import DownloadIcon from '@lucide/svelte/icons/download';
+	import EyeOffIcon from '@lucide/svelte/icons/eye-off';
 
 	let { data } = $props();
 	const storeId = $derived($page.params.storeId);
@@ -83,6 +84,30 @@
 		<div class="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900 mb-5">
 			This is a report only — nothing was changed in Shopify. "Export for Shopify Import" matches Shopify's own inventory CSV format — upload it directly to the admin's bulk inventory editor to apply the counts.
 		</div>
+
+		{#if data.skippedProducts.length > 0}
+			<div class="card overflow-hidden mb-5">
+				<div class="px-4 py-2.5 border-b border-border bg-amber-50/50 flex items-center gap-2">
+					<EyeOffIcon class="size-4 text-amber-600" />
+					<span class="text-sm font-semibold text-foreground">{data.skippedProducts.length} skipped — not yet counted</span>
+				</div>
+				<div class="divide-y divide-border">
+					{#each data.skippedProducts as p}
+						<div class="flex items-center gap-3 px-4 py-3">
+							{#if p.productImageUrl}
+								<img src={thumbUrl(p.productImageUrl)} alt="" class="size-9 object-cover rounded-lg border border-border bg-muted shrink-0" />
+							{:else}
+								<div class="size-9 rounded-lg bg-muted shrink-0"></div>
+							{/if}
+							<div class="flex-1 min-w-0 text-sm font-medium text-foreground truncate">{p.productTitle}</div>
+							<Button variant="outline" size="sm" href="/dispatcher/stores/{storeId}/inventory-count/{data.session.id}/{p.position}" class="shrink-0">
+								Recount
+							</Button>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
 
 		{#if data.checkedItems.length === 0}
 			<div class="card border-dashed p-10 text-center">
