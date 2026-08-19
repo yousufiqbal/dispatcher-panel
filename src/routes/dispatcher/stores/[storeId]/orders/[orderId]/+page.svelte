@@ -68,6 +68,39 @@
 	const activeLineItems = $derived(order.lineItems.nodes.filter((i) => i.currentQuantity > 0));
 	const removedLineItems = $derived(order.lineItems.nodes.filter((i) => i.currentQuantity === 0));
 
+	function itemImg(item: (typeof activeLineItems)[number]): string | undefined {
+		return item.image?.url ?? item.variant?.image?.url ?? undefined;
+	}
+
+	// Feeds the packing-mode Lightbox: only items with a photo can be paged
+	// through, in the same order they're listed so serial numbers ("2 / 5")
+	// match what the dispatcher sees on the page.
+	const lightboxItems = $derived(
+		activeLineItems
+			.filter((i) => itemImg(i))
+			.map((i) => ({
+				url: itemImg(i)!,
+				alt: i.image?.altText ?? i.title,
+				title: i.title,
+				subtitle: i.variant?.title && i.variant.title !== 'Default Title' ? i.variant.title : null,
+				quantity: i.currentQuantity
+			}))
+	);
+	const lightboxIndexByItem = $derived.by(() => {
+		const map = new Map<(typeof activeLineItems)[number], number>();
+		let i = 0;
+		for (const it of activeLineItems) {
+			if (itemImg(it)) map.set(it, i++);
+		}
+		return map;
+	});
+	let lightboxIndex = $state(0);
+	function openLightbox(item: (typeof activeLineItems)[number]) {
+		lightboxIndex = lightboxIndexByItem.get(item) ?? 0;
+		lightboxUrl = itemImg(item) ?? null;
+		lightboxAlt = item.image?.altText ?? item.title;
+	}
+
 	const shippingTotal = $derived(
 		order.shippingLines.nodes.reduce((s, l) => s + parseFloat(l.originalPriceSet.shopMoney.amount), 0)
 	);
@@ -432,7 +465,7 @@
 								<td class="px-5 py-3">
 									<div class="flex items-center gap-3">
 										{#if img}
-											<button type="button" onclick={() => { lightboxUrl = img; lightboxAlt = item.image?.altText ?? item.title; }} class="shrink-0 cursor-zoom-in">
+											<button type="button" onclick={() => openLightbox(item)} class="shrink-0 cursor-zoom-in">
 												<img src={img} alt={item.image?.altText ?? item.title} class="size-14 rounded-md object-cover border border-border hover:opacity-80 transition-opacity" />
 											</button>
 										{:else}
@@ -483,7 +516,7 @@
 						{@const itemPct = unitOriginal > 0 && unitDiscounted < unitOriginal ? Math.round((1 - unitDiscounted / unitOriginal) * 100) : 0}
 						<div class="px-4 py-3 flex items-start gap-3">
 							{#if img}
-								<button type="button" onclick={() => { lightboxUrl = img; lightboxAlt = item.image?.altText ?? item.title; }} class="shrink-0 cursor-zoom-in">
+								<button type="button" onclick={() => openLightbox(item)} class="shrink-0 cursor-zoom-in">
 									<img src={img} alt={item.image?.altText ?? item.title} class="size-14 rounded-md object-cover border border-border hover:opacity-80 transition-opacity" />
 								</button>
 							{:else}
@@ -948,7 +981,7 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<Lightbox bind:url={lightboxUrl} alt={lightboxAlt} />
+<Lightbox bind:url={lightboxUrl} alt={lightboxAlt} items={lightboxItems} bind:index={lightboxIndex} />
 
 <!-- Duplicate order dialog -->
 <Dialog.Root bind:open={showDuplicateDialog}>
