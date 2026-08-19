@@ -117,7 +117,7 @@
 										<span class="inline-block px-1.5 py-0.5 rounded bg-white/15 text-white/90 text-xs font-semibold">{current.subtitle}</span>
 									{/if}
 									{#if current.quantity}
-										<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/90 text-primary-foreground text-xs font-bold">
+										<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold {current.quantity > 1 ? 'bg-red-600 text-white' : 'bg-primary/90 text-primary-foreground'}">
 											×{current.quantity}
 										</span>
 									{/if}
