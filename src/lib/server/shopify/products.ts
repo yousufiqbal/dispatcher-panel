@@ -18,6 +18,12 @@ export interface ProductNode {
 	featuredImage: { url: string; altText: string | null } | null;
 	totalInventory: number;
 	variants: { nodes: { id: string }[] };
+	collections: { nodes: { id: string }[] };
+}
+
+export interface CollectionNode {
+	id: string;
+	title: string;
 }
 
 export interface ProductDetail {
@@ -49,6 +55,7 @@ export async function listProducts(
 					featuredImage { url altText }
 					totalInventory
 					variants(first: 1) { nodes { id } }
+					collections(first: 50) { nodes { id } }
 				}
 				pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
 			}
@@ -60,6 +67,28 @@ export async function listProducts(
 		{ first: opts.first ?? 30, after: opts.after, query: opts.query }
 	);
 	return data.products;
+}
+
+export async function listAllCollections(client: ShopifyClient): Promise<CollectionNode[]> {
+	const gql = `
+		query ListCollections($after: String) {
+			collections(first: 250, after: $after, sortKey: TITLE) {
+				nodes { id title }
+				pageInfo { hasNextPage endCursor }
+			}
+		}
+	`;
+	const all: CollectionNode[] = [];
+	let after: string | undefined;
+	while (true) {
+		const data = await shopifyRequest<{
+			collections: { nodes: CollectionNode[]; pageInfo: { hasNextPage: boolean; endCursor: string } };
+		}>(client, gql, { after });
+		all.push(...data.collections.nodes);
+		if (!data.collections.pageInfo.hasNextPage) break;
+		after = data.collections.pageInfo.endCursor;
+	}
+	return all;
 }
 
 export async function getProductsCount(

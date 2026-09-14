@@ -517,6 +517,52 @@ export async function getVariantForMutation(client: ShopifyClient, variantId: st
 	};
 }
 
+// Batch form of getVariantForMutation: resolves up to 250 variants in one
+// round trip. Variants that no longer exist (or have no stocked location) are
+// simply absent from the returned map.
+const VARIANTS_FOR_MUTATION_QUERY = `
+	query VariantsForMutation($ids: [ID!]!) {
+		nodes(ids: $ids) {
+			... on ProductVariant {
+				id
+				inventoryItem {
+					id
+					inventoryLevels(first: 1) {
+						edges { node { location { id name } quantities(names: ["on_hand"]) { name quantity } } }
+					}
+				}
+			}
+		}
+	}
+`;
+
+interface VariantsForMutationResponse {
+	nodes: ((VariantForMutationResponse['node'] & { id: string }) | null)[];
+}
+
+export async function getVariantsForMutation(
+	client: ShopifyClient,
+	variantIds: string[]
+): Promise<Map<string, VariantForMutation>> {
+	const out = new Map<string, VariantForMutation>();
+	for (let i = 0; i < variantIds.length; i += 250) {
+		const chunk = variantIds.slice(i, i + 250);
+		const result = await shopifyRequest<VariantsForMutationResponse>(client, VARIANTS_FOR_MUTATION_QUERY, { ids: chunk });
+		for (const node of result.nodes) {
+			const item = node?.inventoryItem;
+			const level = item?.inventoryLevels?.edges?.[0]?.node;
+			if (!node || !item || !level) continue;
+			out.set(node.id, {
+				inventoryItemId: item.id,
+				locationId: level.location.id,
+				locationName: level.location.name,
+				currentOnHand: qty(level.quantities, 'on_hand')
+			});
+		}
+	}
+	return out;
+}
+
 const INVENTORY_ADJUST_MUTATION = `
 	mutation AdjustInventory($input: InventoryAdjustQuantitiesInput!) {
 		inventoryAdjustQuantities(input: $input) {
@@ -552,9 +598,11 @@ export interface InventoryAdjustResult {
 // "damaged"). Returns the raw Shopify response alongside a pass/fail verdict
 // so callers can log both into the cost-event ledger for reconciliation,
 // regardless of outcome.
+export type InventoryAdjustReason = 'restock' | 'damaged' | 'cycle_count_available' | 'correction';
+
 export async function adjustInventoryQuantity(
 	client: ShopifyClient,
-	params: { inventoryItemId: string; locationId: string; delta: number; reason: 'restock' | 'damaged' }
+	params: { inventoryItemId: string; locationId: string; delta: number; reason: InventoryAdjustReason }
 ): Promise<InventoryAdjustResult> {
 	try {
 		const result = await shopifyRequest<InventoryAdjustResponse>(client, INVENTORY_ADJUST_MUTATION, {
@@ -580,5 +628,30 @@ export async function adjustInventoryQuantity(
 		return { success: true, actualDelta: change?.delta ?? null, raw: result.inventoryAdjustQuantities };
 	} catch (e) {
 		return { success: false, actualDelta: null, raw: e instanceof Error ? e.message : String(e) };
+	}
+}
+
+// Multi-change form: one mutation for many variants. Shopify applies the
+// whole group atomically — any userError means nothing in the batch moved —
+// so callers should batch conservatively and record failure for every change
+// in a rejected group.
+export async function adjustInventoryQuantities(
+	client: ShopifyClient,
+	params: { reason: InventoryAdjustReason; changes: { inventoryItemId: string; locationId: string; delta: number }[] }
+): Promise<{ success: boolean; error: string | null }> {
+	if (params.changes.length === 0) return { success: true, error: null };
+	try {
+		const result = await shopifyRequest<InventoryAdjustResponse>(client, INVENTORY_ADJUST_MUTATION, {
+			input: {
+				name: 'on_hand',
+				reason: params.reason,
+				changes: params.changes.map((c) => ({ ...c, changeFromQuantity: null }))
+			}
+		});
+		const errs = result.inventoryAdjustQuantities.userErrors;
+		if (errs.length > 0) return { success: false, error: errs.map((e) => e.message).join('; ') };
+		return { success: true, error: null };
+	} catch (e) {
+		return { success: false, error: e instanceof Error ? e.message : String(e) };
 	}
 }

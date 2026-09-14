@@ -123,10 +123,12 @@ export const actions: Actions = {
 		if (!sessionId) return fail(400);
 
 		const [session] = await db
-			.select({ id: inventorySessions.id })
+			.select({ id: inventorySessions.id, appliedAt: inventorySessions.appliedAt })
 			.from(inventorySessions)
 			.where(and(eq(inventorySessions.id, sessionId), eq(inventorySessions.storeId, params.storeId)));
 		if (!session) return fail(404);
+		// Applied sessions are the permanent record of a Shopify adjustment.
+		if (session.appliedAt) return fail(403, { error: 'This session was applied to Shopify and cannot be deleted.' });
 
 		await db.delete(inventoryItems).where(eq(inventoryItems.sessionId, sessionId));
 		await db.delete(inventorySessions).where(eq(inventorySessions.id, sessionId));

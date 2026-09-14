@@ -27,7 +27,8 @@ export const ACTIVITY_TYPES: ActivityType[] = [
 	{ action: 'order.courierBook', label: 'Booking a courier shipment', isView: false },
 	{ action: 'pricing.settings.update', label: 'Updating pricing rate settings', isView: false },
 	{ action: 'pricing.changes.apply', label: 'Applying pricing changes to Shopify', isView: false },
-	{ action: 'pricing.reviewMarks.resetAll', label: 'Resetting all pricing review ticks', isView: false }
+	{ action: 'pricing.reviewMarks.resetAll', label: 'Resetting all pricing review ticks', isView: false },
+	{ action: 'inventory.count.apply', label: 'Applying inventory count to Shopify', isView: false }
 ];
 
 export function defaultEnabled(action: string): boolean {

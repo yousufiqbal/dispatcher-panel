@@ -1,56 +1,25 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { enhance } from '$app/forms';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
-	import DownloadIcon from '@lucide/svelte/icons/download';
 	import EyeOffIcon from '@lucide/svelte/icons/eye-off';
+	import UploadCloudIcon from '@lucide/svelte/icons/cloud-upload';
+	import Loader2Icon from '@lucide/svelte/icons/loader-2';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import AlertCircleIcon from '@lucide/svelte/icons/circle-alert';
 
-	let { data } = $props();
+	let { data, form } = $props();
 	const storeId = $derived($page.params.storeId);
+
+	let applying = $state(false);
+	const pendingCount = $derived(data.checkedItems.filter((i) => !i.appliedAt).length);
+	const appliedCount = $derived(data.checkedItems.filter((i) => i.appliedAt).length);
+	const failedCount = $derived(data.checkedItems.filter((i) => !i.appliedAt && i.applyError).length);
 
 	function thumbUrl(url: string | null | undefined): string {
 		if (!url) return '';
 		return url.includes('cdn.shopify.com') ? `${url}?width=88` : url;
-	}
-
-	function download(filename: string, headers: string[], rows: (string | number)[][]) {
-		const csv = [headers, ...rows]
-			.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
-			.join('\n');
-		const blob = new Blob([csv], { type: 'text/csv' });
-		const url = URL.createObjectURL(blob);
-		const a = document.createElement('a');
-		a.href = url;
-		a.download = filename;
-		a.click();
-		URL.revokeObjectURL(url);
-	}
-
-	function exportCSV() {
-		const headers = ['Product', 'Variant', 'SKU', 'System Stock', 'Counted Stock', 'Delta'];
-		const rows = data.checkedItems.map((i) => [
-			i.productTitle, i.variantTitle ?? '', i.sku ?? '', i.currentStock, i.newStock ?? '', (i.newStock ?? 0) - i.currentStock
-		]);
-		download(`inventory-count-summary-${data.storeName}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
-	}
-
-	// Matches Shopify's own "Export inventory" CSV column-for-column, so this
-	// file can be uploaded directly into the Shopify admin's bulk inventory
-	// editor — no reformatting. Every item is included (not just counted ones);
-	// "On hand (new)" is left blank wherever a count hasn't been entered yet.
-	function exportShopifyImport() {
-		const headers = [
-			'Handle', 'Title', 'Option1 Name', 'Option1 Value', 'Option2 Name', 'Option2 Value',
-			'Option3 Name', 'Option3 Value', 'SKU', 'HS Code', 'COO', 'Location', 'Bin name',
-			'Incoming (not editable)', 'Unavailable (not editable)', 'Committed (not editable)',
-			'Available (not editable)', 'On hand (current)', 'On hand (new)'
-		];
-		const rows = data.allItems.map((i) => [
-			i.handle ?? '', i.productTitle, i.option1Name ?? '', i.option1Value ?? '', i.option2Name ?? '', i.option2Value ?? '',
-			i.option3Name ?? '', i.option3Value ?? '', i.sku ?? '', i.hsCode ?? '', i.countryOfOrigin ?? '', i.locationName ?? '', '',
-			i.incoming, i.unavailable, i.committed, i.available, i.currentStock, i.newStock ?? ''
-		]);
-		download(`inventory-import-${data.storeName}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows);
 	}
 </script>
 
@@ -70,19 +39,45 @@
 				</p>
 			</div>
 			<div class="flex items-center gap-2 shrink-0">
-				<Button variant="outline" onclick={exportCSV} disabled={data.checkedItems.length === 0}>
-					<DownloadIcon class="size-4" />
-					Export Summary
-				</Button>
-				<Button onclick={exportShopifyImport} disabled={data.allItems.length === 0}>
-					<DownloadIcon class="size-4" />
-					Export for Shopify Import
-				</Button>
+				<form
+					method="POST"
+					action="?/apply"
+					use:enhance={({ cancel }) => {
+						const msg = `Push ${pendingCount} inventory ${pendingCount === 1 ? 'change' : 'changes'} to Shopify?
+
+Each variant is adjusted by its counted difference (delta), not overwritten. This is logged under your name.`;
+						if (!confirm(msg)) { cancel(); return; }
+						applying = true;
+						return async ({ update }) => { await update(); applying = false; };
+					}}
+				>
+					<Button type="submit" disabled={applying || pendingCount === 0}>
+						{#if applying}
+							<Loader2Icon class="size-4 animate-spin" />
+							Applying…
+						{:else}
+							<UploadCloudIcon class="size-4" />
+							Apply to Shopify{pendingCount > 0 ? ` (${pendingCount})` : ''}
+						{/if}
+					</Button>
+				</form>
 			</div>
 		</div>
 
+		{#if form?.error}
+			<div class="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-900 mb-5">{form.error}</div>
+		{:else if form && 'applied' in form && form.failed != null}
+			<div class="rounded-lg {form.failed > 0 ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-green-50 border-green-200 text-green-900'} border px-4 py-3 text-sm mb-5">
+				{form.applied} {form.applied === 1 ? 'variant' : 'variants'} adjusted in Shopify{form.failed > 0 ? `, ${form.failed} failed — see rows below, then click Apply again to retry.` : '.'}
+			</div>
+		{/if}
+
 		<div class="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900 mb-5">
-			This is a report only — nothing was changed in Shopify. "Export for Shopify Import" matches Shopify's own inventory CSV format — upload it directly to the admin's bulk inventory editor to apply the counts.
+			{#if data.session.appliedAt}
+				Applied to Shopify on {new Date(data.session.appliedAt).toLocaleString()}. This session is locked — counts can't be edited and it can't be deleted.{#if pendingCount > 0} {pendingCount} {pendingCount === 1 ? 'variant' : 'variants'} failed and can be retried with Apply.{/if}
+			{:else}
+				Nothing changes in Shopify until you click "Apply to Shopify". It pushes each variant's counted <em>difference</em>, so orders fulfilled since the count are not undone.
+			{/if}
 		</div>
 
 		{#if data.skippedProducts.length > 0}
@@ -100,9 +95,11 @@
 								<div class="size-9 rounded-lg bg-muted shrink-0"></div>
 							{/if}
 							<div class="flex-1 min-w-0 text-sm font-medium text-foreground truncate">{p.productTitle}</div>
-							<Button variant="outline" size="sm" href="/dispatcher/stores/{storeId}/inventory-count/{data.session.id}/{p.position}" class="shrink-0">
-								Recount
-							</Button>
+							{#if !data.session.appliedAt}
+								<Button variant="outline" size="sm" href="/dispatcher/stores/{storeId}/inventory-count/{data.session.id}/{p.position}" class="shrink-0">
+									Recount
+								</Button>
+							{/if}
 						</div>
 					{/each}
 				</div>
@@ -112,9 +109,11 @@
 		{#if data.checkedItems.length === 0}
 			<div class="card border-dashed p-10 text-center">
 				<p class="text-sm text-muted-foreground">No items counted yet, or every count matched the system stock.</p>
-				<Button href="/dispatcher/stores/{storeId}/inventory-count/{data.session.id}/0" class="mt-4">
-					Start counting
-				</Button>
+				{#if !data.session.appliedAt}
+					<Button href="/dispatcher/stores/{storeId}/inventory-count/{data.session.id}/0" class="mt-4">
+						Start counting
+					</Button>
+				{/if}
 			</div>
 		{:else}
 			<div class="card overflow-hidden divide-y divide-border">
@@ -128,7 +127,15 @@
 						<div class="flex-1 min-w-0">
 							<div class="text-sm font-medium text-foreground truncate">{item.productTitle}</div>
 							{#if item.variantTitle}<div class="text-xs text-muted-foreground">{item.variantTitle}</div>{/if}
+							{#if !item.appliedAt && item.applyError}
+								<div class="text-xs text-red-600 flex items-center gap-1 mt-0.5"><AlertCircleIcon class="size-3" />{item.applyError}</div>
+							{/if}
 						</div>
+						{#if item.appliedAt}
+							<span class="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 shrink-0" title="Applied {new Date(item.appliedAt).toLocaleString()}">
+								<CheckIcon class="size-3" /> Applied
+							</span>
+						{/if}
 						<div class="flex items-center gap-2 shrink-0 text-sm tabular-nums">
 							<span class="text-muted-foreground">{item.currentStock}</span>
 							<ArrowLeftIcon class="size-3.5 text-muted-foreground/50 rotate-180" />

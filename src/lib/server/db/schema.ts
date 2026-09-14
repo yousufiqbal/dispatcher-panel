@@ -260,7 +260,12 @@ export const inventorySessions = sqliteTable('inventory_sessions', {
 		.notNull()
 		.$defaultFn(() => new Date()),
 	completedAt: integer('completed_at', { mode: 'timestamp' }),
-	totalProducts: integer('total_products').notNull().default(0)
+	totalProducts: integer('total_products').notNull().default(0),
+	// Set the first time counts are pushed to Shopify. From then on the
+	// session is frozen: no recounts, no delete — it's the audit record of what
+	// was adjusted and by whom.
+	appliedAt: integer('applied_at', { mode: 'timestamp' }),
+	appliedBy: text('applied_by')
 });
 
 export const inventoryItems = sqliteTable('inventory_items', {
@@ -298,7 +303,13 @@ export const inventoryItems = sqliteTable('inventory_items', {
 	incoming: integer('incoming').notNull().default(0),
 	unavailable: integer('unavailable').notNull().default(0),
 	committed: integer('committed').notNull().default(0),
-	available: integer('available').notNull().default(0)
+	available: integer('available').notNull().default(0),
+	// "Apply to Shopify" pushes newStock − currentStock as a delta adjustment.
+	// Recorded per item so a re-run skips what already landed and only retries
+	// failures.
+	appliedAt: integer('applied_at', { mode: 'timestamp' }),
+	appliedDelta: integer('applied_delta'),
+	applyError: text('apply_error')
 });
 
 // --- Accounting: operating expenses ---------------------------------------

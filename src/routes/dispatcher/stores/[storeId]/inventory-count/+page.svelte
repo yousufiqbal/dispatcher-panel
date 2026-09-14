@@ -8,6 +8,7 @@
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import LockIcon from '@lucide/svelte/icons/lock';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -66,11 +67,16 @@
 							{#if !s.completedAt && s.progress.total > 0}
 								<span class="text-xs text-muted-foreground tabular-nums">{s.progress.done}/{s.progress.total}</span>
 							{/if}
-							<span class="text-xs font-semibold px-2 py-0.5 rounded-full {s.completedAt ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}">
-								{s.completedAt ? 'Complete' : 'In progress'}
+							<span class="text-xs font-semibold px-2 py-0.5 rounded-full {s.appliedAt ? 'bg-blue-100 text-blue-800' : s.completedAt ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}">
+								{s.appliedAt ? 'Applied' : s.completedAt ? 'Complete' : 'In progress'}
 							</span>
 						</div>
 					</a>
+					{#if s.appliedAt}
+						<div class="ml-3 shrink-0 size-9 flex items-center justify-center text-muted-foreground/50" title="Applied to Shopify — locked">
+							<LockIcon class="size-4" />
+						</div>
+					{:else}
 					<form
 						method="POST"
 						action="?/delete"
@@ -86,6 +92,7 @@
 							<Trash2Icon class="size-4" />
 						</Button>
 					</form>
+					{/if}
 				</div>
 			{/each}
 		</div>
