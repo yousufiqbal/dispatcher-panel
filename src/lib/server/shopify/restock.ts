@@ -637,15 +637,25 @@ export async function adjustInventoryQuantity(
 // in a rejected group.
 export async function adjustInventoryQuantities(
 	client: ShopifyClient,
-	params: { reason: InventoryAdjustReason; changes: { inventoryItemId: string; locationId: string; delta: number }[] }
+	params: {
+		reason: InventoryAdjustReason;
+		changes: { inventoryItemId: string; locationId: string; delta: number }[];
+		// Shows up in Shopify's inventory history as the source of the change.
+		referenceDocumentUri?: string;
+	}
 ): Promise<{ success: boolean; error: string | null }> {
 	if (params.changes.length === 0) return { success: true, error: null };
 	try {
+		// inventoryAdjustQuantities can't target on_hand directly (needs a
+		// ledger document). Adjusting `available` by Δ moves on_hand by the
+		// same Δ — on_hand = available + committed + unavailable — so the
+		// physical stock ends up where the count says.
 		const result = await shopifyRequest<InventoryAdjustResponse>(client, INVENTORY_ADJUST_MUTATION, {
 			input: {
-				name: 'on_hand',
+				name: 'available',
 				reason: params.reason,
-				changes: params.changes.map((c) => ({ ...c, changeFromQuantity: null }))
+				referenceDocumentUri: params.referenceDocumentUri,
+				changes: params.changes
 			}
 		});
 		const errs = result.inventoryAdjustQuantities.userErrors;

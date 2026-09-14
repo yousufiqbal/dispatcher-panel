@@ -34,7 +34,18 @@ export function invalidateClient(shopifyDomain: string): void {
 
 export class ShopifyApiError extends Error {
 	constructor(public errors: unknown) {
-		super('Shopify API error');
+		super(ShopifyApiError.describe(errors));
+	}
+
+	// Pull the human-readable GraphQL messages out of the client's error
+	// wrapper so callers surfacing `err.message` show the real cause.
+	static describe(errors: unknown): string {
+		const wrapper = errors as { graphQLErrors?: { message?: string }[]; message?: string } | { message?: string }[] | null;
+		const list = Array.isArray(wrapper) ? wrapper : wrapper?.graphQLErrors;
+		const msgs = (list ?? []).map((e) => e?.message).filter((m): m is string => !!m);
+		if (msgs.length > 0) return msgs.join('; ');
+		if (!Array.isArray(wrapper) && wrapper?.message) return wrapper.message;
+		return 'Shopify API error';
 	}
 }
 
