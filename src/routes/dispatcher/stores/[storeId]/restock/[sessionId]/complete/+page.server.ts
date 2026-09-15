@@ -35,5 +35,23 @@ export const actions: Actions = {
 
 		await db.update(restockItems).set({ orderedAt: item.orderedAt ? null : new Date() }).where(eq(restockItems.id, id));
 		return { success: true };
+	},
+
+	// Restock qty can be revised on the list itself — e.g. after seeing live
+	// stock has moved since the session was built.
+	updateQty: async ({ request, params }) => {
+		const fd = await request.formData();
+		const id = fd.get('id')?.toString();
+		const qty = parseInt(fd.get('qty')?.toString() ?? '', 10);
+		if (!id || !Number.isFinite(qty) || qty < 0) return fail(400);
+
+		const [item] = await db
+			.select({ id: restockItems.id })
+			.from(restockItems)
+			.where(and(eq(restockItems.id, id), eq(restockItems.sessionId, params.sessionId)));
+		if (!item) return fail(404);
+
+		await db.update(restockItems).set({ actualRestock: qty }).where(eq(restockItems.id, id));
+		return { success: true };
 	}
 };

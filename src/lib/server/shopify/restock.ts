@@ -563,6 +563,26 @@ export async function getVariantsForMutation(
 	return out;
 }
 
+// Live `available` per variant (summed across locations). Bare numeric ids
+// accepted. Deleted variants are absent from the result.
+export async function getVariantsAvailable(client: ShopifyClient, variantIds: string[]): Promise<Map<string, number>> {
+	const gql = `
+		query VariantsAvailable($ids: [ID!]!) {
+			nodes(ids: $ids) { ... on ProductVariant { id inventoryQuantity } }
+		}
+	`;
+	const out = new Map<string, number>();
+	for (let i = 0; i < variantIds.length; i += 250) {
+		const chunk = variantIds.slice(i, i + 250).map((id) => (id.startsWith('gid://') ? id : `gid://shopify/ProductVariant/${id}`));
+		const result = await shopifyRequest<{ nodes: ({ id: string; inventoryQuantity: number | null } | null)[] }>(client, gql, { ids: chunk });
+		for (const node of result.nodes) {
+			if (!node) continue;
+			out.set(node.id.split('/').pop()!, node.inventoryQuantity ?? 0);
+		}
+	}
+	return out;
+}
+
 const INVENTORY_ADJUST_MUTATION = `
 	mutation AdjustInventory($input: InventoryAdjustQuantitiesInput!) {
 		inventoryAdjustQuantities(input: $input) {
