@@ -2,9 +2,18 @@
 	import { formatCurrency } from '$lib/utils';
 	import Lightbox from '$lib/components/Lightbox.svelte';
 	import ImageIcon from '@lucide/svelte/icons/image';
+	import type { Snippet } from 'svelte';
 	import type { ProductDetail } from '$lib/server/shopify/products';
 
-	let { product, currencyCode }: { product: ProductDetail; currencyCode: string } = $props();
+	// `variantsFirst` puts the variants card at the top (side-pane layout —
+	// stock/price is what you're scanning for); `header` renders between the
+	// variants and the gallery in that mode so title still sits above images.
+	let {
+		product,
+		currencyCode,
+		variantsFirst = false,
+		header
+	}: { product: ProductDetail; currencyCode: string; variantsFirst?: boolean; header?: Snippet } = $props();
 
 	let activeImage = $state(0);
 	let lightboxUrl = $state<string | null>(null);
@@ -21,6 +30,7 @@
 	}
 </script>
 
+{#snippet media()}
 <div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
 	<!-- Images -->
 	<div>
@@ -69,7 +79,9 @@
 		</div>
 	</div>
 </div>
+{/snippet}
 
+{#snippet variants()}
 <!-- Variants -->
 <div class="card overflow-hidden">
 	<div class="px-5 py-4 border-b border-border">
@@ -108,5 +120,16 @@
 		{/each}
 	</div>
 </div>
+{/snippet}
+
+{#if variantsFirst}
+	{@render variants()}
+	{#if header}<div class="mt-5 mb-4">{@render header()}</div>{/if}
+	{@render media()}
+{:else}
+	{#if header}<div class="mb-4">{@render header()}</div>{/if}
+	{@render media()}
+	{@render variants()}
+{/if}
 
 <Lightbox bind:url={lightboxUrl} alt={lightboxAlt} />

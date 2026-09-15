@@ -165,21 +165,21 @@
 				<p class="text-sm text-muted-foreground">{detailError}</p>
 			</div>
 		{:else if detail}
-			<div class="mb-4">
+			{#snippet paneHeader()}
 				<div class="flex items-start justify-between gap-3">
 					<div class="min-w-0">
-						<h1 class="text-xl font-bold truncate">{detail.product.title}</h1>
-						<p class="text-sm text-muted-foreground">{detail.product.totalInventory} total in stock</p>
+						<h1 class="text-xl font-bold truncate">{detail!.product.title}</h1>
+						<p class="text-sm text-muted-foreground">{detail!.product.totalInventory} total in stock</p>
 					</div>
 					<a
-						href="/dispatcher/stores/{storeId}/products/{shortId(detail.product.id)}"
+						href="/dispatcher/stores/{storeId}/products/{shortId(detail!.product.id)}"
 						class="text-xs text-muted-foreground hover:text-foreground underline shrink-0"
 					>
 						Open page
 					</a>
 				</div>
-			</div>
-			<ProductDetail product={detail.product} currencyCode={detail.currencyCode} />
+			{/snippet}
+			<ProductDetail product={detail.product} currencyCode={detail.currencyCode} variantsFirst header={paneHeader} />
 		{:else}
 			<div class="card p-12 text-center text-muted-foreground">
 				<PackageSearchIcon class="size-10 mx-auto mb-3 opacity-40" />
