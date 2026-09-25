@@ -14,7 +14,6 @@
 	const navItems = [
 		{ href: '/admin', label: 'Overview', icon: 'home' },
 		{ href: '/admin/dispatchers', label: 'Dispatchers', icon: 'users' },
-		{ href: '/admin/accountants', label: 'Accountants', icon: 'users' },
 		{ href: '/admin/stores', label: 'Stores', icon: 'store' },
 		{ href: '/admin/couriers', label: 'Couriers', icon: 'truck' },
 		{ href: '/admin/audit', label: 'Audit Log', icon: 'log' },

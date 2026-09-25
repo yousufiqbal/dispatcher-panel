@@ -24,22 +24,10 @@ export const dispatchers = sqliteTable('dispatchers', {
 	passwordHash: text('password_hash').notNull(),
 	name: text('name').notNull(),
 	isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
-	createdAt: integer('created_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date()),
-	updatedAt: integer('updated_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
-
-export const accountants = sqliteTable('accountants', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	email: text('email').notNull().unique(),
-	passwordHash: text('password_hash').notNull(),
-	name: text('name').notNull(),
-	isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+	// 2FA is mandatory for dispatchers: a dispatcher without totpEnabled is
+	// forced through enrolment on their next sign-in.
+	totpSecret: text('totp_secret'),
+	totpEnabled: integer('totp_enabled', { mode: 'boolean' }).notNull().default(false),
 	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()
 		.$defaultFn(() => new Date()),
@@ -96,22 +84,6 @@ export const dispatcherStoreAccess = sqliteTable(
 	(table) => [primaryKey({ columns: [table.dispatcherId, table.storeId] })]
 );
 
-export const accountantStoreAccess = sqliteTable(
-	'accountant_store_access',
-	{
-		accountantId: text('accountant_id')
-			.notNull()
-			.references(() => accountants.id, { onDelete: 'cascade' }),
-		storeId: text('store_id')
-			.notNull()
-			.references(() => stores.id, { onDelete: 'cascade' }),
-		grantedAt: integer('granted_at', { mode: 'timestamp' })
-			.notNull()
-			.$defaultFn(() => new Date())
-	},
-	(table) => [primaryKey({ columns: [table.accountantId, table.storeId] })]
-);
-
 export const dispatcherPushSubscriptions = sqliteTable('dispatcher_push_subscriptions', {
 	id: text('id')
 		.primaryKey()
@@ -130,12 +102,31 @@ export const dispatcherPushSubscriptions = sqliteTable('dispatcher_push_subscrip
 export const sessions = sqliteTable('sessions', {
 	id: text('id').primaryKey(),
 	userId: text('user_id').notNull(),
-	role: text('role', { enum: ['admin', 'dispatcher', 'accounting'] }).notNull(),
+	role: text('role', { enum: ['admin', 'dispatcher'] }).notNull(),
 	totpVerified: integer('totp_verified', { mode: 'boolean' }).notNull().default(false),
 	expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
 	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()
 		.$defaultFn(() => new Date()),
+	ipAddress: text('ip_address'),
+	userAgent: text('user_agent')
+});
+
+// "Remember this device for 30 days" — lets a browser skip the TOTP prompt on
+// later sign-ins. Only the hash of the cookie token is stored, so a DB leak
+// can't be replayed as a device.
+export const trustedDevices = sqliteTable('trusted_devices', {
+	id: text('id')
+		.primaryKey()
+		.$defaultFn(() => crypto.randomUUID()),
+	userId: text('user_id').notNull(),
+	role: text('role', { enum: ['admin', 'dispatcher'] }).notNull(),
+	tokenHash: text('token_hash').notNull().unique(),
+	expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+	createdAt: integer('created_at', { mode: 'timestamp' })
+		.notNull()
+		.$defaultFn(() => new Date()),
+	lastUsedAt: integer('last_used_at', { mode: 'timestamp' }),
 	ipAddress: text('ip_address'),
 	userAgent: text('user_agent')
 });
@@ -312,197 +303,6 @@ export const inventoryItems = sqliteTable('inventory_items', {
 	applyError: text('apply_error')
 });
 
-// --- Accounting: operating expenses ---------------------------------------
-
-export const recurringExpenses = sqliteTable('recurring_expenses', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	storeId: text('store_id')
-		.notNull()
-		.references(() => stores.id, { onDelete: 'cascade' }),
-	category: text('category').notNull(),
-	description: text('description'),
-	amount: text('amount').notNull(),
-	dayOfMonth: integer('day_of_month').notNull().default(1),
-	isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
-	// 'YYYY-MM' of the last month this was turned into an operatingExpenses row —
-	// the materialize cron uses this to avoid double-posting the same month.
-	lastMaterializedMonth: text('last_materialized_month'),
-	createdBy: text('created_by').notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date()),
-	updatedAt: integer('updated_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
-
-export const operatingExpenses = sqliteTable('operating_expenses', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	storeId: text('store_id')
-		.notNull()
-		.references(() => stores.id, { onDelete: 'cascade' }),
-	category: text('category').notNull(),
-	description: text('description'),
-	amount: text('amount').notNull(),
-	expenseDate: integer('expense_date', { mode: 'timestamp' }).notNull(),
-	recurringExpenseId: text('recurring_expense_id').references(() => recurringExpenses.id, { onDelete: 'set null' }),
-	createdBy: text('created_by').notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
-
-// --- Accounting: purchases, damages, weighted-average cost ledger --------
-//
-// variantCosts is a CACHE of current qty+avg-cost per SKU — it is always
-// re-derivable from scratch by folding inventoryCostEvents in order, so if it
-// ever looks wrong the ledger is what you trust and rebuild from, not this
-// table. inventoryCostEvents is append-only and never updated or deleted —
-// it's the audit trail for reconciling our records against live Shopify stock.
-
-export const variantCosts = sqliteTable(
-	'variant_costs',
-	{
-		storeId: text('store_id')
-			.notNull()
-			.references(() => stores.id, { onDelete: 'cascade' }),
-		variantId: text('variant_id').notNull(),
-		sku: text('sku'),
-		quantityOnHand: integer('quantity_on_hand').notNull().default(0),
-		avgCost: text('avg_cost').notNull().default('0'),
-		updatedAt: integer('updated_at', { mode: 'timestamp' })
-			.notNull()
-			.$defaultFn(() => new Date())
-	},
-	(table) => [primaryKey({ columns: [table.storeId, table.variantId] })]
-);
-
-export const inventoryCostEvents = sqliteTable('inventory_cost_events', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	storeId: text('store_id')
-		.notNull()
-		.references(() => stores.id, { onDelete: 'cascade' }),
-	variantId: text('variant_id').notNull(),
-	sku: text('sku'),
-	type: text('type', { enum: ['purchase', 'damage', 'sale'] }).notNull(),
-	quantityDelta: integer('quantity_delta').notNull(),
-	unitCost: text('unit_cost').notNull(),
-	totalCost: text('total_cost').notNull(),
-	qtyBefore: integer('qty_before').notNull(),
-	avgCostBefore: text('avg_cost_before').notNull(),
-	qtyAfter: integer('qty_after').notNull(),
-	avgCostAfter: text('avg_cost_after').notNull(),
-	sourceType: text('source_type', { enum: ['purchase', 'damage', 'order'] }).notNull(),
-	sourceId: text('source_id').notNull(),
-	// What we asked Shopify to change vs. what it actually confirmed changing —
-	// a mismatch here (or a failed status) is exactly the kind of drift this
-	// ledger exists to catch.
-	shopifyAdjustmentStatus: text('shopify_adjustment_status', { enum: ['success', 'failed', 'skipped'] }).notNull(),
-	shopifyExpectedDelta: integer('shopify_expected_delta').notNull(),
-	shopifyActualDelta: integer('shopify_actual_delta'),
-	shopifyResponseRaw: text('shopify_response_raw'),
-	createdBy: text('created_by').notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
-
-// A batch groups multiple purchase lines entered together — the common case
-// being one supplier invoice covering several SKUs at once.
-export const purchaseBatches = sqliteTable('purchase_batches', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	storeId: text('store_id')
-		.notNull()
-		.references(() => stores.id, { onDelete: 'cascade' }),
-	supplier: text('supplier'),
-	purchaseDate: integer('purchase_date', { mode: 'timestamp' }).notNull(),
-	note: text('note'),
-	createdBy: text('created_by').notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
-
-export const purchases = sqliteTable('purchases', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	storeId: text('store_id')
-		.notNull()
-		.references(() => stores.id, { onDelete: 'cascade' }),
-	batchId: text('batch_id').references(() => purchaseBatches.id, { onDelete: 'cascade' }),
-	variantId: text('variant_id').notNull(),
-	productId: text('product_id').notNull(),
-	productTitle: text('product_title').notNull(),
-	variantTitle: text('variant_title'),
-	sku: text('sku'),
-	quantity: integer('quantity').notNull(),
-	unitCost: text('unit_cost').notNull(),
-	totalCost: text('total_cost').notNull(),
-	purchaseDate: integer('purchase_date', { mode: 'timestamp' }).notNull(),
-	note: text('note'),
-	shopifyAdjustmentStatus: text('shopify_adjustment_status', { enum: ['success', 'failed'] }).notNull(),
-	createdBy: text('created_by').notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
-
-export const damages = sqliteTable('damages', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	storeId: text('store_id')
-		.notNull()
-		.references(() => stores.id, { onDelete: 'cascade' }),
-	variantId: text('variant_id').notNull(),
-	productId: text('product_id').notNull(),
-	productTitle: text('product_title').notNull(),
-	variantTitle: text('variant_title'),
-	sku: text('sku'),
-	quantity: integer('quantity').notNull(),
-	costAtDamageTime: text('cost_at_damage_time').notNull(),
-	totalCost: text('total_cost').notNull(),
-	reason: text('reason'),
-	damageDate: integer('damage_date', { mode: 'timestamp' }).notNull(),
-	shopifyAdjustmentStatus: text('shopify_adjustment_status', { enum: ['success', 'failed'] }).notNull(),
-	createdBy: text('created_by').notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
-
-// A manual monthly close — accounting reviews and records one month's sales
-// at a time (e.g. closes June on July 1st), rather than tracking every sale
-// as it happens. COGS uses each SKU's current average cost at close time,
-// not a per-sale historical snapshot — deliberately simpler, matching how
-// this store's books are actually kept.
-export const monthlyCloses = sqliteTable(
-	'monthly_closes',
-	{
-		storeId: text('store_id')
-			.notNull()
-			.references(() => stores.id, { onDelete: 'cascade' }),
-		month: text('month').notNull(), // 'YYYY-MM'
-		netSales: text('net_sales').notNull(),
-		cogs: text('cogs').notNull(),
-		unitsSold: integer('units_sold').notNull().default(0),
-		closedBy: text('closed_by').notNull(),
-		closedAt: integer('closed_at', { mode: 'timestamp' })
-			.notNull()
-			.$defaultFn(() => new Date())
-	},
-	(table) => [primaryKey({ columns: [table.storeId, table.month] })]
-);
-
 // --- Pricing tool ----------------------------------------------------------
 // Per-variant cost input the merchant enters by hand (buying cost from the
 // supplier, in whichever currency they were quoted). Everything else needed
@@ -579,7 +379,7 @@ export const auditLog = sqliteTable('audit_log', {
 		.primaryKey()
 		.$defaultFn(() => crypto.randomUUID()),
 	actorId: text('actor_id').notNull(),
-	actorRole: text('actor_role', { enum: ['admin', 'dispatcher', 'accounting'] }).notNull(),
+	actorRole: text('actor_role', { enum: ['admin', 'dispatcher'] }).notNull(),
 	action: text('action').notNull(),
 	targetType: text('target_type'),
 	targetId: text('target_id'),

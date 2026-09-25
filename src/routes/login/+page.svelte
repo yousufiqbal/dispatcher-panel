@@ -15,11 +15,21 @@
 	let confirmPassword = $state('');
 	let loading = $state(false);
 	let error = $state('');
-	let step = $state<'credentials' | 'register' | 'totp' | 'totp-setup'>(data.hasAdmin ? 'credentials' : 'register');
+	let step = $state<'credentials' | 'register' | 'totp' | 'totp-setup'>(
+		data.pending ?? (data.hasAdmin ? 'credentials' : 'register')
+	);
 	let totpCode = $state('');
 	let qrDataUrl = $state('');
 	let totpSecret = $state('');
 	let setupStep = $state<'scan' | 'confirm'>('scan');
+	// Carried from the credentials form into the code step — the device is only
+	// remembered once a code actually verifies.
+	let remember = $state(false);
+
+	// Resuming a half-finished sign-in (page reload) lands straight on setup.
+	$effect(() => {
+		if (step === 'totp-setup' && !qrDataUrl) loadTotpSetup();
+	});
 
 	async function handleRegister() {
 		if (!email || !password) {
@@ -62,20 +72,28 @@
 			const res = await fetch('/api/auth/login', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ email, password })
+				body: JSON.stringify({ email, password, remember })
 			});
 			const data = await res.json();
 			if (!res.ok) {
 				error = data.error ?? 'Login failed';
 				return;
 			}
-			if (data.role === 'admin') {
-				goto('/admin');
-			} else if (data.role === 'accounting') {
-				goto('/accounting');
-			} else {
-				goto('/dispatcher');
+			// A dispatcher without a verified code gets the 2FA step instead of
+			// a redirect — either enrolment or the usual prompt.
+			if (data.next === 'totp-setup') {
+				totpCode = '';
+				setupStep = 'scan';
+				step = 'totp-setup';
+				await loadTotpSetup();
+				return;
 			}
+			if (data.next === 'totp') {
+				totpCode = '';
+				step = 'totp';
+				return;
+			}
+			goto(data.redirect ?? '/dispatcher');
 		} catch {
 			error = 'Network error. Please try again.';
 		} finally {
@@ -85,9 +103,13 @@
 
 	async function loadTotpSetup() {
 		const res = await fetch('/api/auth/totp/setup');
-		const data = await res.json();
-		qrDataUrl = data.qrDataUrl;
-		totpSecret = data.secret;
+		const payload = await res.json();
+		if (!res.ok) {
+			error = payload.error ?? 'Could not start two-factor setup';
+			return;
+		}
+		qrDataUrl = payload.qrDataUrl;
+		totpSecret = payload.secret;
 	}
 
 	async function handleTotp() {
@@ -98,7 +120,7 @@
 			const res = await fetch('/api/auth/totp', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ code: totpCode })
+				body: JSON.stringify({ code: totpCode, remember })
 			});
 			const data = await res.json();
 			if (!res.ok) {
@@ -106,7 +128,7 @@
 				totpCode = '';
 				return;
 			}
-			goto('/admin');
+			goto(data.redirect ?? '/dispatcher');
 		} catch {
 			error = 'Network error';
 		} finally {
@@ -122,7 +144,7 @@
 			const res = await fetch('/api/auth/totp/setup', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ code: totpCode })
+				body: JSON.stringify({ code: totpCode, remember })
 			});
 			const data = await res.json();
 			if (!res.ok) {
@@ -130,12 +152,24 @@
 				totpCode = '';
 				return;
 			}
-			goto('/admin');
+			goto(data.redirect ?? '/dispatcher');
 		} catch {
 			error = 'Network error';
 		} finally {
 			loading = false;
 		}
+	}
+
+	// Abandoning the code step drops the password-only session, so a half-signed-in
+	// browser can't be left sitting on an unverified cookie.
+	async function cancelSignIn() {
+		await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+		step = 'credentials';
+		error = '';
+		totpCode = '';
+		password = '';
+		qrDataUrl = '';
+		totpSecret = '';
 	}
 
 	function onTotpInput(e: Event) {
@@ -262,6 +296,18 @@
 							/>
 						</div>
 
+						<label class="flex items-start gap-2.5 cursor-pointer select-none">
+							<input
+								type="checkbox"
+								bind:checked={remember}
+								class="mt-0.5 size-4 rounded border-input accent-primary"
+							/>
+							<span class="text-sm text-muted-foreground leading-tight">
+								Remember this device for 30 days
+								<span class="block text-xs text-muted-foreground/80">Skips the authenticator code on this browser</span>
+							</span>
+						</label>
+
 						<Button type="submit" class="w-full" disabled={loading}>
 							{#if loading}
 								<Loader2Icon class="animate-spin size-4" />
@@ -308,7 +354,7 @@
 						</div>
 					{/if}
 
-					<Button variant="ghost" class="w-full text-sm" onclick={() => { step = 'credentials'; error = ''; totpCode = ''; }}>
+					<Button variant="ghost" class="w-full text-sm" onclick={cancelSignIn}>
 						← Back to login
 					</Button>
 				</div>
@@ -316,7 +362,7 @@
 			{:else if step === 'totp-setup'}
 				<div class="card-header">
 					<h2 class="text-lg font-semibold">Set up two-factor authentication</h2>
-					<p class="text-sm text-muted-foreground">2FA is mandatory for admin accounts</p>
+					<p class="text-sm text-muted-foreground">Two-factor authentication is required on every account</p>
 				</div>
 				<div class="card-content space-y-4">
 					{#if setupStep === 'scan'}

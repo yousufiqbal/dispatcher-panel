@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 import { db } from '$lib/server/db';
-import { sessions, admin, dispatchers, accountants } from '$lib/server/db/schema';
+import { sessions, admin, dispatchers } from '$lib/server/db/schema';
 import { eq, and, gt } from 'drizzle-orm';
 import type { Cookies } from '@sveltejs/kit';
 
@@ -10,13 +10,12 @@ const DISPATCHER_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 
 export type SessionUser =
 	| { role: 'admin'; id: string; email: string; totpEnabled: boolean }
-	| { role: 'dispatcher'; id: string; email: string; name: string; isActive: boolean }
-	| { role: 'accounting'; id: string; email: string; name: string; isActive: boolean };
+	| { role: 'dispatcher'; id: string; email: string; name: string; isActive: boolean; totpEnabled: boolean };
 
 export interface SessionData {
 	id: string;
 	userId: string;
-	role: 'admin' | 'dispatcher' | 'accounting';
+	role: 'admin' | 'dispatcher';
 	totpVerified: boolean;
 	expiresAt: Date;
 	user: SessionUser;
@@ -24,7 +23,7 @@ export interface SessionData {
 
 export async function createSession(
 	userId: string,
-	role: 'admin' | 'dispatcher' | 'accounting',
+	role: 'admin' | 'dispatcher',
 	totpVerified: boolean,
 	ipAddress?: string,
 	userAgent?: string
@@ -59,11 +58,10 @@ export async function loadSession(sessionId: string): Promise<SessionData | null
 	} else if (session.role === 'dispatcher') {
 		const d = await db.query.dispatchers.findFirst({ where: eq(dispatchers.id, session.userId) });
 		if (!d || !d.isActive) return null;
-		user = { role: 'dispatcher', id: d.id, email: d.email, name: d.name, isActive: d.isActive };
+		user = { role: 'dispatcher', id: d.id, email: d.email, name: d.name, isActive: d.isActive, totpEnabled: d.totpEnabled };
 	} else {
-		const a = await db.query.accountants.findFirst({ where: eq(accountants.id, session.userId) });
-		if (!a || !a.isActive) return null;
-		user = { role: 'accounting', id: a.id, email: a.email, name: a.name, isActive: a.isActive };
+		// Role left over from the removed accounting module — no account to load.
+		return null;
 	}
 
 	return {

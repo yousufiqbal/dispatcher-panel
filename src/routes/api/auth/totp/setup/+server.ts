@@ -1,48 +1,53 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
-import { admin } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
 import { Secret, TOTP } from 'otpauth';
 import { safeParse } from 'valibot';
 import { TotpSchema } from '$lib/schemas/auth';
 import { updateSessionTotp } from '$lib/server/session';
-import QRCode from 'qrcode';
+import { loadTotpAccount, saveTotpSecret, enableTotp, verifyTotpCode, TOTP_ISSUER } from '$lib/server/totp';
+import { trustDevice } from '$lib/server/trusted-device';
 
 // GET: generate a new TOTP secret and return QR code
 export const GET: RequestHandler = async ({ locals }) => {
 	const session = locals.session;
-	if (!session || session.role !== 'admin') {
-		return json({ error: 'Unauthorized' }, { status: 401 });
-	}
+	if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
 
-	const adminUser = await db.query.admin.findFirst({ where: eq(admin.id, session.userId) });
-	if (!adminUser) return json({ error: 'Not found' }, { status: 404 });
+	const account = await loadTotpAccount(session);
+	if (!account) return json({ error: 'Unauthorized' }, { status: 401 });
+
+	// Re-enrolling would invalidate the existing authenticator entry, so an
+	// account that already has 2FA must verify instead of setting up again.
+	if (account.totpEnabled) {
+		return json({ error: 'Two-factor authentication is already enabled' }, { status: 409 });
+	}
 
 	const secret = new Secret({ size: 20 });
 	const totp = new TOTP({
-		issuer: 'Pro Shipper',
-		label: adminUser.email,
+		issuer: TOTP_ISSUER,
+		label: account.email,
 		secret,
 		digits: 6,
 		period: 30
 	});
 
 	const otpauthUrl = totp.toString();
+	const QRCode = (await import('qrcode')).default;
 	const qrDataUrl = await QRCode.toDataURL(otpauthUrl);
 
-	// Store the pending secret temporarily on the admin row (will be confirmed on POST)
-	await db.update(admin).set({ totpSecret: secret.base32 }).where(eq(admin.id, adminUser.id));
+	// Stored as a pending secret — totpEnabled only flips once a code from it
+	// verifies, so an abandoned setup can't lock the account out.
+	await saveTotpSecret(session.role, account.id, secret.base32);
 
 	return json({ qrDataUrl, secret: secret.base32, otpauthUrl });
 };
 
 // POST: confirm code to finalize TOTP setup
-export const POST: RequestHandler = async ({ request, locals }) => {
+export const POST: RequestHandler = async ({ request, locals, cookies, getClientAddress }) => {
 	const session = locals.session;
-	if (!session || session.role !== 'admin') {
-		return json({ error: 'Unauthorized' }, { status: 401 });
-	}
+	if (!session) return json({ error: 'Unauthorized' }, { status: 401 });
+
+	const account = await loadTotpAccount(session);
+	if (!account) return json({ error: 'Unauthorized' }, { status: 401 });
 
 	const body = await request.json().catch(() => null);
 	const result = safeParse(TotpSchema, body);
@@ -50,23 +55,18 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		return json({ error: 'Invalid code format' }, { status: 400 });
 	}
 
-	const adminUser = await db.query.admin.findFirst({ where: eq(admin.id, session.userId) });
-	if (!adminUser?.totpSecret) {
+	if (!account.totpSecret) {
 		return json({ error: 'No pending TOTP secret' }, { status: 400 });
 	}
 
-	const totp = new TOTP({ secret: adminUser.totpSecret, digits: 6, period: 30 });
-	const delta = totp.validate({ token: result.output.code, window: 1 });
-
-	if (delta === null) {
+	if (!verifyTotpCode(account.totpSecret, result.output.code)) {
 		return json({ error: 'Invalid code — try again' }, { status: 401 });
 	}
 
-	await db
-		.update(admin)
-		.set({ totpEnabled: true })
-		.where(eq(admin.id, adminUser.id));
-
+	await enableTotp(session.role, account.id);
 	await updateSessionTotp(session.id);
-	return json({ ok: true, redirect: '/admin' });
+	if (result.output.remember) {
+		await trustDevice(cookies, account.id, session.role, getClientAddress(), request.headers.get('user-agent') ?? undefined);
+	}
+	return json({ ok: true, redirect: account.redirect });
 };

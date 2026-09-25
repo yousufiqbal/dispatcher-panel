@@ -200,7 +200,7 @@ export interface MonthlySalesResult {
 	qtyByVariant: Map<string, number>;
 }
 
-// Pulled on demand when accounting manually closes a month — not tracked live.
+// Pulled on demand for a month-to-date sales figure — not tracked live.
 // Excludes cancelled orders; refunds/returns aren't netted out here (kept
 // simple), so a month with heavy returns will overstate sales slightly.
 export async function fetchMonthlySales(client: ShopifyClient, start: Date, end: Date): Promise<MonthlySalesResult> {
@@ -445,8 +445,8 @@ interface VariantSearchResponse {
 	};
 }
 
-// Free-text search across SKU and product/variant title, used by the
-// accounting Purchases/Damages "find a variant" picker. Deliberately doesn't
+// Free-text search across SKU and product/variant title, for "find a variant"
+// pickers. Deliberately doesn't
 // read inventory here — that needs the read_inventory scope, which not every
 // store's token has, and on-hand qty isn't needed until getVariantForMutation
 // right before the actual stock change.

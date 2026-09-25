@@ -13,6 +13,12 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 		throw redirect(303, '/login');
 	}
 
+	// 2FA is mandatory for dispatchers — an unverified session has passed the
+	// password check only, so send it back to finish (or set up) the code step.
+	if (!session.totpVerified) {
+		throw redirect(303, '/login');
+	}
+
 	const access = await db
 		.select({
 			storeId: dispatcherStoreAccess.storeId,

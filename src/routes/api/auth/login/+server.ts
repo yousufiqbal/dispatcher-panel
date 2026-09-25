@@ -1,12 +1,16 @@
-import { json, error } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
-import { admin, dispatchers, accountants } from '$lib/server/db/schema';
+import { admin, dispatchers } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { verify } from 'argon2';
 import { createSession, setSessionCookie } from '$lib/server/session';
-import { parse, safeParse } from 'valibot';
+import { isDeviceTrusted } from '$lib/server/trusted-device';
+import { safeParse } from 'valibot';
 import { LoginSchema } from '$lib/schemas/auth';
+
+const ADMIN_TTL_MS = 2 * 60 * 60 * 1000;
+const STAFF_TTL_MS = 8 * 60 * 60 * 1000;
 
 export const POST: RequestHandler = async ({ request, cookies, getClientAddress }) => {
 	const body = await request.json().catch(() => null);
@@ -27,7 +31,7 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 
 		// TOTP temporarily disabled — sessions are pre-verified
 		const sessionId = await createSession(adminUser.id, 'admin', true, ip, ua);
-		setSessionCookie(cookies, sessionId, new Date(Date.now() + 2 * 60 * 60 * 1000));
+		setSessionCookie(cookies, sessionId, new Date(Date.now() + ADMIN_TTL_MS));
 
 		return json({ role: 'admin', redirect: '/admin' });
 	}
@@ -43,27 +47,16 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 		const valid = await verify(dispatcher.passwordHash, password).catch(() => false);
 		if (!valid) return json({ error: 'Invalid credentials' }, { status: 401 });
 
-		const sessionId = await createSession(dispatcher.id, 'dispatcher', true, ip, ua);
-		setSessionCookie(cookies, sessionId, new Date(Date.now() + 8 * 60 * 60 * 1000));
+		// 2FA is mandatory here. The session is created either way so the TOTP
+		// step has something to authenticate against, but it stays unverified —
+		// and the dispatcher layout refuses unverified sessions — until a valid
+		// code is entered (or this device is already remembered).
+		const trusted = dispatcher.totpEnabled && (await isDeviceTrusted(cookies, dispatcher.id, 'dispatcher'));
+		const sessionId = await createSession(dispatcher.id, 'dispatcher', trusted, ip, ua);
+		setSessionCookie(cookies, sessionId, new Date(Date.now() + STAFF_TTL_MS));
 
-		return json({ role: 'dispatcher', redirect: '/dispatcher' });
-	}
-
-	// Check accounting
-	const accountant = await db.query.accountants.findFirst({
-		where: eq(accountants.email, email)
-	});
-	if (accountant) {
-		if (!accountant.isActive) {
-			return json({ error: 'Account is disabled' }, { status: 403 });
-		}
-		const valid = await verify(accountant.passwordHash, password).catch(() => false);
-		if (!valid) return json({ error: 'Invalid credentials' }, { status: 401 });
-
-		const sessionId = await createSession(accountant.id, 'accounting', true, ip, ua);
-		setSessionCookie(cookies, sessionId, new Date(Date.now() + 8 * 60 * 60 * 1000));
-
-		return json({ role: 'accounting', redirect: '/accounting' });
+		if (trusted) return json({ role: 'dispatcher', redirect: '/dispatcher' });
+		return json({ role: 'dispatcher', next: dispatcher.totpEnabled ? 'totp' : 'totp-setup' });
 	}
 
 	return json({ error: 'Invalid credentials' }, { status: 401 });

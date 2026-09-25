@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!locals.session || locals.session.role !== 'dispatcher') throw error(401, 'Unauthorized');
+	if (!locals.session.totpVerified) throw error(401, 'Two-factor authentication required');
 
 	const body = (await request.json()) as {
 		endpoint: string;
