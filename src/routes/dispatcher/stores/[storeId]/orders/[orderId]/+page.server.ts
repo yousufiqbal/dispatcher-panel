@@ -2,7 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
 import { getOrder, cancelOrder, confirmOrder, unconfirmOrder, fulfillOrder, cancelFulfillment, refundOrder, updateOrderShipping, updateOrderEmail, updateOrderNote, updateOrderTags } from '$lib/server/shopify/orders';
-import { orderEditBegin, orderEditAddDiscount, orderEditCommit } from '$lib/server/shopify/order-edit';
+import { orderEditBegin, orderEditAddDiscount, orderEditCommit, orderEditAddShippingLine, orderEditRemoveShippingLine } from '$lib/server/shopify/order-edit';
 import { cancelShipment, getCourierTrackingUrl } from '$lib/server/courier';
 import { decrypt } from '$lib/server/crypto';
 import { logAudit } from '$lib/server/audit';
@@ -77,12 +77,38 @@ export const actions: Actions = {
 		const refund = fd.get('refund') === 'true';
 		const restock = fd.get('restock') === 'true';
 		const notify = fd.get('notify') === 'true';
+		const noRestockReason = (fd.get('noRestockReason')?.toString() ?? '').trim();
+		// Read before cancelling: the line items are needed for the no-restock
+		// audit snapshot, and cancelling changes what comes back.
+		const order = await getOrder(client, toShopifyOrderId(params.orderId));
+
+		// Stock that doesn't go back on the shelf is a real loss, so skipping the
+		// restock has to be explained — the reason is what makes the audit entry
+		// worth anything later.
+		if (!restock && noRestockReason.length < 3) {
+			return fail(400, { error: 'Give a reason for not restocking the inventory' });
+		}
+
 		try {
 			await cancelOrder(client, toShopifyOrderId(params.orderId), reason, refund, restock, notify);
 			if (locals.session) {
-				await logAudit(locals.session.userId, 'dispatcher', 'order.cancel', {
+				await logAudit(locals.session.userId, 'dispatcher', restock ? 'order.cancel' : 'order.cancelNoRestock', {
 					targetType: 'order', targetId: params.orderId, storeId: params.storeId,
-					metadata: { reason, refund, restock, notify }
+					metadata: {
+						reason,
+						refund,
+						restock,
+						notify,
+						...(restock ? {} : {
+							noRestockReason,
+							orderName: order.name,
+							// Snapshot what wasn't returned to stock — the order itself
+							// can't be re-read for this once it's cancelled.
+							itemsNotRestocked: order.lineItems.nodes
+								.filter((i) => i.currentQuantity > 0)
+								.map((i) => ({ title: i.title, sku: i.variant?.sku ?? null, quantity: i.currentQuantity }))
+						})
+					}
 				});
 			}
 		} catch (e: unknown) {
@@ -311,44 +337,134 @@ export const actions: Actions = {
 		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${params.orderId}`);
 	},
 
-	applyDiscount: async ({ params, request, locals }) => {
+	// One discount type + one value, staged client-side against whichever line
+	// items the dispatcher ticked. Percentages go straight through; a fixed
+	// amount is per line item and needs the order's currency.
+	applyBatchDiscount: async ({ params, request, locals }) => {
 		const store = await getAuthorizedStore(locals.session, params.storeId);
 		const client = getShopifyClient(store);
 		const fd = await request.formData();
 
-		// One or more line items, each with its own percentage — order matches
-		// the calculated order's line items 1:1 since neither list is reordered.
+		const discountType = fd.get('discountType') === 'FIXED_AMOUNT' ? 'FIXED_AMOUNT' : 'PERCENTAGE';
+		// Order matches the calculated order's line items 1:1 since neither list
+		// is reordered — blanks are emitted for untouched/removed lines.
 		const lineItemIds = fd.getAll('lineItemId') as string[];
-		const percentages = fd.getAll('percentage') as string[];
+		const values = fd.getAll('value') as string[];
 
 		const selections = lineItemIds
-			.map((id, i) => ({ id, percentage: parseFloat(percentages[i] ?? '0') }))
-			.filter((s) => s.percentage > 0 && s.percentage <= 100);
+			.map((id, i) => ({ id, value: parseFloat(values[i] ?? '') }))
+			.filter((sel) => Number.isFinite(sel.value) && sel.value > 0);
 
 		if (selections.length === 0) {
-			return fail(400, { error: 'Select at least one item and enter a valid percentage (1–100)' });
+			return fail(400, { error: 'Apply a discount to at least one item before saving' });
+		}
+		if (discountType === 'PERCENTAGE' && selections.some((sel) => sel.value > 100)) {
+			return fail(400, { error: 'A percentage discount cannot exceed 100%' });
 		}
 
 		try {
+			const order = await getOrder(client, toShopifyOrderId(params.orderId));
+			const currencyCode = order.totalPriceSet.shopMoney.currencyCode;
+			const description = discountType === 'PERCENTAGE'
+				? `${selections[0].value}% off`
+				: `${selections[0].value} ${currencyCode} off`;
+
 			const { calcOrderId, lineItems: calcLineItems } = await orderEditBegin(client, toShopifyOrderId(params.orderId));
 			for (const sel of selections) {
 				const origIdx = lineItemIds.indexOf(sel.id);
 				const calcLineItemId = calcLineItems[origIdx]?.id ?? sel.id;
 				await orderEditAddDiscount(client, calcOrderId, calcLineItemId, {
-					value: sel.percentage,
-					valueType: 'PERCENTAGE',
-					description: `${sel.percentage}% off`
+					value: sel.value,
+					valueType: discountType,
+					description,
+					currencyCode
 				});
 			}
-			await orderEditCommit(client, calcOrderId, false, `Applied discount to ${selections.length} item${selections.length === 1 ? '' : 's'}`);
+			await orderEditCommit(client, calcOrderId, false, `Batch discount applied to ${selections.length} item${selections.length === 1 ? '' : 's'}`);
 			if (locals.session) {
 				await logAudit(locals.session.userId, 'dispatcher', 'order.applyDiscount', {
 					targetType: 'order', targetId: params.orderId, storeId: params.storeId,
-					metadata: { selections }
+					metadata: { discountType, selections }
 				});
 			}
 		} catch (e: unknown) {
 			return fail(400, { error: e instanceof Error ? e.message : 'Failed to apply discount' });
+		}
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${params.orderId}`);
+	},
+
+	// Add and/or remove shipping on an existing order. Both happen inside one
+	// order edit so the customer sees a single change, and removals run first
+	// so replacing a shipping line (remove old + add new) nets out correctly.
+	updateShippingLines: async ({ params, request, locals }) => {
+		const store = await getAuthorizedStore(locals.session, params.storeId);
+		const client = getShopifyClient(store);
+		const fd = await request.formData();
+
+		const removeIds = (fd.getAll('removeShippingLineId') as string[]).filter(Boolean);
+		const addTitle = (fd.get('shippingTitle')?.toString() ?? '').trim();
+		const addAmountRaw = fd.get('shippingAmount')?.toString() ?? '';
+		const wantsAdd = addAmountRaw !== '';
+		const addAmount = parseFloat(addAmountRaw);
+
+		if (wantsAdd && (!Number.isFinite(addAmount) || addAmount < 0)) {
+			return fail(400, { error: 'Enter a shipping amount of 0 or more' });
+		}
+		if (removeIds.length === 0 && !wantsAdd) {
+			return fail(400, { error: 'Nothing to change — add a shipping line or pick one to remove' });
+		}
+
+		try {
+			const order = await getOrder(client, toShopifyOrderId(params.orderId));
+			const currencyCode = order.totalPriceSet.shopMoney.currencyCode;
+
+			const { calcOrderId, shippingLines } = await orderEditBegin(client, toShopifyOrderId(params.orderId));
+
+			// The form carries the order's own ShippingLine ids, but the mutations
+			// only accept CalculatedShippingLine ids. Match on title + price
+			// first and fall back to position, so an order with several shipping
+			// lines can't have the wrong one removed.
+			const claimed = new Set<string>();
+			for (const id of removeIds) {
+				const idx = order.shippingLines.nodes.findIndex((l) => l.id === id);
+				const target = order.shippingLines.nodes[idx];
+				if (!target) continue;
+
+				const byValue = shippingLines.find(
+					(c) =>
+						!claimed.has(c.id) &&
+						c.title === target.title &&
+						parseFloat(c.price.shopMoney.amount) === parseFloat(target.originalPriceSet.shopMoney.amount)
+				);
+				const calcLine = byValue ?? (claimed.has(shippingLines[idx]?.id) ? undefined : shippingLines[idx]);
+				if (!calcLine) continue;
+
+				claimed.add(calcLine.id);
+				await orderEditRemoveShippingLine(client, calcOrderId, calcLine.id);
+			}
+
+			if (wantsAdd) {
+				await orderEditAddShippingLine(client, calcOrderId, {
+					title: addTitle || 'Shipping',
+					amount: addAmount,
+					currencyCode
+				});
+			}
+
+			const parts = [
+				removeIds.length ? `removed ${removeIds.length} shipping line${removeIds.length === 1 ? '' : 's'}` : null,
+				wantsAdd ? `added ${addTitle || 'Shipping'}` : null
+			].filter(Boolean);
+			await orderEditCommit(client, calcOrderId, false, `Shipping updated — ${parts.join(', ')}`);
+
+			if (locals.session) {
+				await logAudit(locals.session.userId, 'dispatcher', 'order.updateShippingLines', {
+					targetType: 'order', targetId: params.orderId, storeId: params.storeId,
+					metadata: { removed: removeIds.length, added: wantsAdd ? { title: addTitle || 'Shipping', amount: addAmount } : null }
+				});
+			}
+		} catch (e: unknown) {
+			return fail(400, { error: e instanceof Error ? e.message : 'Failed to update shipping' });
 		}
 		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders/${params.orderId}`);
 	},

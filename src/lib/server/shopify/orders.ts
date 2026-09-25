@@ -203,6 +203,12 @@ export interface OrderDetail extends OrderNode {
 			discountedUnitPriceSet: { shopMoney: { amount: string; currencyCode: string } };
 			variant: { id: string; title: string; sku: string | null; image: { url: string; altText: string | null } | null } | null;
 			image: { url: string; altText: string | null } | null;
+			// Per-line discounts, so an invoice can name the discount and show the
+			// amount taken off that line rather than just a reduced unit price.
+			discountAllocations: {
+				allocatedAmountSet: { shopMoney: { amount: string; currencyCode: string } };
+				discountApplication: { title?: string | null; code?: string | null } | null;
+			}[];
 		}[];
 	};
 	discountCodes: string[];
@@ -241,7 +247,9 @@ export interface OrderDetail extends OrderNode {
 	}[];
 	subtotalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
 	totalShippingPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+	totalTaxSet: { shopMoney: { amount: string; currencyCode: string } } | null;
 	totalReceivedSet: { shopMoney: { amount: string; currencyCode: string } };
+	totalOutstandingSet: { shopMoney: { amount: string; currencyCode: string } } | null;
 	refunds: { id: string; createdAt: string; totalRefundedSet: { shopMoney: { amount: string } } }[];
 	note: string | null;
 }
@@ -259,6 +267,15 @@ export async function getOrder(client: ShopifyClient, orderId: string): Promise<
             discountedUnitPriceSet { shopMoney { amount currencyCode } }
             variant { id title sku image { url altText } }
             image { url altText }
+            discountAllocations {
+              allocatedAmountSet { shopMoney { amount currencyCode } }
+              discountApplication {
+                ... on ManualDiscountApplication { title }
+                ... on ScriptDiscountApplication { title }
+                ... on AutomaticDiscountApplication { title }
+                ... on DiscountCodeApplication { code }
+              }
+            }
           }
         }
         discountCodes
@@ -288,7 +305,9 @@ export async function getOrder(client: ShopifyClient, orderId: string): Promise<
         }
         subtotalPriceSet { shopMoney { amount currencyCode } }
         totalShippingPriceSet { shopMoney { amount currencyCode } }
+        totalTaxSet { shopMoney { amount currencyCode } }
         totalReceivedSet { shopMoney { amount currencyCode } }
+        totalOutstandingSet { shopMoney { amount currencyCode } }
         refunds(first: 10) {
           id createdAt totalRefundedSet { shopMoney { amount } }
         }

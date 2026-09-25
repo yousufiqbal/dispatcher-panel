@@ -1,15 +1,45 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { formatCurrency, formatDate } from '$lib/utils';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
 	const order = $derived(data.order);
+	const currency = $derived(order.totalPriceSet.shopMoney.currencyCode);
 
-	onMount(() => {
-		setTimeout(() => window.print(), 300);
-	});
+	// Removed items (currentQuantity 0) don't belong on an invoice.
+	const items = $derived(order.lineItems.nodes.filter((i) => i.currentQuantity > 0));
+
+	const money = (amount: number | string) =>
+		formatCurrency(typeof amount === 'number' ? amount.toFixed(2) : amount, currency);
+
+	// What was taken off this line, and what to call it. Prefer the discount's
+	// own name (a manual "Custom discount", an automatic title, or a code) and
+	// fall back to the unit-price gap when there's no allocation to read.
+	function lineDiscount(item: (typeof order.lineItems.nodes)[number]) {
+		const allocated = item.discountAllocations.reduce(
+			(sum, d) => sum + parseFloat(d.allocatedAmountSet.shopMoney.amount),
+			0
+		);
+		const unitGap =
+			parseFloat(item.originalUnitPriceSet.shopMoney.amount) -
+			parseFloat(item.discountedUnitPriceSet.shopMoney.amount);
+		const amount = allocated > 0 ? allocated : Math.max(0, unitGap) * item.currentQuantity;
+		if (amount <= 0) return null;
+
+		const named = item.discountAllocations
+			.map((d) => d.discountApplication?.title ?? d.discountApplication?.code)
+			.find((label): label is string => !!label);
+		return { amount, label: named ?? null };
+	}
+
+	const outstanding = $derived(
+		order.totalOutstandingSet?.shopMoney?.amount ??
+			(
+				parseFloat(order.totalPriceSet.shopMoney.amount) -
+				parseFloat(order.totalReceivedSet?.shopMoney?.amount ?? '0')
+			).toFixed(2)
+	);
 </script>
 
 <svelte:head>
@@ -57,64 +87,68 @@
 		{/if}
 	</div>
 
+	<h2 class="font-bold mb-2">Order Details</h2>
+
 	<table class="w-full mb-6 border-collapse">
 		<thead>
-			<tr class="border-b-2 border-zinc-300">
-				<th class="text-left py-2 font-semibold">Item</th>
-				<th class="text-center py-2 font-semibold">Qty</th>
-				<th class="text-right py-2 font-semibold">Price</th>
-				<th class="text-right py-2 font-semibold">Total</th>
+			<tr class="border-y border-zinc-300 bg-zinc-50">
+				<th class="text-left py-2 px-3 font-semibold w-12">Qty</th>
+				<th class="text-left py-2 px-3 font-semibold">Item</th>
+				<th class="text-right py-2 px-3 font-semibold w-32">Price</th>
 			</tr>
 		</thead>
 		<tbody>
-			{#each order.lineItems.nodes as item}
-				<tr class="border-b border-zinc-200">
-					<td class="py-2">
-						<div class="font-medium">{item.title}</div>
-						{#if item.variant?.title && item.variant.title !== 'Default Title'}
-							<div class="text-xs text-zinc-500">{item.variant.title}</div>
-						{/if}
-						{#if item.variant?.sku}
-							<div class="text-xs text-zinc-500 font-mono">SKU: {item.variant.sku}</div>
+			{#each items as item}
+				{@const discount = lineDiscount(item)}
+				{@const original = item.originalUnitPriceSet.shopMoney.amount}
+				{@const discounted = item.discountedUnitPriceSet.shopMoney.amount}
+				<tr class="border-b border-zinc-200 align-top">
+					<td class="py-2 px-3">{item.currentQuantity}</td>
+					<td class="py-2 px-3">
+						<div>
+							{item.title}{#if item.variant?.title && item.variant.title !== 'Default Title'} - {item.variant.title}{/if}
+						</div>
+						{#if discount}
+							<div class="text-xs text-zinc-500">
+								{#if discount.label}{discount.label} {/if}(-{money(discount.amount)})
+							</div>
 						{/if}
 					</td>
-					<td class="text-center py-2">{item.quantity}</td>
-					<td class="text-right py-2">
-						{formatCurrency(item.originalUnitPriceSet.shopMoney.amount, item.originalUnitPriceSet.shopMoney.currencyCode)}
-					</td>
-					<td class="text-right py-2">
-						{formatCurrency(
-							(parseFloat(item.originalUnitPriceSet.shopMoney.amount) * item.quantity).toFixed(2),
-							item.originalUnitPriceSet.shopMoney.currencyCode
-						)}
+					<td class="text-right py-2 px-3 whitespace-nowrap">
+						{#if discount}
+							<span class="text-zinc-400 line-through">{money(original)}</span>
+							<span>{money(discounted)}</span>
+						{:else}
+							{money(original)}
+						{/if}
 					</td>
 				</tr>
 			{/each}
+
+			<!-- Totals live in the same table so the money column stays aligned
+			     with the line items above it. -->
+			<tr class="border-b border-zinc-200">
+				<td colspan="2" class="text-right py-2 px-3 text-zinc-600">Subtotal</td>
+				<td class="text-right py-2 px-3 whitespace-nowrap">{money(order.subtotalPriceSet?.shopMoney?.amount ?? '0')}</td>
+			</tr>
+			<tr class="border-b border-zinc-200">
+				<td colspan="2" class="text-right py-2 px-3 text-zinc-600">Shipping</td>
+				<td class="text-right py-2 px-3 whitespace-nowrap">{money(order.totalShippingPriceSet?.shopMoney?.amount ?? '0')}</td>
+			</tr>
+			<tr class="border-b border-zinc-200 font-bold">
+				<td colspan="2" class="text-right py-2 px-3">Total</td>
+				<td class="text-right py-2 px-3 whitespace-nowrap">{money(order.totalPriceSet.shopMoney.amount)}</td>
+			</tr>
+			<tr class="border-b border-zinc-200">
+				<td colspan="2" class="text-right py-2 px-3 text-zinc-600">Total Paid</td>
+				<td class="text-right py-2 px-3 whitespace-nowrap">{money(order.totalReceivedSet?.shopMoney?.amount ?? '0')}</td>
+			</tr>
+			<tr class="font-bold">
+				<td colspan="2" class="text-right py-2 px-3">Outstanding Amount</td>
+				<td class="text-right py-2 px-3 whitespace-nowrap">{money(outstanding)}</td>
+			</tr>
 		</tbody>
 	</table>
-
-	<div class="flex justify-end">
-		<div class="w-56 space-y-1.5">
-			<div class="flex justify-between">
-				<span class="text-zinc-500">Subtotal</span>
-				<span>{formatCurrency(order.subtotalPriceSet?.shopMoney?.amount ?? '0', order.totalPriceSet.shopMoney.currencyCode)}</span>
-			</div>
-			{#each order.shippingLines.nodes as line}
-				<div class="flex justify-between">
-					<span class="text-zinc-500">{line.title}</span>
-					<span>{formatCurrency(line.originalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}</span>
-				</div>
-			{/each}
-			<div class="flex justify-between font-bold border-t border-zinc-300 pt-1.5">
-				<span>Total</span>
-				<span>{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}</span>
-			</div>
-			<div class="flex justify-between text-zinc-500">
-				<span>Paid</span>
-				<span>{formatCurrency(order.totalReceivedSet?.shopMoney?.amount ?? '0', order.totalPriceSet.shopMoney.currencyCode)}</span>
-			</div>
-		</div>
-	</div>
 
 	{#if order.note}
 		<div class="mt-8 pt-4 border-t border-zinc-200">

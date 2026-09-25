@@ -19,6 +19,7 @@ export const ACTIVITY_TYPES: ActivityType[] = [
 	{ action: 'order.bulkConfirm', label: 'Bulk-confirming orders', isView: false },
 	{ action: 'order.fulfill', label: 'Fulfilling an order', isView: false },
 	{ action: 'order.cancel', label: 'Cancelling an order', isView: false },
+	{ action: 'order.cancelNoRestock', label: 'Cancelling an order WITHOUT restocking inventory', isView: false },
 	{ action: 'order.refund', label: 'Refunding an order', isView: false },
 	{ action: 'order.markAsPaid', label: 'Marking an order as paid', isView: false },
 	{ action: 'order.updateShipping', label: 'Editing shipping address', isView: false },
@@ -29,7 +30,8 @@ export const ACTIVITY_TYPES: ActivityType[] = [
 	{ action: 'pricing.changes.apply', label: 'Applying pricing changes to Shopify', isView: false },
 	{ action: 'pricing.reviewMarks.resetAll', label: 'Resetting all pricing review ticks', isView: false },
 	{ action: 'inventory.count.apply', label: 'Applying inventory count to Shopify', isView: false },
-	{ action: 'dispatcher.totpReset', label: "Resetting a dispatcher's two-factor authentication", isView: false }
+	{ action: 'dispatcher.totpReset', label: "Resetting a dispatcher's two-factor authentication", isView: false },
+	{ action: 'order.updateShippingLines', label: 'Adding or removing order shipping', isView: false }
 ];
 
 export function defaultEnabled(action: string): boolean {

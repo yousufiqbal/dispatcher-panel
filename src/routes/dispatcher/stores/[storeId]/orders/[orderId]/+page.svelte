@@ -40,7 +40,25 @@
 	let showEditContactModal = $state(false);
 	let showEditShippingModal = $state(false);
 	let showDiscountModal = $state(false);
-	let discountSelections = $state<Record<string, { checked: boolean; percent: string }>>({});
+	// Batch discount: one type + one value, applied in-modal to every ticked
+	// item. `batchApplied` is the staged result — nothing reaches Shopify until
+	// Save submits the form.
+	let batchDiscountType = $state<'PERCENTAGE' | 'FIXED_AMOUNT'>('PERCENTAGE');
+	let batchDiscountValue = $state('');
+	let batchChecked = $state<Record<string, boolean>>({});
+	let batchApplied = $state<Record<string, string>>({});
+	let batchError = $state('');
+
+	// Add/remove shipping
+	let showShippingLinesModal = $state(false);
+	let shippingRemovals = $state<Record<string, boolean>>({});
+	let newShippingTitle = $state('Shipping');
+	let newShippingAmount = $state('');
+	let savingShippingLines = $state(false);
+
+	// Cancel dialog: skipping the restock requires a written reason.
+	let cancelRestock = $state(true);
+	let cancelNoRestockReason = $state('');
 	let applyingDiscount = $state(false);
 	let editNote = $state(false);
 	let noteInput = $state('');
@@ -153,6 +171,93 @@
 		DECLINED: 'Payment declined',
 		OTHER: 'Other'
 	};
+
+	// --- Shipping lines ---------------------------------------------------
+	const shippingRemovalCount = $derived(Object.values(shippingRemovals).filter(Boolean).length);
+	const shippingChanged = $derived(shippingRemovalCount > 0 || newShippingAmount.trim() !== '');
+
+	function openShippingLines() {
+		shippingRemovals = {};
+		newShippingTitle = 'Shipping';
+		newShippingAmount = '';
+		showShippingLinesModal = true;
+	}
+
+	// --- Batch discount ---------------------------------------------------
+	const discountableItems = $derived(order.lineItems.nodes.filter((i) => i.currentQuantity > 0));
+	const orderCurrency = $derived(order.totalPriceSet.shopMoney.currencyCode);
+	const batchCheckedCount = $derived(discountableItems.filter((i) => batchChecked[i.id]).length);
+	const batchAppliedCount = $derived(discountableItems.filter((i) => batchApplied[i.id]).length);
+
+	function openBatchDiscount() {
+		batchDiscountType = 'PERCENTAGE';
+		batchDiscountValue = '';
+		batchApplied = {};
+		batchError = '';
+		// Everything is ticked to start — the common case is discounting the
+		// whole order, so unticking is the exception.
+		batchChecked = Object.fromEntries(discountableItems.map((i) => [i.id, true]));
+		showDiscountModal = true;
+	}
+
+	function lineTotal(item: (typeof order.lineItems.nodes)[number]): number {
+		return parseFloat(item.discountedUnitPriceSet.shopMoney.amount) * item.currentQuantity;
+	}
+
+	// What the line costs after the staged discount — used for the preview and
+	// to keep a fixed amount from exceeding the line it's applied to.
+	function stagedTotal(item: (typeof order.lineItems.nodes)[number]): number {
+		const raw = batchApplied[item.id];
+		if (!raw) return lineTotal(item);
+		const v = parseFloat(raw);
+		if (!Number.isFinite(v)) return lineTotal(item);
+		const total = lineTotal(item);
+		return batchDiscountType === 'PERCENTAGE'
+			? Math.max(0, total * (1 - v / 100))
+			: Math.max(0, total - v);
+	}
+
+	function applyBatchDiscount() {
+		const v = parseFloat(batchDiscountValue);
+		if (!Number.isFinite(v) || v <= 0) {
+			batchError = 'Enter a discount greater than 0';
+			return;
+		}
+		if (batchDiscountType === 'PERCENTAGE' && v > 100) {
+			batchError = 'A percentage discount cannot exceed 100%';
+			return;
+		}
+		const targets = discountableItems.filter((i) => batchChecked[i.id]);
+		if (targets.length === 0) {
+			batchError = 'Tick at least one item';
+			return;
+		}
+		if (batchDiscountType === 'FIXED_AMOUNT') {
+			// A fixed amount is per line, so it has to fit the smallest line.
+			const tooSmall = targets.find((i) => v > lineTotal(i));
+			if (tooSmall) {
+				batchError = `${tooSmall.title} is only ${formatCurrency(lineTotal(tooSmall).toFixed(2), orderCurrency)} — reduce the amount or untick it`;
+				return;
+			}
+		}
+		batchError = '';
+		batchApplied = Object.fromEntries(targets.map((i) => [i.id, batchDiscountValue]));
+	}
+
+	function toggleBatchItem(id: string) {
+		batchChecked[id] = !batchChecked[id];
+		// Unticking drops any discount already staged for that line.
+		if (!batchChecked[id] && batchApplied[id]) {
+			const { [id]: _removed, ...rest } = batchApplied;
+			batchApplied = rest;
+		}
+	}
+
+	function toggleBatchAll() {
+		const next = batchCheckedCount < discountableItems.length;
+		batchChecked = Object.fromEntries(discountableItems.map((i) => [i.id, next]));
+		if (!next) batchApplied = {};
+	}
 
 	// Fulfill dialog
 	let trackingCompany = $state('');
@@ -403,8 +508,13 @@
 						{/snippet}
 					</DropdownMenu.Trigger>
 					<DropdownMenu.Content align="end" class="w-44">
-						{#if isConfirmed && !isFulfilled}
+						<!-- Fulfilling doesn't require the Confirmed tag — an unconfirmed
+						     order can be shipped straight out, so this stays available
+						     alongside the Confirm Order button. -->
+						{#if !isFulfilled}
 							<DropdownMenu.Item onclick={() => showFulfillDialog = true}>Fulfill Order</DropdownMenu.Item>
+						{/if}
+						{#if isConfirmed && !isFulfilled}
 							<DropdownMenu.Item onclick={() => showUnconfirmDialog = true}>Unconfirm Order</DropdownMenu.Item>
 						{/if}
 						{#if isFulfilled}
@@ -417,12 +527,13 @@
 						{/if}
 						<DropdownMenu.Item onclick={() => showDuplicateDialog = true}>Duplicate Order</DropdownMenu.Item>
 						{#if !isCancelled}
-							<DropdownMenu.Item onclick={() => { discountSelections = {}; showDiscountModal = true; }}>Add discount to items</DropdownMenu.Item>
+							<DropdownMenu.Item onclick={openBatchDiscount}>Add Batch Discount</DropdownMenu.Item>
+							<DropdownMenu.Item onclick={openShippingLines}>Add / Remove Shipping</DropdownMenu.Item>
 						{/if}
 						<DropdownMenu.Item onclick={() => window.open(`/dispatcher/stores/${storeId}/orders/${$page.params.orderId}/invoice`, '_blank')}>
-							Download Invoice
+							Preview Invoice
 						</DropdownMenu.Item>
-						<DropdownMenu.Item variant="destructive" onclick={() => showCancelDialog = true}>Cancel Order</DropdownMenu.Item>
+						<DropdownMenu.Item variant="destructive" onclick={() => { cancelRestock = true; cancelNoRestockReason = ''; showCancelDialog = true; }}>Cancel Order</DropdownMenu.Item>
 					</DropdownMenu.Content>
 				</DropdownMenu.Root>
 			</div>
@@ -816,14 +927,15 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<!-- Add discount to items dialog -->
+<!-- Batch discount dialog -->
 <Dialog.Root bind:open={showDiscountModal}>
 	<Dialog.Content class="sm:max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden min-w-0">
 		<Dialog.Header>
-			<Dialog.Title>Add discount to items</Dialog.Title>
-			<Dialog.Description>Select the items to discount and set a percentage for each.</Dialog.Description>
+			<Dialog.Title>Add Batch Discount</Dialog.Title>
+			<Dialog.Description>Set one discount and apply it across the items you pick.</Dialog.Description>
 		</Dialog.Header>
-		<form method="POST" action="?/applyDiscount" class="min-w-0" use:enhance={() => {
+
+		<form method="POST" action="?/applyBatchDiscount" class="min-w-0" use:enhance={() => {
 			applyingDiscount = true;
 			return async ({ result, update }) => {
 				await update();
@@ -836,25 +948,89 @@
 				}
 			};
 		}}>
-			<div class="space-y-2 min-w-0">
-				{#if activeLineItems.length === 0}
-					<p class="text-sm text-muted-foreground py-4 text-center">No items on this order.</p>
+			<input type="hidden" name="discountType" value={batchDiscountType} />
+
+			<!-- Discount form -->
+			<div class="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+				<div class="flex flex-wrap items-end gap-3">
+					<div class="space-y-1.5">
+						<span class="text-xs font-medium text-muted-foreground">Discount type</span>
+						<div class="inline-flex items-center rounded-lg border border-border bg-card p-0.5 text-xs">
+							<button
+								type="button"
+								onclick={() => { batchDiscountType = 'PERCENTAGE'; batchApplied = {}; batchError = ''; }}
+								class="px-3 py-1.5 rounded-md font-medium transition-colors {batchDiscountType === 'PERCENTAGE' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}"
+							>Percentage</button>
+							<button
+								type="button"
+								onclick={() => { batchDiscountType = 'FIXED_AMOUNT'; batchApplied = {}; batchError = ''; }}
+								class="px-3 py-1.5 rounded-md font-medium transition-colors {batchDiscountType === 'FIXED_AMOUNT' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}"
+							>Amount</button>
+						</div>
+					</div>
+
+					<div class="space-y-1.5">
+						<span class="text-xs font-medium text-muted-foreground">
+							{batchDiscountType === 'PERCENTAGE' ? 'Percent off' : `Amount off per item (${orderCurrency})`}
+						</span>
+						<div class="relative w-32">
+							<Input
+								type="number"
+								min="0"
+								max={batchDiscountType === 'PERCENTAGE' ? '100' : undefined}
+								step={batchDiscountType === 'PERCENTAGE' ? '1' : '0.01'}
+								placeholder="0"
+								class="pr-7 h-9 text-sm"
+								bind:value={batchDiscountValue}
+							/>
+							{#if batchDiscountType === 'PERCENTAGE'}
+								<span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+							{/if}
+						</div>
+					</div>
+
+					<Button type="button" variant="secondary" onclick={applyBatchDiscount} disabled={batchCheckedCount === 0}>
+						Apply to {batchCheckedCount} {batchCheckedCount === 1 ? 'item' : 'items'}
+					</Button>
+				</div>
+
+				{#if batchError}
+					<p class="text-xs text-destructive">{batchError}</p>
+				{:else if batchAppliedCount > 0}
+					<p class="text-xs text-muted-foreground">
+						Staged on {batchAppliedCount} {batchAppliedCount === 1 ? 'item' : 'items'} — nothing is saved until you press Save.
+					</p>
 				{/if}
-				<!-- Loop the full (unfiltered) line item list, not just activeLineItems —
+			</div>
+
+			<!-- Items -->
+			<div class="mt-4 space-y-2 min-w-0">
+				{#if discountableItems.length === 0}
+					<p class="text-sm text-muted-foreground py-4 text-center">No items on this order.</p>
+				{:else}
+					<div class="flex items-center justify-between">
+						<span class="text-xs font-medium text-muted-foreground">
+							{batchCheckedCount} of {discountableItems.length} selected
+						</span>
+						<button type="button" class="text-xs text-muted-foreground hover:text-foreground underline" onclick={toggleBatchAll}>
+							{batchCheckedCount < discountableItems.length ? 'Select all' : 'Clear all'}
+						</button>
+					</div>
+				{/if}
+
+				<!-- Loop the full (unfiltered) line item list, not just the active ones —
 				     orderEditBegin's calculated order mirrors this same full order, so a
 				     hidden input must still be emitted for removed (qty-0) items to keep
 				     array positions aligned when the server matches by index. -->
 				{#each order.lineItems.nodes as item}
 					{#if item.currentQuantity > 0}
-						{@const sel = discountSelections[item.id] ?? { checked: false, percent: '' }}
-						{@const original = parseFloat(item.originalUnitPriceSet.shopMoney.amount)}
-						{@const discounted = parseFloat(item.discountedUnitPriceSet.shopMoney.amount)}
-						{@const existingPct = original > 0 && discounted < original ? Math.round((1 - discounted / original) * 100) : 0}
+						{@const checked = batchChecked[item.id] ?? false}
+						{@const staged = batchApplied[item.id]}
 						{@const img = item.image?.url ?? item.variant?.image?.url}
-						<label class="flex items-center gap-3 min-w-0 border border-border rounded-lg px-3 py-2.5 {sel.checked ? 'border-primary/40 bg-primary/5' : ''}">
-							<Checkbox checked={sel.checked} onCheckedChange={() => discountSelections[item.id] = { ...sel, checked: !sel.checked }} />
+						<label class="flex items-center gap-3 min-w-0 border border-border rounded-lg px-3 py-2.5 {checked ? 'border-primary/40 bg-primary/5' : ''}">
+							<Checkbox {checked} onCheckedChange={() => toggleBatchItem(item.id)} />
 							<input type="hidden" name="lineItemId" value={item.id} />
-							<input type="hidden" name="percentage" value={sel.checked ? sel.percent : ''} />
+							<input type="hidden" name="value" value={staged ?? ''} />
 							{#if img}
 								<img src={img} alt={item.title} class="size-10 rounded-md object-cover border border-border shrink-0" />
 							{:else}
@@ -863,40 +1039,123 @@
 							<div class="min-w-0 flex-1">
 								<div class="text-sm font-medium text-foreground truncate">{item.title}</div>
 								<div class="text-xs text-muted-foreground truncate">
-									{#if existingPct > 0}
-										<span class="line-through">{formatCurrency(item.originalUnitPriceSet.shopMoney.amount, item.originalUnitPriceSet.shopMoney.currencyCode)}</span>
-										<span class="text-green-700 font-medium">{formatCurrency(item.discountedUnitPriceSet.shopMoney.amount, item.discountedUnitPriceSet.shopMoney.currencyCode)} each · {existingPct}% off</span>
-									{:else}
-										{formatCurrency(item.originalUnitPriceSet.shopMoney.amount, item.originalUnitPriceSet.shopMoney.currencyCode)} each
-									{/if}
+									{item.currentQuantity} × {formatCurrency(item.discountedUnitPriceSet.shopMoney.amount, orderCurrency)}
 								</div>
 							</div>
-							<div class="relative w-24 shrink-0">
-								<Input
-									type="number"
-									min="0"
-									max="100"
-									step="1"
-									placeholder="0"
-									class="pr-7 h-9 text-sm"
-									disabled={!sel.checked}
-									value={sel.percent}
-									oninput={(e) => discountSelections[item.id] = { ...sel, percent: e.currentTarget.value }}
-								/>
-								<span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+							<div class="text-right shrink-0 text-sm tabular-nums">
+								{#if staged}
+									<div class="text-xs text-muted-foreground line-through">{formatCurrency(lineTotal(item).toFixed(2), orderCurrency)}</div>
+									<div class="font-semibold text-green-700">{formatCurrency(stagedTotal(item).toFixed(2), orderCurrency)}</div>
+								{:else}
+									<div class="text-foreground">{formatCurrency(lineTotal(item).toFixed(2), orderCurrency)}</div>
+								{/if}
 							</div>
 						</label>
 					{:else}
 						<input type="hidden" name="lineItemId" value={item.id} />
-						<input type="hidden" name="percentage" value="" />
+						<input type="hidden" name="value" value="" />
 					{/if}
 				{/each}
 			</div>
+
 			<Dialog.Footer class="mt-4">
 				<Button type="button" variant="outline" disabled={applyingDiscount} onclick={() => showDiscountModal = false}>Cancel</Button>
-				<Button type="submit" disabled={applyingDiscount}>
+				<Button type="submit" disabled={applyingDiscount || batchAppliedCount === 0}>
 					{#if applyingDiscount}{@render spinner()}{/if}
-					{applyingDiscount ? 'Applying…' : 'Apply Discount'}
+					{applyingDiscount ? 'Saving…' : 'Save'}
+				</Button>
+			</Dialog.Footer>
+		</form>
+	</Dialog.Content>
+</Dialog.Root>
+
+<!-- Add / remove shipping dialog -->
+<Dialog.Root bind:open={showShippingLinesModal}>
+	<Dialog.Content class="sm:max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden min-w-0">
+		<Dialog.Header>
+			<Dialog.Title>Add / Remove Shipping</Dialog.Title>
+			<Dialog.Description>Change what this order charges for shipping.</Dialog.Description>
+		</Dialog.Header>
+
+		<form method="POST" action="?/updateShippingLines" class="min-w-0" use:enhance={() => {
+			savingShippingLines = true;
+			return async ({ result, update }) => {
+				await update();
+				savingShippingLines = false;
+				if (result.type === 'redirect') {
+					addToast('Shipping updated');
+					showShippingLinesModal = false;
+				} else {
+					addToast('Failed to update shipping', 'error');
+				}
+			};
+		}}>
+			<!-- Existing shipping -->
+			<div class="space-y-2 min-w-0">
+				<span class="text-xs font-medium text-muted-foreground">Current shipping</span>
+				{#if order.shippingLines.nodes.length === 0}
+					<p class="text-sm text-muted-foreground border border-dashed border-border rounded-lg px-3 py-4 text-center">
+						This order has no shipping charge.
+					</p>
+				{:else}
+					{#each order.shippingLines.nodes as line}
+						{@const marked = shippingRemovals[line.id] ?? false}
+						<div class="flex items-center gap-3 min-w-0 border border-border rounded-lg px-3 py-2.5 {marked ? 'border-destructive/40 bg-destructive/5' : ''}">
+							{#if marked}
+								<input type="hidden" name="removeShippingLineId" value={line.id} />
+							{/if}
+							<div class="min-w-0 flex-1">
+								<div class="text-sm font-medium text-foreground truncate {marked ? 'line-through text-muted-foreground' : ''}">{line.title}</div>
+								<div class="text-xs text-muted-foreground">
+									{formatCurrency(line.originalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
+								</div>
+							</div>
+							<Button
+								type="button"
+								variant={marked ? 'outline' : 'destructive'}
+								size="sm"
+								class="shrink-0"
+								onclick={() => shippingRemovals[line.id] = !marked}
+							>
+								{marked ? 'Undo' : 'Remove'}
+							</Button>
+						</div>
+					{/each}
+				{/if}
+			</div>
+
+			<!-- Add shipping -->
+			<div class="mt-4 rounded-lg border border-border bg-muted/30 p-3 space-y-3">
+				<span class="text-xs font-medium text-muted-foreground">Add a shipping charge</span>
+				<div class="flex flex-wrap items-end gap-3">
+					<div class="space-y-1.5 flex-1 min-w-[10rem]">
+						<Label for="shipping-title" class="text-xs text-muted-foreground">Label</Label>
+						<Input id="shipping-title" name="shippingTitle" class="h-9 text-sm" placeholder="Shipping" bind:value={newShippingTitle} />
+					</div>
+					<div class="space-y-1.5 w-32">
+						<Label for="shipping-amount" class="text-xs text-muted-foreground">
+							Amount ({order.totalPriceSet.shopMoney.currencyCode})
+						</Label>
+						<Input
+							id="shipping-amount"
+							name="shippingAmount"
+							type="number"
+							min="0"
+							step="0.01"
+							placeholder="0.00"
+							class="h-9 text-sm"
+							bind:value={newShippingAmount}
+						/>
+					</div>
+				</div>
+				<p class="text-xs text-muted-foreground">Leave the amount blank to only remove shipping. Enter 0 for free shipping.</p>
+			</div>
+
+			<Dialog.Footer class="mt-4">
+				<Button type="button" variant="outline" disabled={savingShippingLines} onclick={() => showShippingLinesModal = false}>Cancel</Button>
+				<Button type="submit" disabled={savingShippingLines || !shippingChanged}>
+					{#if savingShippingLines}{@render spinner()}{/if}
+					{savingShippingLines ? 'Saving…' : 'Save'}
 				</Button>
 			</Dialog.Footer>
 		</form>
@@ -923,11 +1182,29 @@
 				</Select.Root>
 			</div>
 			<div class="space-y-1.5">
-				<div class="flex items-center gap-1.5 text-sm">
+				<label class="flex items-center gap-1.5 text-sm cursor-pointer">
+					<Checkbox checked={cancelRestock} onCheckedChange={() => cancelRestock = !cancelRestock} />
+					Restock inventory
+				</label>
+				{#if cancelRestock}
 					<input type="hidden" name="restock" value="true" />
-					<Checkbox checked disabled />
-					<span class="text-muted-foreground">Restock inventory (always on — cancelled orders can't skip restocking)</span>
-				</div>
+				{:else}
+					<!-- Stock that isn't returned to the shelf is a write-off, so the
+					     reason is required and goes into the activity log. -->
+					<div class="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 p-3">
+						<Label for="noRestockReason" class="text-xs font-medium text-amber-900">
+							Why is this inventory not being restocked? <span class="text-destructive">*</span>
+						</Label>
+						<Input
+							id="noRestockReason"
+							name="noRestockReason"
+							class="h-9 text-sm bg-card"
+							placeholder="e.g. items arrived damaged"
+							bind:value={cancelNoRestockReason}
+						/>
+						<p class="text-xs text-amber-900/80">Recorded against your name in the activity log.</p>
+					</div>
+				{/if}
 				<label class="flex items-center gap-1.5 text-sm cursor-pointer">
 					<Checkbox name="notify" value="true" checked />
 					Send a notification to the customer
@@ -941,7 +1218,7 @@
 			{/if}
 			<Dialog.Footer>
 				<Button type="button" variant="outline" disabled={submitting === 'cancel'} onclick={() => showCancelDialog = false}>Keep Order</Button>
-				<Button type="submit" variant="destructive" disabled={submitting === 'cancel'}>
+				<Button type="submit" variant="destructive" disabled={submitting === 'cancel' || (!cancelRestock && cancelNoRestockReason.trim().length < 3)}>
 					{#if submitting === 'cancel'}{@render spinner()}{/if}Cancel Order
 				</Button>
 			</Dialog.Footer>

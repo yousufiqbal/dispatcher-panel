@@ -1,10 +1,23 @@
 import { shopifyRequest } from './client';
 import type { ShopifyClient } from './client';
 
+export interface CalculatedShippingLine {
+	id: string;
+	title: string;
+	price: { shopMoney: { amount: string; currencyCode: string } };
+}
+
 export async function orderEditBegin(
 	client: ShopifyClient,
 	orderId: string
-): Promise<{ calcOrderId: string; lineItems: { id: string; quantity: number }[] }> {
+): Promise<{
+	calcOrderId: string;
+	lineItems: { id: string; quantity: number }[];
+	shippingLines: CalculatedShippingLine[];
+}> {
+	// Shipping lines come back as CalculatedShippingLine ids — distinct from the
+	// order's own ShippingLine ids, and the only ones the remove/update
+	// mutations accept — so they have to be read from here, not from getOrder.
 	const gql = `
     mutation orderEditBegin($id: ID!) {
       orderEditBegin(id: $id) {
@@ -13,6 +26,11 @@ export async function orderEditBegin(
           lineItems(first: 50) {
             nodes { id quantity }
           }
+          shippingLines {
+            id
+            title
+            price { shopMoney { amount currencyCode } }
+          }
         }
         userErrors { field message }
       }
@@ -20,7 +38,11 @@ export async function orderEditBegin(
   `;
 	const data = await shopifyRequest<{
 		orderEditBegin: {
-			calculatedOrder: { id: string; lineItems: { nodes: { id: string; quantity: number }[] } };
+			calculatedOrder: {
+				id: string;
+				lineItems: { nodes: { id: string; quantity: number }[] };
+				shippingLines: CalculatedShippingLine[];
+			};
 			userErrors: { field: string[]; message: string }[];
 		} | null;
 	}>(client, gql, { id: orderId });
@@ -28,8 +50,55 @@ export async function orderEditBegin(
 	if (data.orderEditBegin.userErrors.length) throw new Error(data.orderEditBegin.userErrors.map(e => e.message).join(', '));
 	return {
 		calcOrderId: data.orderEditBegin.calculatedOrder.id,
-		lineItems: data.orderEditBegin.calculatedOrder.lineItems.nodes
+		lineItems: data.orderEditBegin.calculatedOrder.lineItems.nodes,
+		shippingLines: data.orderEditBegin.calculatedOrder.shippingLines ?? []
 	};
+}
+
+export async function orderEditAddShippingLine(
+	client: ShopifyClient,
+	calcOrderId: string,
+	shippingLine: { title: string; amount: number; currencyCode: string }
+): Promise<void> {
+	const gql = `
+    mutation orderEditAddShippingLine($id: ID!, $shippingLine: OrderEditAddShippingLineInput!) {
+      orderEditAddShippingLine(id: $id, shippingLine: $shippingLine) {
+        calculatedOrder { id }
+        userErrors { field message }
+      }
+    }
+  `;
+	const data = await shopifyRequest<{
+		orderEditAddShippingLine: { userErrors: { field: string[]; message: string }[] } | null;
+	}>(client, gql, {
+		id: calcOrderId,
+		shippingLine: {
+			title: shippingLine.title,
+			price: { amount: String(shippingLine.amount), currencyCode: shippingLine.currencyCode }
+		}
+	});
+	if (!data.orderEditAddShippingLine) throw new Error('orderEditAddShippingLine returned null');
+	if (data.orderEditAddShippingLine.userErrors.length) throw new Error(data.orderEditAddShippingLine.userErrors.map(e => e.message).join(', '));
+}
+
+export async function orderEditRemoveShippingLine(
+	client: ShopifyClient,
+	calcOrderId: string,
+	shippingLineId: string
+): Promise<void> {
+	const gql = `
+    mutation orderEditRemoveShippingLine($id: ID!, $shippingLineId: ID!) {
+      orderEditRemoveShippingLine(id: $id, shippingLineId: $shippingLineId) {
+        calculatedOrder { id }
+        userErrors { field message }
+      }
+    }
+  `;
+	const data = await shopifyRequest<{
+		orderEditRemoveShippingLine: { userErrors: { field: string[]; message: string }[] } | null;
+	}>(client, gql, { id: calcOrderId, shippingLineId });
+	if (!data.orderEditRemoveShippingLine) throw new Error('orderEditRemoveShippingLine returned null');
+	if (data.orderEditRemoveShippingLine.userErrors.length) throw new Error(data.orderEditRemoveShippingLine.userErrors.map(e => e.message).join(', '));
 }
 
 export async function orderEditSetQuantity(client: ShopifyClient, calcOrderId: string, lineItemId: string, quantity: number): Promise<void> {
