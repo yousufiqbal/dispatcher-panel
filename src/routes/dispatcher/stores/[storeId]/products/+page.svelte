@@ -72,6 +72,16 @@
 		{ key: 'none', label: 'Uncollected', count: data.products.filter((p) => inCollection(p, 'none')).length }
 	]);
 
+	// Long catalogs can carry dozens of collections, so the sidebar gets its own
+	// filter box once the list is big enough to be awkward to scan.
+	let collectionQuery = $state('');
+	const visibleTabs = $derived(
+		collectionQuery.trim() === ''
+			? filterTabs
+			: filterTabs.filter((t) => t.label.toLowerCase().includes(collectionQuery.trim().toLowerCase()))
+	);
+	const activeTabLabel = $derived(filterTabs.find((t) => t.key === collectionFilter)?.label ?? 'All');
+
 	function filterHref(key: string): string {
 		const sp = new URLSearchParams($page.url.searchParams);
 		if (key === 'all') sp.delete('collection');
@@ -87,23 +97,35 @@
 	}
 </script>
 
+{#snippet collectionRow(tab: { key: string; label: string; count: number })}
+	{@const isActive = collectionFilter === tab.key}
+	<a
+		href={filterHref(tab.key)}
+		class="flex items-center justify-between gap-2 rounded-md px-2.5 py-1.5 text-sm transition-colors
+			{isActive ? 'bg-primary text-primary-foreground font-medium' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}"
+	>
+		<span class="truncate">{tab.label}</span>
+		<span class="shrink-0 tabular-nums text-xs {isActive ? 'text-primary-foreground/70' : 'text-muted-foreground/70'}">{tab.count}</span>
+	</a>
+{/snippet}
+
 <svelte:head>
 	<title>Products — Pro Shipper</title>
 </svelte:head>
 
 <div class="p-3 sm:p-6">
-	<!-- Collection filter -->
-	<div class="mb-5">
-		<div class="flex flex-wrap items-center gap-2">
+	<!-- Collections as pills on mobile, sidebar on desktop -->
+	<div class="lg:hidden mb-4 -mx-3 px-3 overflow-x-auto">
+		<div class="inline-flex items-center gap-2 flex-nowrap">
 			{#each filterTabs as tab}
 				{@const isActive = collectionFilter === tab.key}
 				<a
 					href={filterHref(tab.key)}
 					class="inline-flex items-center gap-1.5 shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors duration-150
-						{isActive ? 'bg-primary text-primary-foreground border-primary' : 'bg-white border border-zinc-200 text-muted-foreground hover:bg-accent'}"
+						{isActive ? 'bg-primary text-primary-foreground' : 'bg-card border border-border text-muted-foreground'}"
 				>
 					{tab.label}
-					<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {isActive ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-zinc-100 text-zinc-500'}">
+					<span class="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-semibold {isActive ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted text-muted-foreground'}">
 						{tab.count}
 					</span>
 				</a>
@@ -111,13 +133,40 @@
 		</div>
 	</div>
 
-	<div class="lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-5 lg:items-start">
+	<div class="lg:grid lg:grid-cols-[13rem_minmax(0,4fr)_minmax(0,5fr)] lg:gap-5 lg:items-start">
+
+		<!-- Collections sidebar (desktop) -->
+		<aside class="hidden lg:block sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto card p-2">
+			<div class="px-1.5 pt-1 pb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+				Collections
+			</div>
+			{#if filterTabs.length > 12}
+				<input
+					type="search"
+					placeholder="Filter collections…"
+					bind:value={collectionQuery}
+					class="w-full mb-2 h-8 rounded-md border border-border bg-background px-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+				/>
+			{/if}
+			<nav class="space-y-0.5">
+				{#each visibleTabs as tab (tab.key)}
+					{@render collectionRow(tab)}
+				{/each}
+				{#if visibleTabs.length === 0}
+					<p class="px-2.5 py-3 text-xs text-muted-foreground">No collections match.</p>
+				{/if}
+			</nav>
+		</aside>
+
 	{#if filteredProducts.length === 0}
 		<div class="card p-12 text-center">
 			<svg class="size-12 mx-auto text-muted-foreground/30 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" />
 			</svg>
 			<h3 class="font-semibold text-foreground mb-1">No products found</h3>
+			{#if collectionFilter !== 'all'}
+				<p class="text-sm text-muted-foreground">Nothing in “{activeTabLabel}”.</p>
+			{/if}
 		</div>
 	{:else}
 		<div class="card overflow-hidden">

@@ -207,7 +207,7 @@ export interface OrderDetail extends OrderNode {
 			// amount taken off that line rather than just a reduced unit price.
 			discountAllocations: {
 				allocatedAmountSet: { shopMoney: { amount: string; currencyCode: string } };
-				discountApplication: { title?: string | null; code?: string | null } | null;
+				discountApplication: { __typename?: string; title?: string | null; code?: string | null } | null;
 			}[];
 		}[];
 	};
@@ -270,6 +270,7 @@ export async function getOrder(client: ShopifyClient, orderId: string): Promise<
             discountAllocations {
               allocatedAmountSet { shopMoney { amount currencyCode } }
               discountApplication {
+                __typename
                 ... on ManualDiscountApplication { title }
                 ... on ScriptDiscountApplication { title }
                 ... on AutomaticDiscountApplication { title }

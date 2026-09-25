@@ -7,12 +7,19 @@ export interface CalculatedShippingLine {
 	price: { shopMoney: { amount: string; currencyCode: string } };
 }
 
+export interface CalculatedLineItem {
+	id: string;
+	quantity: number;
+	/** Discounts already on this line, including ones staged by earlier edits. */
+	calculatedDiscountAllocations: { discountApplication: { id: string; __typename: string } }[];
+}
+
 export async function orderEditBegin(
 	client: ShopifyClient,
 	orderId: string
 ): Promise<{
 	calcOrderId: string;
-	lineItems: { id: string; quantity: number }[];
+	lineItems: CalculatedLineItem[];
 	shippingLines: CalculatedShippingLine[];
 }> {
 	// Shipping lines come back as CalculatedShippingLine ids — distinct from the
@@ -24,7 +31,13 @@ export async function orderEditBegin(
         calculatedOrder {
           id
           lineItems(first: 50) {
-            nodes { id quantity }
+            nodes {
+              id
+              quantity
+              calculatedDiscountAllocations {
+                discountApplication { id __typename }
+              }
+            }
           }
           shippingLines {
             id
@@ -40,7 +53,7 @@ export async function orderEditBegin(
 		orderEditBegin: {
 			calculatedOrder: {
 				id: string;
-				lineItems: { nodes: { id: string; quantity: number }[] };
+				lineItems: { nodes: CalculatedLineItem[] };
 				shippingLines: CalculatedShippingLine[];
 			};
 			userErrors: { field: string[]; message: string }[];
@@ -184,6 +197,33 @@ export async function orderEditAddDiscount(
 	}>(client, gql, { id: calcOrderId, lineItemId, discount: discountInput });
 	if (!data.orderEditAddLineItemDiscount) throw new Error('orderEditAddLineItemDiscount returned null');
 	if (data.orderEditAddLineItemDiscount.userErrors.length) throw new Error(data.orderEditAddLineItemDiscount.userErrors.map(e => e.message).join(', '));
+}
+
+// Manual discounts are the ones this panel (and the Shopify admin's own
+// "custom discount") create. Code and automatic discounts carry different
+// types and must be left alone.
+export function isManualDiscountApplication(typename: string): boolean {
+	return typename === 'CalculatedManualDiscountApplication';
+}
+
+export async function orderEditRemoveDiscount(
+	client: ShopifyClient,
+	calcOrderId: string,
+	discountApplicationId: string
+): Promise<void> {
+	const gql = `
+    mutation orderEditRemoveDiscount($id: ID!, $discountApplicationId: ID!) {
+      orderEditRemoveDiscount(id: $id, discountApplicationId: $discountApplicationId) {
+        calculatedOrder { id }
+        userErrors { field message }
+      }
+    }
+  `;
+	const data = await shopifyRequest<{
+		orderEditRemoveDiscount: { userErrors: { field: string[]; message: string }[] } | null;
+	}>(client, gql, { id: calcOrderId, discountApplicationId });
+	if (!data.orderEditRemoveDiscount) throw new Error('orderEditRemoveDiscount returned null');
+	if (data.orderEditRemoveDiscount.userErrors.length) throw new Error(data.orderEditRemoveDiscount.userErrors.map(e => e.message).join(', '));
 }
 
 export async function orderEditCommit(client: ShopifyClient, calcOrderId: string, notifyCustomer: boolean, staffNote: string): Promise<void> {

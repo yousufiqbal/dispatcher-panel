@@ -31,7 +31,9 @@
 </script>
 
 {#snippet media()}
-<div class="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+<!-- Side-pane mode is narrow, so images and description stack instead of
+     sitting side by side — the description lands under the gallery. -->
+<div class="grid grid-cols-1 gap-5 mb-5 {variantsFirst ? '' : 'md:grid-cols-2'}">
 	<!-- Images -->
 	<div>
 		{#if product.images.nodes.length > 0}

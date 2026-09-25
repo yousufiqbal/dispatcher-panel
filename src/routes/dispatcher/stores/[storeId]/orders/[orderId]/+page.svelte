@@ -16,6 +16,8 @@
 	import Lightbox from '$lib/components/Lightbox.svelte';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import PhoneIcon from '@lucide/svelte/icons/phone';
+	import CopyIcon from '@lucide/svelte/icons/copy';
+	import CheckIcon2 from '@lucide/svelte/icons/check';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
@@ -55,6 +57,14 @@
 	let newShippingTitle = $state('Shipping');
 	let newShippingAmount = $state('');
 	let savingShippingLines = $state(false);
+
+	// Phone/email copy feedback, same affordance as the orders list.
+	let copiedField = $state<string | null>(null);
+	function copyValue(value: string) {
+		navigator.clipboard.writeText(value);
+		copiedField = value;
+		setTimeout(() => copiedField === value && (copiedField = null), 1200);
+	}
 
 	// Cancel dialog: skipping the restock requires a written reason.
 	let cancelRestock = $state(true);
@@ -200,8 +210,17 @@
 		showDiscountModal = true;
 	}
 
+	// What the line costs before any manual discount. Re-applying a batch
+	// discount replaces the previous manual one, so the preview has to measure
+	// against the undiscounted price — otherwise 10% on top of 10% would look
+	// like it compounds when it won't. Code/automatic discounts survive the
+	// replace, so they stay subtracted here.
 	function lineTotal(item: (typeof order.lineItems.nodes)[number]): number {
-		return parseFloat(item.discountedUnitPriceSet.shopMoney.amount) * item.currentQuantity;
+		const gross = parseFloat(item.originalUnitPriceSet.shopMoney.amount) * item.currentQuantity;
+		const keptDiscounts = item.discountAllocations
+			.filter((d) => d.discountApplication?.__typename !== 'ManualDiscountApplication')
+			.reduce((sum, d) => sum + parseFloat(d.allocatedAmountSet.shopMoney.amount), 0);
+		return Math.max(0, gross - keptDiscounts);
 	}
 
 	// What the line costs after the staged discount — used for the preview and
@@ -318,82 +337,75 @@
 {/snippet}
 
 {#snippet customerCard()}
-	<div class="card">
-		<div class="px-5 py-4 border-b border-border flex items-center justify-between">
-			<h2 class="font-semibold text-sm">Customer</h2>
-			{#if !isCancelled}
-				<DropdownMenu.Root>
-					<DropdownMenu.Trigger>
-						{#snippet child({ props })}
-							<button {...props} class="text-muted-foreground hover:text-foreground" title="More">
-								<MoreHorizontalIcon class="size-4" />
-							</button>
-						{/snippet}
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Content align="end" class="w-52">
-						<DropdownMenu.Item onclick={() => showEditContactModal = true}>Edit contact information</DropdownMenu.Item>
-						<DropdownMenu.Item onclick={() => showEditShippingModal = true}>Edit shipping address</DropdownMenu.Item>
-					</DropdownMenu.Content>
-				</DropdownMenu.Root>
+	<!-- One dense line: name · address · phone · email, with the edit menu inline
+	     instead of its own header bar. -->
+	<div class="card px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+		{#if order.customer}
+			<a
+				href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}"
+				class="font-semibold text-sm text-foreground hover:text-primary hover:underline"
+			>{order.customer.displayName}</a>
+			{#if order.customer.numberOfOrders > 0}
+				<span class="text-muted-foreground -ml-3">({order.customer.numberOfOrders})</span>
 			{/if}
-		</div>
-		<div class="px-5 py-4 space-y-4 text-sm">
-			{#if order.customer}
-				<div>
-					<a href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}" class="text-primary hover:underline block">{order.customer.displayName}</a>
-					{#if order.customer.numberOfOrders > 0}
-						<a href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}" class="text-primary hover:underline text-xs">
-							{order.customer.numberOfOrders} order{order.customer.numberOfOrders === 1 ? '' : 's'}
-						</a>
-					{/if}
-				</div>
-			{:else}
-				<div class="text-muted-foreground">Guest order</div>
-			{/if}
+		{:else}
+			<span class="font-semibold text-sm text-foreground">Guest</span>
+		{/if}
 
-			{#if order.customer?.email || order.customer?.phone}
-				<div>
-					<div class="font-semibold text-foreground text-xs uppercase tracking-wide mb-1">Contact information</div>
-					{#if order.customer.email}<a href="mailto:{order.customer.email}" class="text-primary hover:underline block">{order.customer.email}</a>{/if}
-					{#if order.customer.phone}<div class="text-muted-foreground">{order.customer.phone}</div>{/if}
-				</div>
-			{/if}
+		{#if order.shippingAddress}
+			{@const addr = order.shippingAddress}
+			<span class="text-border">|</span>
+			<span class="text-foreground/80 min-w-0">
+				{addr.address1}{#if addr.address2}, {addr.address2}{/if},
+				<span class="font-semibold text-foreground">{[addr.city, addr.province].filter(Boolean).join(', ')}</span>
+			</span>
+		{/if}
 
-			{#if order.shippingAddress}
-				<div>
-					<div class="font-semibold text-foreground text-xs uppercase tracking-wide mb-1">Shipping address</div>
-					<address class="not-italic text-foreground space-y-0.5">
-						<div>{order.shippingAddress.name}</div>
-						<div>{order.shippingAddress.address1}</div>
-						{#if order.shippingAddress.address2}<div>{order.shippingAddress.address2}</div>{/if}
-						<div>{order.shippingAddress.city} {order.shippingAddress.zip}</div>
-						<div>{order.shippingAddress.country}</div>
-						{#if order.shippingAddress.phone}<div>{order.shippingAddress.phone}</div>{/if}
-					</address>
-					<a
-						href="https://www.google.com/maps/search/?api=1&query={encodeURIComponent([order.shippingAddress.address1, order.shippingAddress.city, order.shippingAddress.province, order.shippingAddress.country].filter(Boolean).join(', '))}"
-						target="_blank"
-						rel="noopener"
-						class="text-primary hover:underline text-xs block mt-2"
-					>View map</a>
-				</div>
-
-				<div>
-					<div class="font-semibold text-foreground text-xs uppercase tracking-wide mb-1">Billing address</div>
-					{#if !order.billingAddress || (order.billingAddress.address1 === order.shippingAddress.address1 && order.billingAddress.city === order.shippingAddress.city && order.billingAddress.zip === order.shippingAddress.zip)}
-						<p class="text-muted-foreground">Same as shipping address</p>
+		{#if customerPhone}
+			{@const phone = customerPhone}
+			<span class="text-border">|</span>
+			<span class="inline-flex items-center gap-1 font-mono">
+				<a href="tel:{phone}" class="text-foreground/80 hover:text-primary hover:underline">{phone}</a>
+				<button type="button" class="text-muted-foreground hover:text-primary" title="Copy phone number" onclick={() => copyValue(phone)}>
+					{#if copiedField === phone}
+						<CheckIcon2 class="size-3 text-green-600" />
 					{:else}
-						<address class="not-italic text-foreground space-y-0.5">
-							<div>{order.billingAddress.name}</div>
-							<div>{order.billingAddress.address1}</div>
-							{#if order.billingAddress.address2}<div>{order.billingAddress.address2}</div>{/if}
-							<div>{order.billingAddress.city} {order.billingAddress.zip}</div>
-							<div>{order.billingAddress.country}</div>
-						</address>
+						<CopyIcon class="size-3" />
 					{/if}
-				</div>
-			{/if}
-		</div>
+				</button>
+			</span>
+		{/if}
+
+		{#if order.customer?.email}
+			{@const email = order.customer.email}
+			<span class="text-border">|</span>
+			<span class="inline-flex items-center gap-1 min-w-0">
+				<a href="mailto:{email}" class="text-foreground/80 hover:text-primary hover:underline truncate">{email}</a>
+				<button type="button" class="text-muted-foreground hover:text-primary shrink-0" title="Copy email" onclick={() => copyValue(email)}>
+					{#if copiedField === email}
+						<CheckIcon2 class="size-3 text-green-600" />
+					{:else}
+						<CopyIcon class="size-3" />
+					{/if}
+				</button>
+			</span>
+		{/if}
+
+		{#if !isCancelled}
+			<DropdownMenu.Root>
+				<DropdownMenu.Trigger>
+					{#snippet child({ props })}
+						<button {...props} class="ml-auto shrink-0 text-muted-foreground hover:text-foreground" title="More">
+							<MoreHorizontalIcon class="size-4" />
+						</button>
+					{/snippet}
+				</DropdownMenu.Trigger>
+				<DropdownMenu.Content align="end" class="w-52">
+					<DropdownMenu.Item onclick={() => showEditContactModal = true}>Edit contact information</DropdownMenu.Item>
+					<DropdownMenu.Item onclick={() => showEditShippingModal = true}>Edit shipping address</DropdownMenu.Item>
+				</DropdownMenu.Content>
+			</DropdownMenu.Root>
+		{/if}
 	</div>
 {/snippet}
 
@@ -526,9 +538,11 @@
 							<DropdownMenu.Item onclick={() => showRefundDialog = true}>Refund</DropdownMenu.Item>
 						{/if}
 						<DropdownMenu.Item onclick={() => showDuplicateDialog = true}>Duplicate Order</DropdownMenu.Item>
-						{#if !isCancelled}
+						<!-- Both go through an order edit, which Shopify refuses on a
+						     fulfilled order — so don't offer them there. -->
+						{#if !isCancelled && !isFulfilled}
 							<DropdownMenu.Item onclick={openBatchDiscount}>Add Batch Discount</DropdownMenu.Item>
-							<DropdownMenu.Item onclick={openShippingLines}>Add / Remove Shipping</DropdownMenu.Item>
+							<DropdownMenu.Item onclick={openShippingLines}>Manage Shipping</DropdownMenu.Item>
 						{/if}
 						<DropdownMenu.Item onclick={() => window.open(`/dispatcher/stores/${storeId}/orders/${$page.params.orderId}/invoice`, '_blank')}>
 							Preview Invoice
@@ -544,12 +558,14 @@
 		<div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">{form.error}</div>
 	{/if}
 
+	<!-- Customer sits full-width above Items and Tracking. -->
+	{@render customerCard()}
+
 	<div class="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
 
-		<!-- Notes/Customer/Tags (mobile only — desktop copy is in the right column below) -->
+		<!-- Notes/Tags (mobile only — desktop copy is in the right column below) -->
 		<div class="lg:hidden space-y-5">
 			{@render notesCard()}
-			{@render customerCard()}
 			{@render tagsCard()}
 		</div>
 
@@ -775,7 +791,7 @@
 
 		</div>
 
-		<!-- RIGHT COLUMN (desktop only): Tracking (if fulfilled), Notes, Customer, Tags -->
+		<!-- RIGHT COLUMN (desktop only): Tracking (if fulfilled), Notes, Tags -->
 		<div class="hidden lg:flex lg:col-start-3 flex-col gap-5">
 			{#if isFulfilled}
 				{@const fallbackTracking = order.fulfillments.flatMap((f) => f.trackingInfo).find((t) => t.number)}
@@ -825,7 +841,6 @@
 				</div>
 			{/if}
 			{@render notesCard()}
-			{@render customerCard()}
 			{@render tagsCard()}
 		</div>
 	</div>
@@ -1073,7 +1088,7 @@
 <Dialog.Root bind:open={showShippingLinesModal}>
 	<Dialog.Content class="sm:max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden min-w-0">
 		<Dialog.Header>
-			<Dialog.Title>Add / Remove Shipping</Dialog.Title>
+			<Dialog.Title>Manage Shipping</Dialog.Title>
 			<Dialog.Description>Change what this order charges for shipping.</Dialog.Description>
 		</Dialog.Header>
 

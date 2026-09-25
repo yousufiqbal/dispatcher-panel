@@ -40,7 +40,6 @@
 	const NAV_ITEMS = [
 		{ href: 'orders', label: 'Orders', d: 'M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2' },
 		{ href: 'products', label: 'Products', d: 'M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z' },
-		{ href: 'inventory', label: 'Inventory', d: 'M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 10V7' },
 		{ href: 'restock', label: 'Restock', d: 'M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99' },
 		{ href: 'inventory-count', label: 'Audit', d: 'M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25zM6.75 12h.008v.008H6.75V12zm0 3h.008v.008H6.75V15zm0 3h.008v.008H6.75V18z' }
 	];
@@ -135,7 +134,7 @@
 
 <div class="min-h-screen bg-zinc-50 flex">
 	<!-- Sidebar — desktop only; mobile navigation is the bottom bar below -->
-	<aside class="hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col bg-card border-r border-border w-64 shadow-sm">
+	<aside class="hidden lg:flex fixed inset-y-0 left-0 z-50 flex-col bg-card border-r border-border w-56 shadow-sm">
 		<!-- Store selector -->
 		<div class="relative shrink-0">
 			<button
@@ -194,7 +193,7 @@
 	</aside>
 
 	<!-- Main -->
-	<div class="flex-1 flex flex-col min-h-screen min-w-0 lg:ml-64">
+	<div class="flex-1 flex flex-col min-h-screen min-w-0 lg:ml-56">
 		<main class="flex-1 pb-16 lg:pb-0">
 			{#key $page.url.pathname}
 				{@render children()}

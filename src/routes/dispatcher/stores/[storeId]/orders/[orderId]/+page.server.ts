@@ -2,7 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { getShopifyClient, shopifyRequest } from '$lib/server/shopify/client';
 import { getOrder, cancelOrder, confirmOrder, unconfirmOrder, fulfillOrder, cancelFulfillment, refundOrder, updateOrderShipping, updateOrderEmail, updateOrderNote, updateOrderTags } from '$lib/server/shopify/orders';
-import { orderEditBegin, orderEditAddDiscount, orderEditCommit, orderEditAddShippingLine, orderEditRemoveShippingLine } from '$lib/server/shopify/order-edit';
+import { orderEditBegin, orderEditAddDiscount, orderEditCommit, orderEditAddShippingLine, orderEditRemoveShippingLine, orderEditRemoveDiscount, isManualDiscountApplication } from '$lib/server/shopify/order-edit';
 import { cancelShipment, getCourierTrackingUrl } from '$lib/server/courier';
 import { decrypt } from '$lib/server/crypto';
 import { logAudit } from '$lib/server/audit';
@@ -370,9 +370,22 @@ export const actions: Actions = {
 				: `${selections[0].value} ${currencyCode} off`;
 
 			const { calcOrderId, lineItems: calcLineItems } = await orderEditBegin(client, toShopifyOrderId(params.orderId));
+			let replaced = 0;
 			for (const sel of selections) {
 				const origIdx = lineItemIds.indexOf(sel.id);
-				const calcLineItemId = calcLineItems[origIdx]?.id ?? sel.id;
+				const calcLine = calcLineItems[origIdx];
+				const calcLineItemId = calcLine?.id ?? sel.id;
+
+				// Re-running a batch discount replaces the previous one rather than
+				// stacking on top of it — otherwise 10% twice would compound to 19%.
+				// Only manual discounts are cleared; discount codes and automatic
+				// discounts belong to the customer's order, not to us.
+				for (const alloc of calcLine?.calculatedDiscountAllocations ?? []) {
+					if (!isManualDiscountApplication(alloc.discountApplication.__typename)) continue;
+					await orderEditRemoveDiscount(client, calcOrderId, alloc.discountApplication.id);
+					replaced++;
+				}
+
 				await orderEditAddDiscount(client, calcOrderId, calcLineItemId, {
 					value: sel.value,
 					valueType: discountType,
@@ -384,7 +397,7 @@ export const actions: Actions = {
 			if (locals.session) {
 				await logAudit(locals.session.userId, 'dispatcher', 'order.applyDiscount', {
 					targetType: 'order', targetId: params.orderId, storeId: params.storeId,
-					metadata: { discountType, selections }
+					metadata: { discountType, selections, replacedExistingDiscounts: replaced }
 				});
 			}
 		} catch (e: unknown) {
