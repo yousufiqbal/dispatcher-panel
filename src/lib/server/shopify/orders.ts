@@ -9,12 +9,16 @@ export interface OrderNode {
 	displayFinancialStatus: string;
 	displayFulfillmentStatus: string;
 	totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+	currentTotalPriceSet?: { shopMoney: { amount: string; currencyCode: string } } | null;
+	/** Checkout total, preserved by toCurrentTotals before totalPriceSet is swapped for the current one. */
+	originalTotalPriceSet?: { shopMoney: { amount: string; currencyCode: string } };
 	phone: string | null;
 	customer: { id: string; displayName: string; phone: string | null; email: string | null; numberOfOrders: number } | null;
 	lineItems: {
 		nodes: {
 			title: string;
 			quantity: number;
+			currentQuantity?: number;
 			variant: { title: string; sku: string | null; image: { url: string; altText: string | null } | null } | null;
 			image: { url: string; altText: string | null } | null;
 		}[];
@@ -43,12 +47,13 @@ export interface PageInfo {
 const ORDER_FIELDS = `
   id name createdAt cancelledAt displayFinancialStatus displayFulfillmentStatus
   totalPriceSet { shopMoney { amount currencyCode } }
+  currentTotalPriceSet { shopMoney { amount currencyCode } }
   phone
   customer { id displayName phone email numberOfOrders }
   shippingAddress { name address1 address2 city province country zip phone }
   lineItems(first: 50) {
     nodes {
-      title quantity
+      title quantity currentQuantity
       variant { title sku image { url altText } }
       image { url altText }
     }
@@ -168,6 +173,41 @@ export async function getAnyTagCount(client: ShopifyClient, query: string, tags:
 	return count;
 }
 
+// `quantity` is what was originally ordered; `currentQuantity` is what's left
+// after order edits (0 = removed). List views only care about what will
+// actually ship, so drop removed lines and make `quantity` mean "current" —
+// every count, picking list and courier item line then comes out right
+// without each caller having to remember the distinction.
+export function toActiveLineItems<T extends { quantity: number; currentQuantity?: number }>(nodes: T[]): T[] {
+	return nodes
+		.filter((li) => (li.currentQuantity ?? li.quantity) > 0)
+		.map((li) => ({ ...li, quantity: li.currentQuantity ?? li.quantity }));
+}
+
+// Shopify's totalPriceSet / subtotalPriceSet / totalShippingPriceSet are frozen
+// at checkout; order edits (removed items, discounts, shipping changes) only
+// show up in the current* fields. Swap the current values in so every total,
+// invoice and COD amount reflects the order as it is now.
+export function toCurrentTotals<
+	T extends {
+		totalPriceSet: unknown;
+		originalTotalPriceSet?: unknown;
+		currentTotalPriceSet?: unknown;
+		subtotalPriceSet?: unknown;
+		currentSubtotalPriceSet?: unknown;
+		totalShippingPriceSet?: unknown;
+		currentShippingPriceSet?: unknown;
+	}
+>(o: T): T {
+	// Keep the checkout total around — the order page shows it as "Original
+	// order" when an edit has changed the total.
+	if (o.originalTotalPriceSet === undefined) o.originalTotalPriceSet = o.totalPriceSet;
+	if (o.currentTotalPriceSet) o.totalPriceSet = o.currentTotalPriceSet;
+	if (o.currentSubtotalPriceSet) o.subtotalPriceSet = o.currentSubtotalPriceSet;
+	if (o.currentShippingPriceSet) o.totalShippingPriceSet = o.currentShippingPriceSet;
+	return o;
+}
+
 export async function listOrders(
 	client: ShopifyClient,
 	opts: { first?: number; after?: string; before?: string; query?: string }
@@ -185,6 +225,10 @@ export async function listOrders(
 		gql,
 		{ first: opts.first ?? 50, after: opts.after, before: opts.before, query: opts.query }
 	);
+	for (const o of data.orders.nodes) {
+		o.lineItems.nodes = toActiveLineItems(o.lineItems.nodes);
+		toCurrentTotals(o);
+	}
 	return data.orders;
 }
 
@@ -247,6 +291,8 @@ export interface OrderDetail extends OrderNode {
 	}[];
 	subtotalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
 	totalShippingPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+	currentSubtotalPriceSet?: { shopMoney: { amount: string; currencyCode: string } } | null;
+	currentShippingPriceSet?: { shopMoney: { amount: string; currencyCode: string } } | null;
 	totalTaxSet: { shopMoney: { amount: string; currencyCode: string } } | null;
 	totalReceivedSet: { shopMoney: { amount: string; currencyCode: string } };
 	totalOutstandingSet: { shopMoney: { amount: string; currencyCode: string } } | null;
@@ -306,6 +352,8 @@ export async function getOrder(client: ShopifyClient, orderId: string): Promise<
         }
         subtotalPriceSet { shopMoney { amount currencyCode } }
         totalShippingPriceSet { shopMoney { amount currencyCode } }
+        currentSubtotalPriceSet { shopMoney { amount currencyCode } }
+        currentShippingPriceSet { shopMoney { amount currencyCode } }
         totalTaxSet { shopMoney { amount currencyCode } }
         totalReceivedSet { shopMoney { amount currencyCode } }
         totalOutstandingSet { shopMoney { amount currencyCode } }
@@ -316,6 +364,7 @@ export async function getOrder(client: ShopifyClient, orderId: string): Promise<
     }
   `;
 	const data = await shopifyRequest<{ order: OrderDetail }>(client, gql, { id: orderId });
+	if (data.order) toCurrentTotals(data.order);
 	return data.order;
 }
 

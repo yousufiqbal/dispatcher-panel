@@ -1,4 +1,5 @@
 import { shopifyRequest } from './client';
+import { toActiveLineItems, toCurrentTotals } from './orders';
 import type { ShopifyClient } from './client';
 
 export interface CustomerNode {
@@ -58,11 +59,14 @@ export interface CustomerOrderNode {
 	displayFinancialStatus: string;
 	displayFulfillmentStatus: string;
 	totalPriceSet: { shopMoney: { amount: string; currencyCode: string } };
+	currentTotalPriceSet?: { shopMoney: { amount: string; currencyCode: string } } | null;
+	originalTotalPriceSet?: { shopMoney: { amount: string; currencyCode: string } };
 	shippingAddress: { city: string; country: string } | null;
 	lineItems: {
 		nodes: {
 			title: string;
 			quantity: number;
+			currentQuantity?: number;
 			variant: { title: string; sku: string | null; image: { url: string; altText: string | null } | null } | null;
 			image: { url: string; altText: string | null } | null;
 		}[];
@@ -85,10 +89,11 @@ export async function getCustomer(
         nodes {
           id name createdAt cancelledAt displayFinancialStatus displayFulfillmentStatus
           totalPriceSet { shopMoney { amount currencyCode } }
+          currentTotalPriceSet { shopMoney { amount currencyCode } }
           shippingAddress { city country }
           lineItems(first: 50) {
             nodes {
-              title quantity
+              title quantity currentQuantity
               variant { title sku image { url altText } }
               image { url altText }
             }
@@ -104,6 +109,10 @@ export async function getCustomer(
 	}>(client, gql, { id: customerId, ordersQuery: `customer_id:"${numericId}" status:any` });
 
 	if (!data.customer) throw new Error('Customer not found');
+	for (const o of data.orders.nodes) {
+		o.lineItems.nodes = toActiveLineItems(o.lineItems.nodes);
+		toCurrentTotals(o);
+	}
 	return { ...data.customer, orders: data.orders };
 }
 

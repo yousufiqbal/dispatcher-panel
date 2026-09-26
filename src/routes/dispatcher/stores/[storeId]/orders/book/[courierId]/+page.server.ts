@@ -4,7 +4,7 @@ import { db } from '$lib/server/db';
 import { couriers, courierStoreAccess, courierBookings } from '$lib/server/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { getShopifyClient } from '$lib/server/shopify/client';
-import { getOrder, fulfillOrder, CONFIRMED_TAG } from '$lib/server/shopify/orders';
+import { toActiveLineItems, getOrder, fulfillOrder, CONFIRMED_TAG } from '$lib/server/shopify/orders';
 import { getAuthorizedStore } from '$lib/server/store-access';
 import { decrypt } from '$lib/server/crypto';
 import { bookShipment, getPostExOperationalCities, getPostExPickupAddresses, COURIER_LABELS, type PickupAddress } from '$lib/server/courier';
@@ -67,8 +67,9 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		weight: courier.defaultWeight ?? '500',
 		fragile: courier.defaultFragile,
 		note: courier.defaultNote ?? '',
-		itemsDetail: o.lineItems.nodes.map((li) => `${li.title} x${li.quantity}`).join(', '),
-		itemsCount: o.lineItems.nodes.reduce((sum, li) => sum + li.quantity, 0) || 1
+		// Removed lines must not reach the courier's airway bill.
+		itemsDetail: toActiveLineItems(o.lineItems.nodes).map((li) => `${li.title} x${li.quantity}`).join(', '),
+		itemsCount: toActiveLineItems(o.lineItems.nodes).reduce((sum, li) => sum + li.quantity, 0) || 1
 	}));
 
 	return {

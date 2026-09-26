@@ -50,12 +50,12 @@
 </script>
 
 <svelte:head>
-	<title>Audit Log — Admin</title>
+	<title>Activities — Admin</title>
 </svelte:head>
 
 <div class="p-3 sm:p-6">
 	<div class="mb-6">
-		<h1 class="text-2xl font-bold">Audit Log</h1>
+		<h1 class="text-2xl font-bold">Activities</h1>
 		<p class="text-sm text-muted-foreground mt-1">Last 100 actions</p>
 	</div>
 
@@ -132,7 +132,7 @@
 	<Dialog.Content class="max-w-lg">
 		{#if selectedLog}
 			<Dialog.Header>
-				<Dialog.Title>Audit Entry</Dialog.Title>
+				<Dialog.Title>Activity</Dialog.Title>
 			</Dialog.Header>
 			<div class="space-y-3 text-sm">
 				<div>

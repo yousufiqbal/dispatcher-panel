@@ -16,7 +16,7 @@
 		{ href: '/admin/dispatchers', label: 'Dispatchers', icon: 'users' },
 		{ href: '/admin/stores', label: 'Stores', icon: 'store' },
 		{ href: '/admin/couriers', label: 'Couriers', icon: 'truck' },
-		{ href: '/admin/audit', label: 'Audit Log', icon: 'log' },
+		{ href: '/admin/activities', label: 'Activities', icon: 'log' },
 		{ href: '/admin/settings', label: 'Settings', icon: 'settings' }
 	];
 

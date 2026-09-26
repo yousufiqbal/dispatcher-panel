@@ -182,6 +182,21 @@
 		OTHER: 'Other'
 	};
 
+	// --- Payment summary ---------------------------------------------------
+	const summaryCurrency = $derived(order.totalPriceSet.shopMoney.currencyCode);
+	// An edit that changed the total gets an "Original order" line, as in
+	// Shopify's admin. Unedited orders skip it — it would just repeat Total.
+	const originalTotal = $derived(parseFloat(order.originalTotalPriceSet?.shopMoney.amount ?? order.totalPriceSet.shopMoney.amount));
+	const wasEdited = $derived(Math.abs(originalTotal - parseFloat(order.totalPriceSet.shopMoney.amount)) >= 0.005);
+	const paidAmount = $derived(parseFloat(order.totalReceivedSet?.shopMoney?.amount ?? '0'));
+	const balance = $derived(
+		order.totalOutstandingSet
+			? parseFloat(order.totalOutstandingSet.shopMoney.amount)
+			: parseFloat(order.totalPriceSet.shopMoney.amount) - paidAmount
+	);
+	const longDate = (iso: string) =>
+		new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+
 	// --- Shipping lines ---------------------------------------------------
 	const shippingRemovalCount = $derived(Object.values(shippingRemovals).filter(Boolean).length);
 	const shippingChanged = $derived(shippingRemovalCount > 0 || newShippingAmount.trim() !== '');
@@ -745,46 +760,63 @@
 						</DropdownMenu.Content>
 					</DropdownMenu.Root>
 				</div>
-				<div class="text-sm px-5 py-3 space-y-1.5">
-					<div class="flex items-center justify-between">
-						<span class="text-muted-foreground">Subtotal</span>
-						<span class="text-muted-foreground text-xs">{activeLineItems.reduce((s, i) => s + i.currentQuantity, 0)} items</span>
-						<span>{formatCurrency(order.subtotalPriceSet?.shopMoney?.amount ?? '0', order.totalPriceSet.shopMoney.currencyCode)}</span>
-					</div>
-					{#each shippingDiscounts as sd}
-						<div class="flex items-center justify-between">
-							<span class="text-muted-foreground">Discount</span>
-							<span class="text-muted-foreground text-xs truncate max-w-[180px]">{sd.label}</span>
-							<span>-{formatCurrency(sd.amount.toFixed(2), order.totalPriceSet.shopMoney.currencyCode)}</span>
+				<div class="text-sm divide-y divide-border">
+					{#if wasEdited}
+						<div class="px-5 py-3 grid grid-cols-[7rem_1fr_auto] items-center gap-x-3">
+							<span class="text-muted-foreground">Original order</span>
+							<span class="text-muted-foreground text-xs">{longDate(order.createdAt)}</span>
+							<span class="text-right tabular-nums">{formatCurrency(originalTotal.toFixed(2), summaryCurrency)}</span>
 						</div>
-					{/each}
-					{#each order.shippingLines.nodes as line}
-						<div class="flex items-center justify-between">
-							<span class="text-muted-foreground">Shipping</span>
-							<span class="text-muted-foreground text-xs truncate max-w-[180px]">{line.title}</span>
-							<span>{formatCurrency(line.originalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}</span>
+					{/if}
+
+					<div class="px-5 py-3 space-y-1.5">
+						<div class="grid grid-cols-[7rem_1fr_auto] items-center gap-x-3">
+							<span class="text-muted-foreground">Subtotal</span>
+							<span class="text-muted-foreground text-xs">{activeLineItems.reduce((s, i) => s + i.currentQuantity, 0)} items</span>
+							<span class="text-right tabular-nums">{formatCurrency(order.subtotalPriceSet?.shopMoney?.amount ?? '0', summaryCurrency)}</span>
 						</div>
-					{/each}
-					<div class="flex items-center justify-between font-bold pt-1.5 border-t border-border">
-						<span>Total</span>
-						<span></span>
-						<span>{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}</span>
+						{#each shippingDiscounts as sd}
+							<div class="grid grid-cols-[7rem_1fr_auto] items-center gap-x-3">
+								<span class="text-muted-foreground">Discount</span>
+								<span class="text-muted-foreground text-xs truncate">{sd.label}</span>
+								<span class="text-right tabular-nums">-{formatCurrency(sd.amount.toFixed(2), summaryCurrency)}</span>
+							</div>
+						{/each}
+						{#each order.shippingLines.nodes as line}
+							<div class="grid grid-cols-[7rem_1fr_auto] items-center gap-x-3">
+								<span class="text-muted-foreground">Shipping</span>
+								<span class="text-muted-foreground text-xs truncate">{line.title}</span>
+								<span class="text-right tabular-nums">{formatCurrency(line.originalPriceSet.shopMoney.amount, summaryCurrency)}</span>
+							</div>
+						{/each}
+						<div class="grid grid-cols-[7rem_1fr_auto] items-center gap-x-3 font-bold">
+							<span>Total</span>
+							<span></span>
+							<span class="text-right tabular-nums">{formatCurrency(order.totalPriceSet.shopMoney.amount, summaryCurrency)}</span>
+						</div>
 					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-muted-foreground">Paid</span>
-						<span></span>
-						<span>{formatCurrency(order.totalReceivedSet?.shopMoney?.amount ?? '0', order.totalPriceSet.shopMoney.currencyCode)}</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-muted-foreground">Balance</span>
-						<span></span>
-						<span class="{(parseFloat(order.totalPriceSet.shopMoney.amount) - parseFloat(order.totalReceivedSet?.shopMoney?.amount ?? '0')) > 0 ? 'text-destructive font-semibold' : 'text-green-700 font-semibold'}">
-							{formatCurrency(Math.abs(parseFloat(order.totalPriceSet.shopMoney.amount) - parseFloat(order.totalReceivedSet?.shopMoney?.amount ?? '0')).toFixed(2), order.totalPriceSet.shopMoney.currencyCode)}
-						</span>
-					</div>
-					<div class="flex items-center justify-end gap-2 pt-1.5">
-						<Button type="button" variant="outline" size="sm" onclick={() => showInvoiceDialog = true}>Send invoice</Button>
-						<Button type="button" size="sm" onclick={() => showMarkPaidDialog = true}>Mark as paid</Button>
+
+					<div class="px-5 py-3 space-y-1.5">
+						<div class="grid grid-cols-[7rem_1fr_auto] items-center gap-x-3">
+							<span class="text-muted-foreground">Paid</span>
+							<span></span>
+							<span class="text-right tabular-nums">{formatCurrency(paidAmount.toFixed(2), summaryCurrency)}</span>
+						</div>
+						<div class="grid grid-cols-[7rem_1fr_auto] items-center gap-x-3">
+							<span class="text-muted-foreground">Balance</span>
+							<span>
+								{#if balance > 0.005}
+									<span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-md bg-red-100 text-red-800">Due</span>
+								{:else if balance < -0.005}
+									<span class="inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">Refund owed</span>
+								{/if}
+							</span>
+							<span class="text-right tabular-nums">{formatCurrency(Math.abs(balance).toFixed(2), summaryCurrency)}</span>
+						</div>
+						<div class="flex items-center justify-end gap-2 pt-1.5">
+							<Button type="button" variant="outline" size="sm" onclick={() => showInvoiceDialog = true}>Send invoice</Button>
+							<Button type="button" size="sm" onclick={() => showMarkPaidDialog = true}>Mark as paid</Button>
+						</div>
 					</div>
 				</div>
 			</div>
