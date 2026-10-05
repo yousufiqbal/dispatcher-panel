@@ -57,6 +57,7 @@
 		"oslo": "^1.2.1",
 		"otpauth": "^9.5.1",
 		"pdf-lib": "^1.17.1",
+		"pdfjs-dist": "6.4.299",
 		"qrcode": "^1.5.4",
 		"svelte-sonner": "^1.1.1",
 		"tailwind-merge": "^3.6.0",

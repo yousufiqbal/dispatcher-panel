@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { storeHome } from '$lib/feature-flags';
 	import type { LayoutData } from './$types';
 
 	let { data }: { data: LayoutData } = $props();
 
 	$effect(() => {
-		// Redirect to first assigned store's orders
+		// Open the first assigned store
 		if (data.assignedStores?.length > 0) {
-			goto(`/dispatcher/stores/${data.assignedStores[0].id}/orders`);
+			goto(storeHome(data.assignedStores[0].id));
 		}
 	});
 </script>

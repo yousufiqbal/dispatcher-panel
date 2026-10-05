@@ -16,9 +16,12 @@ export const ACTIVITY_TYPES: ActivityType[] = [
 	// Mutations (on by default)
 	{ action: 'order.confirm', label: 'Confirming an order', isView: false },
 	{ action: 'order.unconfirm', label: 'Unconfirming an order', isView: false },
+	{ action: 'order.between', label: 'Moving an order to Between (with reason)', isView: false },
+	{ action: 'order.backToPending', label: 'Moving an order back to pending', isView: false },
 	{ action: 'order.bulkConfirm', label: 'Bulk-confirming orders', isView: false },
 	{ action: 'order.fulfill', label: 'Fulfilling an order', isView: false },
 	{ action: 'order.cancel', label: 'Cancelling an order', isView: false },
+	{ action: 'order.merge', label: 'Merging orders (others cancelled)', isView: false },
 	{ action: 'order.cancelNoRestock', label: 'Cancelling an order WITHOUT restocking inventory', isView: false },
 	{ action: 'order.refund', label: 'Refunding an order', isView: false },
 	{ action: 'order.markAsPaid', label: 'Marking an order as paid', isView: false },
