@@ -1,6 +1,6 @@
 import { shopifyRequest } from './client';
 import type { ShopifyClient } from './client';
-import { formatMoney, formatOrderDate, toInternationalDigits } from '$lib/easy-confirm';
+import { formatAddress, formatMoney, formatOrderDate, toInternationalDigits } from '$lib/easy-confirm';
 import { LATE_AFTER_BUSINESS_DAYS, businessDaysSince, stageOf, type TrackerRow } from '$lib/tracker';
 
 const ORDERS_QUERY = `
@@ -18,7 +18,7 @@ const ORDERS_QUERY = `
 				phone
 				currentTotalPriceSet { shopMoney { amount currencyCode } }
 				customer { displayName defaultPhoneNumber { phoneNumber } }
-				shippingAddress { name city countryCodeV2 phone }
+				shippingAddress { name address1 address2 city province zip country countryCodeV2 phone }
 				fulfillments(first: 5) {
 					createdAt
 					status
@@ -40,7 +40,17 @@ interface OrderNode {
 	phone: string | null;
 	currentTotalPriceSet: { shopMoney: { amount: string; currencyCode: string } } | null;
 	customer: { displayName: string; defaultPhoneNumber: { phoneNumber: string } | null } | null;
-	shippingAddress: { name: string | null; city: string | null; countryCodeV2: string | null; phone: string | null } | null;
+	shippingAddress: {
+		name: string | null;
+		address1: string | null;
+		address2: string | null;
+		city: string | null;
+		province: string | null;
+		zip: string | null;
+		country: string | null;
+		countryCodeV2: string | null;
+		phone: string | null;
+	} | null;
 	fulfillments: {
 		createdAt: string;
 		status: string;
@@ -109,6 +119,8 @@ export async function listTrackerOrders(client: ShopifyClient, days: number): Pr
 				customer: o.customer?.displayName || a?.name || 'No customer',
 				phone,
 				phoneDigits: toInternationalDigits(phone, a?.countryCodeV2),
+				street: [a?.address1, a?.address2].map((p) => p?.trim()).filter(Boolean).join(', '),
+				address: formatAddress(a),
 				city: a?.city || '',
 				total: total ? formatMoney(total.shopMoney.amount, total.shopMoney.currencyCode) : '',
 				financialStatus: o.displayFinancialStatus || '',

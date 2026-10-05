@@ -94,7 +94,7 @@
 	function matches(r: TrackerRow, q: string): boolean {
 		const text = q.trim().toLowerCase();
 		if (!text) return true;
-		const hay = [r.name, r.customer, r.city, r.courier, r.trackingNumber].join(' ').toLowerCase();
+		const hay = [r.name, r.customer, r.address, r.courier, r.trackingNumber].join(' ').toLowerCase();
 		if (hay.includes(text) || r.name.replace('#', '').includes(text.replace('#', ''))) return true;
 		const d = digits(text);
 		return d.length >= 4 && digits(r.phone).includes(d);
@@ -219,7 +219,7 @@
 				<Input
 					bind:value={search}
 					oninput={() => (pageIndex = 0)}
-					placeholder="Search by order number, name, phone, city or tracking number"
+					placeholder="Search by order number, name, phone, address or tracking number"
 					class="pl-8 h-9"
 				/>
 			</div>
@@ -230,8 +230,9 @@
 				<thead>
 					<tr class="border-b border-border bg-muted/30 text-left text-xs text-muted-foreground">
 						<th class="px-3 py-2 font-medium">Order</th>
-						<th class="px-3 py-2 font-medium">Dispatched</th>
 						<th class="px-3 py-2 font-medium">Customer</th>
+						<th class="px-3 py-2 font-medium">Dispatched</th>
+						<th class="px-3 py-2 font-medium">Address</th>
 						<th class="px-3 py-2 font-medium">Phone</th>
 						<th class="px-3 py-2 font-medium">Contact</th>
 						<th class="px-3 py-2 font-medium">City</th>
@@ -247,13 +248,17 @@
 							<td class="px-3 py-2 whitespace-nowrap">
 								<a href="/dispatcher/stores/{storeId}/orders/{r.legacyId}" class="font-semibold text-foreground hover:text-primary hover:underline">{r.name}</a>
 							</td>
+							<td class="px-3 py-2 whitespace-nowrap">{r.customer}</td>
 							<td class="px-3 py-2 whitespace-nowrap">
 								<div class="text-xs text-muted-foreground">{r.dispatchedLabel}</div>
 								<div class="text-xs font-semibold {r.late || isStaleTracking(r) ? 'text-red-600' : 'text-foreground'}">
 									{r.businessDays} business day{r.businessDays === 1 ? '' : 's'}
 								</div>
 							</td>
-							<td class="px-3 py-2 whitespace-nowrap">{r.customer}</td>
+							<td class="px-3 py-2 max-w-[16rem]">
+								<!-- Truncated to one line; the full address shows on hover. -->
+								<div class="truncate text-muted-foreground" title={r.address}>{r.street || '—'}</div>
+							</td>
 							<td class="px-3 py-2 whitespace-nowrap font-mono text-xs">
 								{#if r.phone}{r.phone}{:else}<span class="text-muted-foreground font-sans">No phone</span>{/if}
 							</td>

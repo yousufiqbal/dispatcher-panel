@@ -43,6 +43,10 @@ export interface TrackerRow {
 	customer: string;
 	phone: string;
 	phoneDigits: string | null;
+	/** Street lines (address1, address2) — the city has its own column. */
+	street: string;
+	/** Full one-line address, shown on hover. */
+	address: string;
 	city: string;
 	total: string;
 	financialStatus: string;
