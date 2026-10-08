@@ -25,7 +25,7 @@
 </svelte:head>
 
 <div class="p-3 sm:p-6">
-	<a href="/dispatcher/stores/{storeId}/orders?status=confirmed" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-4 w-fit">
+	<a href="/dispatcher/stores/{storeId}/confirmer?tab=confirmed" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-4 w-fit">
 		<ArrowLeftIcon class="size-4" />
 		Back to Confirmed
 	</a>

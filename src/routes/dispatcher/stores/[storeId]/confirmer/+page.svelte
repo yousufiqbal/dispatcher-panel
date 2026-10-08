@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { page } from '$app/stores';
-	import { invalidateAll, replaceState } from '$app/navigation';
+	import { page, navigating } from '$app/stores';
+	import { goto, invalidateAll, replaceState } from '$app/navigation';
 	import { deserialize } from '$app/forms';
 	import { addToast } from '$lib/toast.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -15,6 +15,7 @@
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
+	import PlusIcon from '@lucide/svelte/icons/plus';
 	import ContactActions from '$lib/components/ContactActions.svelte';
 	import {
 		PK_PROVINCES,
@@ -24,10 +25,13 @@
 		betweenLabel,
 		humanizeEnum,
 		financialBadge,
+		fulfillmentBadge,
 		type AddressFields,
 		type EasyConfirmRow,
-		type EasyConfirmTab
+		type EasyConfirmTab,
+		type EasyConfirmView
 	} from '$lib/easy-confirm';
+	import { TRACKER_WINDOWS } from '$lib/tracker';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -37,17 +41,43 @@
 
 	// ---- Tab / search / paging ---------------------------------------------
 	// Tab lives in the URL (shallow, no reload) so a refresh lands back on it.
-	const TABS: { key: EasyConfirmTab; label: string }[] = [
+	const TABS: { key: EasyConfirmView; label: string }[] = [
 		{ key: 'pending', label: 'Pending' },
 		{ key: 'between', label: 'Between' },
-		{ key: 'confirmed', label: 'Confirmed' }
+		{ key: 'confirmed', label: 'Confirmed' },
+		{ key: 'fulfilled', label: 'Fulfilled' }
 	];
 	const initialTab = $page.url.searchParams.get('tab');
-	let tab = $state<EasyConfirmTab>(initialTab === 'confirmed' || initialTab === 'between' ? initialTab : 'pending');
+	let tab = $state<EasyConfirmView>(TABS.find((t) => t.key === initialTab)?.key ?? 'pending');
+	// Fulfilled is read-only: already shipped, nothing to confirm or edit.
+	const readOnly = $derived(tab === 'fulfilled');
 	let search = $state('');
 	let pageIndex = $state(0);
 
-	function setTab(next: EasyConfirmTab) {
+	// By order date. Kept in the URL (shallow) like the tab, so a refresh keeps
+	// it; the server returns newest-first, so "oldest" just reverses.
+	type Sort = 'latest' | 'oldest';
+	let sort = $state<Sort>($page.url.searchParams.get('sort') === 'oldest' ? 'oldest' : 'latest');
+
+	function setSort(next: Sort) {
+		if (next === sort) return;
+		sort = next;
+		pageIndex = 0;
+		const url = new URL($page.url);
+		if (next === 'latest') url.searchParams.delete('sort');
+		else url.searchParams.set('sort', next);
+		replaceState(url, {});
+	}
+
+	// Changing the window refetches (it changes what's loaded from Shopify).
+	function setDays(days: number) {
+		const url = new URL($page.url);
+		url.searchParams.set('days', String(days));
+		goto(url, { keepFocus: true, noScroll: true });
+	}
+	const loadingWindow = $derived(!!$navigating && $navigating.to?.url.pathname === $page.url.pathname);
+
+	function setTab(next: EasyConfirmView) {
 		if (next === tab) return;
 		tab = next;
 		pageIndex = 0;
@@ -76,7 +106,8 @@
 	const counts = $derived({
 		pending: rows.filter((r) => r.state === 'pending').length,
 		between: rows.filter((r) => r.state === 'between').length,
-		confirmed: rows.filter((r) => r.state === 'confirmed').length
+		confirmed: rows.filter((r) => r.state === 'confirmed').length,
+		fulfilled: rows.filter((r) => r.state === 'fulfilled').length
 	});
 
 	// Search runs locally over the loaded orders — instant, no round trip.
@@ -98,7 +129,10 @@
 	}
 
 	const tabRows = $derived(rows.filter((r) => r.state === tab));
-	const filtered = $derived(tabRows.filter((r) => matches(r, search)));
+	const filtered = $derived.by(() => {
+		const list = tabRows.filter((r) => matches(r, search));
+		return sort === 'oldest' ? list.reverse() : list;
+	});
 	const pageCount = $derived(Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)));
 	const pageRows = $derived(filtered.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE));
 
@@ -368,13 +402,50 @@
 				</button>
 			{/each}
 		</div>
-		<Button variant="outline" size="sm" class="ml-auto" onclick={refresh} disabled={refreshing}>
-			<RefreshCwIcon class="size-3.5 {refreshing ? 'animate-spin' : ''}" />
-			Refresh
-		</Button>
+		<div class="ml-auto flex flex-wrap items-center gap-2">
+			<div class="inline-flex items-center rounded-lg border border-border bg-muted/40 p-0.5 text-xs" role="group" aria-label="Sort by order date">
+				{#each [['latest', 'Latest'], ['oldest', 'Oldest']] as [key, label] (key)}
+					<button
+						type="button"
+						onclick={() => setSort(key as Sort)}
+						class="px-2.5 py-1.5 rounded-md font-medium transition-colors {sort === key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
+					>
+						{label}
+					</button>
+				{/each}
+			</div>
+			<span class="text-xs text-muted-foreground hidden sm:inline">Ordered within</span>
+			<div class="inline-flex items-center rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
+				{#each TRACKER_WINDOWS as d (d)}
+					<button
+						type="button"
+						onclick={() => setDays(d)}
+						class="px-2.5 py-1.5 rounded-md font-medium transition-colors {data.days === d ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
+					>
+						{d}d
+					</button>
+				{/each}
+				<!-- A custom window from the URL shows as its own selected chip. -->
+				{#if !(TRACKER_WINDOWS as readonly number[]).includes(data.days)}
+					<span class="px-2.5 py-1.5 rounded-md font-medium bg-card text-foreground shadow-sm">{data.days}d</span>
+				{/if}
+			</div>
+			<Button variant="outline" size="sm" onclick={refresh} disabled={refreshing || loadingWindow}>
+				{#if loadingWindow}
+					<Loader2Icon class="size-3.5 animate-spin" />
+				{:else}
+					<RefreshCwIcon class="size-3.5 {refreshing ? 'animate-spin' : ''}" />
+				{/if}
+				Refresh
+			</Button>
+			<Button size="sm" href="/dispatcher/stores/{storeId}/orders/new">
+				<PlusIcon class="size-3.5" />
+				New Order
+			</Button>
+		</div>
 	</div>
 
-	<div class="card overflow-hidden">
+	<div class="card overflow-hidden {loadingWindow ? 'opacity-60' : ''}">
 		<!-- Search, or the bulk bar while rows are selected -->
 		<div class="px-3 py-2.5 border-b border-border min-h-[3.25rem] flex items-center">
 			{#if selectedRows.length > 0}
@@ -412,14 +483,16 @@
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b border-border bg-muted/30 text-left text-xs text-muted-foreground">
-						<th class="px-3 py-2 w-8">
-							<Checkbox
-								checked={allSelected}
-								indeterminate={someSelected}
-								onCheckedChange={toggleAll}
-								aria-label="Select all orders on this page"
-							/>
-						</th>
+						{#if !readOnly}
+							<th class="px-3 py-2 w-8">
+								<Checkbox
+									checked={allSelected}
+									indeterminate={someSelected}
+									onCheckedChange={toggleAll}
+									aria-label="Select all orders on this page"
+								/>
+							</th>
+						{/if}
 						<th class="px-3 py-2 font-medium">Order</th>
 						{#if tab === 'between'}<th class="px-3 py-2 font-medium">Reason</th>{/if}
 						<th class="px-3 py-2 font-medium">Date</th>
@@ -429,16 +502,19 @@
 						<th class="px-3 py-2 font-medium">Address</th>
 						<th class="px-3 py-2 font-medium text-right">Total</th>
 						<th class="px-3 py-2 font-medium">Payment</th>
+						{#if readOnly}<th class="px-3 py-2 font-medium">Fulfillment</th>{/if}
 						<th class="px-3 py-2 font-medium">Items</th>
-						<th class="px-3 py-2 font-medium">Action</th>
+						{#if !readOnly}<th class="px-3 py-2 font-medium">Action</th>{/if}
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-border">
 					{#each pageRows as r (r.id)}
 						<tr class="hover:bg-muted/20 {selected.has(r.id) ? 'bg-primary/5' : ''}">
-							<td class="px-3 py-2">
-								<Checkbox checked={selected.has(r.id)} onCheckedChange={() => toggleRow(r.id)} aria-label="Select order {r.name}" />
-							</td>
+							{#if !readOnly}
+								<td class="px-3 py-2">
+									<Checkbox checked={selected.has(r.id)} onCheckedChange={() => toggleRow(r.id)} aria-label="Select order {r.name}" />
+								</td>
+							{/if}
 							<td class="px-3 py-2 whitespace-nowrap">
 								<a href="/dispatcher/stores/{storeId}/orders/{r.legacyId}" class="font-semibold text-foreground hover:text-primary hover:underline">{r.name}</a>
 							</td>
@@ -462,18 +538,24 @@
 							<td class="px-3 py-2">
 								<ContactActions phone={r.phone} phoneDigits={r.phoneDigits} name={r.customer} />
 							</td>
-							<td class="px-3 py-2">
-								<div class="flex items-center gap-1.5">
+							<!-- max-w-0 + w-full: the address column takes whatever width is
+							     left and truncates instead of pushing the table into a
+							     horizontal scroll; min-w keeps it readable on narrow screens. -->
+							<td class="px-3 py-2 max-w-0 w-full">
+								<div class="flex items-center gap-1.5 min-w-48">
 									{#if r.address}
-										<span class="whitespace-nowrap">
-											{#if r.shipTo && r.shipTo !== r.customer}<strong>{r.shipTo} · </strong>{/if}{r.address}
+										{@const shipToPrefix = r.shipTo && r.shipTo !== r.customer ? `${r.shipTo} · ` : ''}
+										<span class="truncate min-w-0" title="{shipToPrefix}{r.address}">
+											{#if shipToPrefix}<strong>{shipToPrefix}</strong>{/if}{r.address}
 										</span>
 									{:else}
 										<span class="text-muted-foreground">No shipping address</span>
 									{/if}
-									<button type="button" class="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent shrink-0" title="Edit address for {r.name}" onclick={() => openAddress(r)}>
-										<PencilIcon class="size-3.5" />
-									</button>
+									{#if !readOnly}
+										<button type="button" class="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent shrink-0" title="Edit address for {r.name}" onclick={() => openAddress(r)}>
+											<PencilIcon class="size-3.5" />
+										</button>
+									{/if}
 								</div>
 							</td>
 							<td class="px-3 py-2 whitespace-nowrap text-right font-semibold tabular-nums">{r.total}</td>
@@ -482,6 +564,13 @@
 									<span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap {financialBadge(r.financialStatus)}">{humanizeEnum(r.financialStatus)}</span>
 								{/if}
 							</td>
+							{#if readOnly}
+								<td class="px-3 py-2">
+									{#if r.fulfillmentStatus}
+										<span class="inline-flex px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap {fulfillmentBadge(r.fulfillmentStatus)}">{humanizeEnum(r.fulfillmentStatus)}</span>
+									{/if}
+								</td>
+							{/if}
 							<td class="px-3 py-2">
 								<Popover.Root>
 									<Popover.Trigger>
@@ -514,6 +603,7 @@
 									</Popover.Content>
 								</Popover.Root>
 							</td>
+							{#if !readOnly}
 							<td class="px-3 py-2">
 								<div class="flex items-center gap-1.5">
 									{#if tab === 'confirmed'}
@@ -528,6 +618,7 @@
 									{/if}
 								</div>
 							</td>
+							{/if}
 						</tr>
 					{/each}
 				</tbody>
@@ -542,6 +633,8 @@
 					No pending orders. Everything is confirmed.
 				{:else if tab === 'between'}
 					Nothing in Between.
+				{:else if tab === 'fulfilled'}
+					No fulfilled open orders.
 				{:else}
 					No confirmed open orders yet.
 				{/if}

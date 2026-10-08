@@ -17,7 +17,7 @@
 
 	const sectionLabels: Record<string, string> = {
 		orders: 'Orders',
-		confirmer: 'Confirmer',
+		confirmer: 'Orders',
 		tracker: 'Tracker',
 		labels: 'Labels',
 		customers: 'Customers',

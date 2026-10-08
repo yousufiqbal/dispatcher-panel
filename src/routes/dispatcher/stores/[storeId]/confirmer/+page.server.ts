@@ -13,15 +13,22 @@ import {
 	type AddressFields,
 	type EasyConfirmTab
 } from '$lib/easy-confirm';
+import { DEFAULT_TRACKER_WINDOW, MAX_TRACKER_WINDOW } from '$lib/tracker';
 
 const ORDER_GID = /^gid:\/\/shopify\/Order\/\d+$/;
 const STATES: EasyConfirmTab[] = ['pending', 'between', 'confirmed'];
 
-export const load: PageServerLoad = async ({ parent }) => {
+export const load: PageServerLoad = async ({ parent, url }) => {
 	const { currentStore } = await parent();
 	const client = getShopifyClient(currentStore);
-	const orders = await listEasyConfirmOrders(client);
-	return { orders };
+
+	// Same windows as Tracker (30/60/120 buttons, any ?days= up to a year),
+	// but by order date. Garbage falls back to the default.
+	const requested = Number(url.searchParams.get('days'));
+	const days = Number.isInteger(requested) && requested >= 1 ? Math.min(requested, MAX_TRACKER_WINDOW) : DEFAULT_TRACKER_WINDOW;
+
+	const orders = await listEasyConfirmOrders(client, days);
+	return { orders, days };
 };
 
 export const actions: Actions = {

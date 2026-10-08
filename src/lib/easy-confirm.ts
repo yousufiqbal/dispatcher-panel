@@ -1,7 +1,10 @@
 // Formatting helpers for the Easy Confirm page. Ported from the standalone
 // Easy Confirm Shopify app; safe to import on both server and client.
 
+/** States an order can be moved into by tagging. */
 export type EasyConfirmTab = 'pending' | 'between' | 'confirmed';
+/** Every list tab: the movable states plus read-only Fulfilled. */
+export type EasyConfirmView = EasyConfirmTab | 'fulfilled';
 
 /**
  * Why an order is parked in Between. Each is a Shopify tag written as
@@ -80,7 +83,8 @@ export interface EasyConfirmRow {
 	fulfillmentStatus: string;
 	items: number;
 	lineItems: { id: string; title: string; variantTitle: string; quantity: number; imageUrl: string }[];
-	state: EasyConfirmTab;
+	/** 'fulfilled' for open orders that have shipped; their tags don't matter. */
+	state: EasyConfirmView;
 	/** Between reason tags on the order (normally one). */
 	betweenTags: string[];
 	/** Typed text for an "Other" reason, if any. */

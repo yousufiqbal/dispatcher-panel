@@ -32,7 +32,7 @@
 	<!-- Header -->
 	<div class="flex items-start justify-between gap-4 flex-wrap">
 		<div>
-			<a href="/dispatcher/stores/{storeId}/orders?status=drafts" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-3 w-fit">
+			<a href="/dispatcher/stores/{storeId}/confirmer" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-3 w-fit">
 				<ArrowLeftIcon class="size-4" />
 				Drafts
 			</a>

@@ -36,7 +36,7 @@
 <div class="p-3 sm:p-6">
 	<div class="mb-6">
 		<div class="flex items-center gap-4">
-			<Button href="/dispatcher/stores/{storeId}/orders" variant="outline" size="icon" class="shrink-0" title="Back to Orders">
+			<Button href="/dispatcher/stores/{storeId}/confirmer" variant="outline" size="icon" class="shrink-0" title="Back to Orders">
 				<ArrowLeftIcon class="size-4" />
 			</Button>
 			<div>

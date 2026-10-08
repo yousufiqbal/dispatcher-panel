@@ -16,8 +16,10 @@ import {
 } from '$lib/easy-confirm';
 
 // Same scope as the Orders page's Pending/Confirmed tabs: open orders that
-// haven't shipped. Fulfilled orders need no confirming.
+// haven't shipped.
 const SCOPE_QUERY = 'status:open fulfillment_status:unfulfilled';
+// Open orders that have shipped — shown read-only in the Fulfilled tab.
+const FULFILLED_QUERY = 'status:open fulfillment_status:shipped';
 
 const ORDERS_QUERY = `
 	query EasyConfirmOrders($after: String, $query: String!) {
@@ -114,7 +116,7 @@ function stateOf(tags: string[]): EasyConfirmTab {
 	return 'pending';
 }
 
-function toRow(o: OrderNode, timeZone: string): EasyConfirmRow {
+function toRow(o: OrderNode, timeZone: string, fulfilled = false): EasyConfirmRow {
 	const a = o.shippingAddress;
 	const phone =
 		a?.phone || o.phone || o.customer?.defaultPhoneNumber?.phoneNumber || o.billingAddress?.phone || '';
@@ -161,19 +163,30 @@ function toRow(o: OrderNode, timeZone: string): EasyConfirmRow {
 				quantity: li.currentQuantity,
 				imageUrl: li.image?.url || ''
 			})),
-		state: stateOf(o.tags),
+		state: fulfilled ? 'fulfilled' : stateOf(o.tags),
 		betweenTags: betweenTagsOf(o.tags),
 		betweenNote: o.customAttributes?.find((a) => a.key === BETWEEN_NOTE_KEY)?.value ?? ''
 	};
 }
 
 /**
- * Every open, unfulfilled order. Pending/Confirmed is split afterwards from
- * each order's live `tags` — Shopify's tag search lags a few seconds behind
- * tag changes, so filtering by it would leave just-confirmed orders stuck in
- * the wrong tab.
+ * Every open, unfulfilled order placed in the last `days` days, plus open
+ * fulfilled ones for the Fulfilled tab, newest first. Pending/Confirmed is split afterwards from each order's live `tags` —
+ * Shopify's tag search lags a few seconds behind tag changes, so filtering by
+ * it would leave just-confirmed orders stuck in the wrong tab.
  */
-export async function listEasyConfirmOrders(client: ShopifyClient): Promise<EasyConfirmRow[]> {
+export async function listEasyConfirmOrders(client: ShopifyClient, days: number): Promise<EasyConfirmRow[]> {
+	// Day precision, same format Tracker uses.
+	const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+	const window = ` created_at:>=${since}`;
+	const [unfulfilled, fulfilled] = await Promise.all([
+		fetchRows(client, SCOPE_QUERY + window, false),
+		fetchRows(client, FULFILLED_QUERY + window, true)
+	]);
+	return [...unfulfilled, ...fulfilled];
+}
+
+async function fetchRows(client: ShopifyClient, query: string, fulfilled: boolean): Promise<EasyConfirmRow[]> {
 	const rows: EasyConfirmRow[] = [];
 	let after: string | null = null;
 	let timeZone = 'UTC';
@@ -181,9 +194,9 @@ export async function listEasyConfirmOrders(client: ShopifyClient): Promise<Easy
 		const data: {
 			shop: { ianaTimezone: string | null };
 			orders: { pageInfo: { hasNextPage: boolean; endCursor: string }; nodes: OrderNode[] };
-		} = await shopifyRequest(client, ORDERS_QUERY, { after, query: SCOPE_QUERY });
+		} = await shopifyRequest(client, ORDERS_QUERY, { after, query });
 		timeZone = data.shop.ianaTimezone || timeZone;
-		for (const o of data.orders.nodes) rows.push(toRow(o, timeZone));
+		for (const o of data.orders.nodes) rows.push(toRow(o, timeZone, fulfilled));
 		if (!data.orders.pageInfo.hasNextPage) break;
 		after = data.orders.pageInfo.endCursor;
 	}

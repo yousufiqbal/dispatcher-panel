@@ -579,7 +579,7 @@
 
 <div class="p-3 sm:p-6">
 	<div class="mb-6">
-		<a href="/dispatcher/stores/{storeId}/orders" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-4 w-fit">
+		<a href="/dispatcher/stores/{storeId}/confirmer" class="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-4 w-fit">
 			<ArrowLeftIcon class="size-4" />
 			Back to Orders
 		</a>

@@ -131,7 +131,7 @@ export const actions: Actions = {
 		} catch (e: unknown) {
 			return fail(400, { error: e instanceof Error ? e.message : 'Failed to confirm order' });
 		}
-		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=pending`);
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/confirmer`);
 	},
 
 	unconfirm: async ({ params, locals }) => {

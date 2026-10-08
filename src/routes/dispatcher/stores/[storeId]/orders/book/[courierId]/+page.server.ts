@@ -173,7 +173,8 @@ export const actions: Actions = {
 			}
 		}
 
-		// `labels` triggers an automatic airway-bill PDF download on the orders page.
-		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=fulfilled&booked=${results.length}&labels=${ids.join(',')}`);
+		// Booked parcels show up in Tracker; `labels` triggers its automatic
+		// airway-bill PDF download.
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/tracker?booked=${results.length}&labels=${ids.join(',')}`);
 	}
 };

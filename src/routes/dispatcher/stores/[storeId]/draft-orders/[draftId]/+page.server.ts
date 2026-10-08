@@ -64,7 +64,7 @@ export const actions: Actions = {
 			if ((e as any)?.status === 303) throw e;
 			return fail(500, { error: e instanceof Error ? e.message : 'Failed to complete order' });
 		}
-		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=drafts`);
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/confirmer`);
 	},
 
 	delete: async ({ params, locals }) => {
@@ -86,6 +86,6 @@ export const actions: Actions = {
 		} catch (e) {
 			return fail(500, { error: e instanceof Error ? e.message : 'Failed to delete draft' });
 		}
-		throw redirect(303, `/dispatcher/stores/${params.storeId}/orders?status=drafts`);
+		throw redirect(303, `/dispatcher/stores/${params.storeId}/confirmer`);
 	}
 };

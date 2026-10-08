@@ -467,7 +467,7 @@
 			<Button
 				onclick={() => {
 					if (window.history.length > 1) window.history.back();
-					else goto(`/dispatcher/stores/${storeId}/orders`);
+					else goto(`/dispatcher/stores/${storeId}/confirmer`);
 				}}
 				variant="outline"
 				size="icon"
