@@ -320,8 +320,9 @@ export const variantPricing = sqliteTable(
 		costAmount: text('cost_amount').notNull().default('0'),
 		costCurrency: text('cost_currency', { enum: ['cny', 'pkr'] }).notNull().default('cny'),
 		// Overrides the live Shopify variant weight for the suggested-price
-		// calculation; null means "use whatever weight Shopify has". Set on
-		// apply so the two stay in sync going forward.
+		// calculation; null means "use whatever weight Shopify has". Only a
+		// staged edit — cleared once pushed (or when the dispatcher Weights page
+		// saves the variant), since Shopify is the source of truth for weight.
 		weightGramsOverride: integer('weight_grams_override'),
 		// Manual override of the computed suggested price/compare-at — null
 		// means "use the formula's number". Lets the merchant hand-tune a

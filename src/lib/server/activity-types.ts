@@ -33,6 +33,7 @@ export const ACTIVITY_TYPES: ActivityType[] = [
 	{ action: 'pricing.changes.apply', label: 'Applying pricing changes to Shopify', isView: false },
 	{ action: 'pricing.reviewMarks.resetAll', label: 'Resetting all pricing review ticks', isView: false },
 	{ action: 'inventory.count.apply', label: 'Applying inventory count to Shopify', isView: false },
+	{ action: 'weights.apply', label: 'Saving product weights to Shopify', isView: false },
 	{ action: 'dispatcher.totpReset', label: "Resetting a dispatcher's two-factor authentication", isView: false },
 	{ action: 'order.updateShippingLines', label: 'Adding or removing order shipping', isView: false }
 ];

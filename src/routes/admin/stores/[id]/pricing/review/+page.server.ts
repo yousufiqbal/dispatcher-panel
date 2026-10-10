@@ -2,7 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 import { stores, variantPricing } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getShopifyClient } from '$lib/server/shopify/client';
 import { fetchPricingProducts, applyProductVariantPrices, applyVariantWeight } from '$lib/server/shopify/pricing';
 import type { PricingSettings } from '$lib/pricing';
@@ -76,6 +76,12 @@ export const actions: Actions = {
 				if (v.weightOverridden && v.weightGrams !== v.liveWeightGrams) {
 					try {
 						await applyVariantWeight(client, v.inventoryItemId, v.weightGrams);
+						// Shopify is the source of truth for weight — once pushed, drop the
+						// staged copy so a later edit on the Weights page isn't shadowed.
+						await db
+							.update(variantPricing)
+							.set({ weightGramsOverride: null })
+							.where(and(eq(variantPricing.storeId, params.id), eq(variantPricing.variantId, v.id)));
 					} catch (e) {
 						errors.push(`${product.title} / ${v.title}: weight update failed`);
 					}
