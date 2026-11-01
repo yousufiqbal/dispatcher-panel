@@ -235,6 +235,9 @@ export const restockItems = sqliteTable('restock_items', {
 	recAir: integer('rec_air').notNull().default(0),
 	recSea: integer('rec_sea').notNull().default(0),
 	actualRestock: integer('actual_restock'),
+	// Which shipment the qty is meant for — set when the dispatcher fills the
+	// qty from the Air or Sea recommendation. Groups the final restock list.
+	restockMode: text('restock_mode', { enum: ['air', 'sea'] }),
 	position: integer('position').notNull().default(0),
 	variantPosition: integer('variant_position').notNull().default(0),
 	orderedAt: integer('ordered_at', { mode: 'timestamp' })

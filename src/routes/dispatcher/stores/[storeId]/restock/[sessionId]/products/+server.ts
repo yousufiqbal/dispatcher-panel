@@ -3,10 +3,12 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { restockItems } from '$lib/server/db/schema';
 import { eq, asc } from 'drizzle-orm';
+import { getRestockSession } from '$lib/server/restock-session';
 
 // One scan per session (cached client-side) for the jump menu + progress —
 // instead of scanning every row on every product navigation.
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, locals }) => {
+	await getRestockSession(locals.session, params.storeId, params.sessionId);
 	const rows = await db
 		.select({ position: restockItems.position, productTitle: restockItems.productTitle, actualRestock: restockItems.actualRestock })
 		.from(restockItems)

@@ -14,8 +14,10 @@
 	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
-	import { formatCurrency } from '$lib/utils';
+	import { addToast } from '$lib/toast.svelte';
+	import { urgency } from '$lib/restock-calc';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import TableIcon from '@lucide/svelte/icons/table';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import ChevronRightIcon from '@lucide/svelte/icons/chevron-right';
 	import CheckIcon from '@lucide/svelte/icons/check';
@@ -28,14 +30,33 @@
 	let saving = $state(false);
 	let doneVersion = $state(0);
 
+	// Which shipment each qty is for. Re-derived per product; picking Air/Sea
+	// overrides it locally until the save lands.
+	let modes = $derived<Record<string, 'air' | 'sea' | null>>(
+		Object.fromEntries(data.variants.map((v) => [v.id, v.restockMode]))
+	);
+
 	// Lets the Air/Sea recommendation boxes fill the qty input directly instead
 	// of the dispatcher retyping the number they're already looking at.
-	function setQty(variantId: string, value: number) {
+	function setQty(variantId: string, value: number, mode: 'air' | 'sea') {
 		const input = document.getElementById(`qty-${variantId}`) as HTMLInputElement | null;
 		if (!input) return;
 		input.value = String(value);
+		modes = { ...modes, [variantId]: mode };
 		input.focus();
 	}
+
+	function coverLabel(days: number | null): string {
+		if (days === null) return '—';
+		return days >= 365 ? '1y+' : `${Math.floor(days)}d`;
+	}
+
+	const urgencyBox: Record<string, string> = {
+		critical: 'border-red-200 bg-red-50 text-red-700',
+		soon: 'border-amber-200 bg-amber-50 text-amber-800',
+		ok: 'border-border text-foreground',
+		idle: 'border-border text-muted-foreground'
+	};
 
 	function markDoneLocal(index: number) {
 		let set = sessionDone.get(data.session.id);
@@ -88,22 +109,52 @@
 	}
 
 	// Save current edits in background. `markDone` fills blank qtys with 0 so the
-	// product counts as reviewed once you move forward.
-	function saveForm(markDone: boolean) {
-		if (!formEl) return;
+	// product counts as reviewed once you move forward. Navigation doesn't wait
+	// for it, so a failure is surfaced as a toast naming the product to revisit.
+	function saveForm(markDone: boolean): Promise<void> {
+		if (!formEl) return Promise.resolve();
 		const body = new FormData(formEl);
+		const title = data.productTitle;
 		if (markDone) {
 			for (const [key, value] of [...body.entries()]) {
 				if (key.startsWith('actualRestock_') && value === '') body.set(key, '0');
 			}
 			markDoneLocal(data.index);
 		}
-		fetch('?/save', { method: 'POST', body }).catch(() => {});
+		return fetch(`${base}/${data.index}?/save`, {
+			method: 'POST',
+			body,
+			headers: { 'x-sveltekit-action': 'true' }
+		})
+			.then(async (res) => {
+				const result = res.ok ? await res.json() : null;
+				if (result?.type !== 'success') throw new Error();
+			})
+			.catch(() => addToast(`Couldn't save "${title}" — go back and re-enter it`, 'error'));
 	}
+
+	const base = $derived(`/dispatcher/stores/${storeId}/restock/${data.session.id}`);
 
 	function navTo(targetIndex: number, markDone = false) {
 		saveForm(markDone);
 		goto(`../${data.session.id}/${targetIndex}`);
+	}
+
+	// Leaving the wizard (to the table or the final list) waits for the save,
+	// otherwise the next page can load before this product's qty is stored.
+	async function leaveTo(href: string) {
+		saving = true;
+		await saveForm(false);
+		saving = false;
+		goto(href);
+	}
+
+	async function finish() {
+		saving = true;
+		await saveForm(true);
+		await fetch(`${base}/${data.index}?/complete`, { method: 'POST', body: new FormData(), headers: { 'x-sveltekit-action': 'true' } });
+		saving = false;
+		goto(`${base}/complete`);
 	}
 
 	let completeBtnEl = $state<HTMLButtonElement | null>(null);
@@ -140,6 +191,22 @@
 		if (data.prevIndex !== null) preloadData(`${base}/${data.prevIndex}`);
 	});
 </script>
+
+{#snippet recButton(variantId: string, mode: 'air' | 'sea', value: number, extra: string)}
+	{@const picked = modes[variantId] === mode}
+	<button
+		type="button"
+		tabindex="-1"
+		title="Set restock qty to {value} ({mode === 'air' ? 'air' : 'sea'} shipment)"
+		onclick={() => setQty(variantId, value, mode)}
+		class="flex flex-col items-center justify-center border rounded-lg px-1 py-1.5 min-w-0 transition-colors cursor-pointer {extra}
+			{mode === 'air' ? 'border-blue-100 bg-blue-50 hover:bg-blue-100 text-blue-700' : 'border-teal-100 bg-teal-50 hover:bg-teal-100 text-teal-700'}
+			{picked ? (mode === 'air' ? 'ring-2 ring-blue-400' : 'ring-2 ring-teal-400') : ''}"
+	>
+		<span class="text-[9px] font-medium uppercase tracking-wide lg:hidden opacity-80">{mode === 'air' ? '✈Air' : '🚢Sea'}</span>
+		<span class="text-sm font-semibold tabular-nums">{value}</span>
+	</button>
+{/snippet}
 
 <svelte:head><title>{data.index + 1}/{data.totalProducts} {data.productTitle} — Restock</title></svelte:head>
 <svelte:window onkeydown={handleKeydown} onclick={() => { if (jumpOpen) jumpOpen = false; }} />
@@ -197,14 +264,18 @@
 					</div>
 				{/if}
 			</div>
-			{#if data.session.completedAt}
-				<Button href="/dispatcher/stores/{storeId}/restock/{data.session.id}/complete" size="sm">
-					Restock list
-					<ChevronRightIcon class="size-3.5" />
+			<div class="flex items-center gap-2">
+				<Button variant="outline" size="sm" disabled={saving} onclick={() => leaveTo(`${base}/table`)}>
+					<TableIcon class="size-3.5" />
+					<span class="hidden sm:inline">Table view</span>
 				</Button>
-			{:else}
-				<div class="text-xs text-muted-foreground hidden md:block">← → keys to navigate</div>
-			{/if}
+				{#if data.session.completedAt}
+					<Button size="sm" disabled={saving} onclick={() => leaveTo(`${base}/complete`)}>
+						Restock list
+						<ChevronRightIcon class="size-3.5" />
+					</Button>
+				{/if}
+			</div>
 		</div>
 	</div>
 
@@ -231,12 +302,19 @@
 					if (result.type === 'success') showToast();
 				};
 			}}>
+				{#if data.stockError}
+					<div class="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-900 mb-4">
+						Couldn't load live stock from Shopify, so recommendations are hidden: {data.stockError}
+					</div>
+				{/if}
 				<div class="card overflow-hidden mb-5">
 					<div class="hidden lg:grid grid-cols-[200px_1fr_148px_120px] gap-4 px-4 py-2.5 border-b border-border bg-muted/30">
 						<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Variant</span>
 						<div class="flex gap-2">
 							<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide w-[52px] text-center">90d</span>
-							<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide w-[52px] text-center">Stock</span>
+							<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide w-[52px] text-center">Avail</span>
+							<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide w-[52px] text-center">Incoming</span>
+							<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide w-[52px] text-center">Lasts</span>
 						</div>
 						<span class="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">Restock qty</span>
 						<div class="flex gap-2">
@@ -247,6 +325,8 @@
 
 					<div class="divide-y divide-border">
 						{#each data.variants as v}
+							{@const level = v.calc ? urgency(v.calc, data.lead) : 'idle'}
+							{@const out = v.stock !== null && v.stock.available <= 0}
 							<div class="p-4 lg:grid lg:grid-cols-[200px_1fr_148px_120px] lg:items-center lg:gap-4 transition-colors hover:bg-yellow-50 focus-within:bg-yellow-50">
 								<div class="flex items-center gap-3 shrink-0 mb-2 lg:mb-0">
 									{#if v.variantImageUrl}
@@ -260,36 +340,36 @@
 									</div>
 								</div>
 
+								<input type="hidden" name="mode_{v.id}" value={modes[v.id] ?? ''} />
+
 								<div class="lg:contents">
-									<div class="grid grid-cols-4 gap-1.5 lg:flex lg:gap-2 mb-2 lg:mb-0">
-										<div class="flex flex-col items-center justify-center border border-border rounded-lg px-1 py-1.5 min-w-0 lg:min-w-[52px] lg:px-3">
+									<div class="grid grid-cols-3 gap-1.5 lg:flex lg:gap-2 mb-2 lg:mb-0">
+										<div class="flex flex-col items-center justify-center border border-border rounded-lg px-1 py-1.5 min-w-0 lg:min-w-[52px] lg:px-3" title="{v.sales30} in 30d · {v.sales60} in 60d · {v.sales90} in 90d">
 											<span class="text-[9px] text-muted-foreground font-medium uppercase tracking-wide lg:hidden">90d</span>
 											<span class="text-sm font-semibold text-foreground tabular-nums">{v.sales90}</span>
 										</div>
-										<div class="flex flex-col items-center justify-center border rounded-lg px-1 py-1.5 min-w-0 lg:min-w-[52px] lg:px-3 {v.currentStock === 0 ? 'border-red-200 bg-red-50' : 'border-border'}">
-											<span class="text-[9px] {v.currentStock === 0 ? 'text-red-500' : 'text-muted-foreground'} font-medium uppercase tracking-wide lg:hidden">Stock</span>
-											<span class="text-sm font-semibold tabular-nums {v.currentStock === 0 ? 'text-red-600' : 'text-foreground'}">{v.currentStock}</span>
+										<div
+											class="flex flex-col items-center justify-center border rounded-lg px-1 py-1.5 min-w-0 lg:min-w-[52px] lg:px-3 {out ? 'border-red-200 bg-red-50' : 'border-border'}"
+											title={v.stock ? `${v.stock.committed} committed to unfulfilled orders` : undefined}
+										>
+											<span class="text-[9px] {out ? 'text-red-500' : 'text-muted-foreground'} font-medium uppercase tracking-wide lg:hidden">Avail</span>
+											<span class="text-sm font-semibold tabular-nums {out ? 'text-red-600' : 'text-foreground'}">{v.stock?.available ?? '—'}</span>
 										</div>
-										<button
-											type="button"
-											tabindex="-1"
-											title="Set restock qty to {v.recAir}"
-											onclick={() => setQty(v.id, v.recAir)}
-											class="flex flex-col items-center justify-center border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors rounded-lg px-1 py-1.5 min-w-0 lg:hidden cursor-pointer"
+										<div class="flex flex-col items-center justify-center border border-border rounded-lg px-1 py-1.5 min-w-0 lg:min-w-[52px] lg:px-3">
+											<span class="text-[9px] text-muted-foreground font-medium uppercase tracking-wide lg:hidden">Incoming</span>
+											<span class="text-sm font-semibold tabular-nums {v.stock?.incoming ? 'text-violet-700' : 'text-muted-foreground'}">{v.stock?.incoming ?? '—'}</span>
+										</div>
+										<div
+											class="flex flex-col items-center justify-center border rounded-lg px-1 py-1.5 min-w-0 lg:min-w-[52px] lg:px-3 {urgencyBox[level]}"
+											title="Days until available + incoming runs out at the current sales rate"
 										>
-											<span class="text-[9px] text-blue-600 font-medium uppercase tracking-wide">✈Air</span>
-											<span class="text-sm font-semibold text-blue-700 tabular-nums">{v.recAir}</span>
-										</button>
-										<button
-											type="button"
-											tabindex="-1"
-											title="Set restock qty to {v.recSea}"
-											onclick={() => setQty(v.id, v.recSea)}
-											class="flex flex-col items-center justify-center border border-teal-100 bg-teal-50 hover:bg-teal-100 transition-colors rounded-lg px-1 py-1.5 min-w-0 lg:hidden cursor-pointer"
-										>
-											<span class="text-[9px] text-teal-600 font-medium uppercase tracking-wide">🚢Sea</span>
-											<span class="text-sm font-semibold text-teal-700 tabular-nums">{v.recSea}</span>
-										</button>
+											<span class="text-[9px] font-medium uppercase tracking-wide lg:hidden opacity-80">Lasts</span>
+											<span class="text-sm font-semibold tabular-nums">{coverLabel(v.calc?.coverDays ?? null)}</span>
+										</div>
+										{#if v.calc}
+											{@render recButton(v.id, 'air', v.calc.recAir, 'lg:hidden')}
+											{@render recButton(v.id, 'sea', v.calc.recSea, 'lg:hidden')}
+										{/if}
 									</div>
 
 									<div class="shrink-0">
@@ -327,24 +407,10 @@
 									</div>
 
 									<div class="hidden lg:flex gap-2">
-										<button
-											type="button"
-											tabindex="-1"
-											title="Set restock qty to {v.recAir}"
-											onclick={() => setQty(v.id, v.recAir)}
-											class="flex flex-col items-center border border-blue-100 bg-blue-50 hover:bg-blue-100 transition-colors rounded-lg px-3 py-1.5 shrink-0 min-w-[52px] cursor-pointer"
-										>
-											<span class="text-sm font-semibold text-blue-700">{v.recAir}</span>
-										</button>
-										<button
-											type="button"
-											tabindex="-1"
-											title="Set restock qty to {v.recSea}"
-											onclick={() => setQty(v.id, v.recSea)}
-											class="flex flex-col items-center border border-teal-100 bg-teal-50 hover:bg-teal-100 transition-colors rounded-lg px-3 py-1.5 shrink-0 min-w-[52px] cursor-pointer"
-										>
-											<span class="text-sm font-semibold text-teal-700">{v.recSea}</span>
-										</button>
+										{#if v.calc}
+											{@render recButton(v.id, 'air', v.calc.recAir, 'px-3 shrink-0 min-w-[52px]')}
+											{@render recButton(v.id, 'sea', v.calc.recSea, 'px-3 shrink-0 min-w-[52px]')}
+										{/if}
 									</div>
 								</div>
 							</div>
@@ -370,7 +436,7 @@
 							<ArrowRightIcon class="size-4" />
 						</Button>
 					{:else}
-						<Button bind:ref={completeBtnEl} type="submit" formaction="?/complete" disabled={saving} onclick={() => saveForm(true)} class="bg-green-600 hover:bg-green-700">
+						<Button bind:ref={completeBtnEl} type="button" disabled={saving} onclick={finish} class="bg-green-600 hover:bg-green-700">
 							{#if saving}<Loader2Icon class="size-4 animate-spin" />{:else}Complete<CheckIcon class="size-4" />{/if}
 						</Button>
 					{/if}

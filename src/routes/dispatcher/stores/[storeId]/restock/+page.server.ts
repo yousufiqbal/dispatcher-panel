@@ -4,7 +4,8 @@ import { db } from '$lib/server/db';
 import { stores, restockSessions, restockItems } from '$lib/server/db/schema';
 import { eq, and, desc, inArray, asc } from 'drizzle-orm';
 import { getShopifyClient } from '$lib/server/shopify/client';
-import { fetchRestockProducts, fetchVariantSales, calcRecommendation } from '$lib/server/shopify/restock';
+import { fetchRestockProducts, fetchVariantSales, fetchLiveStock } from '$lib/server/shopify/restock';
+import { calcRestock } from '$lib/restock-calc';
 import { getAuthorizedStore } from '$lib/server/store-access';
 import { logAudit } from '$lib/server/audit';
 
@@ -62,23 +63,45 @@ export const actions: Actions = {
 
 		let products: Awaited<ReturnType<typeof fetchRestockProducts>>;
 		let salesMap: Awaited<ReturnType<typeof fetchVariantSales>>;
+		let stockMap: Awaited<ReturnType<typeof fetchLiveStock>>;
 		try {
 			products = await fetchRestockProducts(client);
 			const variantIds = products.flatMap((p) => p.variants.map((v) => v.id));
-			salesMap = await fetchVariantSales(client, variantIds);
+			[salesMap, stockMap] = await Promise.all([
+				fetchVariantSales(client, variantIds),
+				fetchLiveStock(client, variantIds.map(String))
+			]);
 		} catch (e) {
 			await db.delete(restockSessions).where(eq(restockSessions.id, session.id));
 			return fail(422, { startError: e instanceof Error ? e.message : 'Failed to fetch products from Shopify' });
 		}
 
+		const lead = { airDays: fullStore.airLeadDays, seaDays: fullStore.seaLeadDays };
+		const noStock = { available: 0, committed: 0, incoming: 0 };
+
+		// Most urgent product first (shortest days-of-cover across its variants),
+		// so the walk-through front-loads what actually needs ordering. Products
+		// that aren't selling keep catalog order at the end.
+		const ranked = products
+			.map((product, catalogIndex) => {
+				const variants = product.variants.map((variant) => {
+					const sales = salesMap.get(variant.id) ?? { s30: 0, s60: 0, s90: 0 };
+					const stock = stockMap.get(String(variant.id)) ?? noStock;
+					return { variant, sales, stock, calc: calcRestock(sales, stock, lead) };
+				});
+				const cover = Math.min(...variants.map((v) => v.calc.coverDays ?? Infinity));
+				return { product, variants, cover, catalogIndex };
+			})
+			.sort((a, b) => a.cover - b.cover || a.catalogIndex - b.catalogIndex);
+
 		const items: (typeof restockItems.$inferInsert)[] = [];
 		let position = 0;
 		let variantPosition = 0;
 
-		for (const product of products) {
-			for (const variant of product.variants) {
-				const sales = salesMap.get(variant.id) ?? { s30: 0, s60: 0, s90: 0 };
-				const currentStock = Math.max(0, variant.inventoryQuantity);
+		// currentStock / recAir / recSea are the session-start snapshot, kept for
+		// the record only — every view recomputes from live Shopify stock.
+		for (const { product, variants } of ranked) {
+			for (const { variant, sales, stock, calc } of variants) {
 				items.push({
 					sessionId: session.id,
 					productId: String(product.id),
@@ -91,9 +114,9 @@ export const actions: Actions = {
 					sales30: sales.s30,
 					sales60: sales.s60,
 					sales90: sales.s90,
-					currentStock,
-					recAir: calcRecommendation(sales.s30, currentStock, fullStore.airLeadDays),
-					recSea: calcRecommendation(sales.s30, currentStock, fullStore.seaLeadDays),
+					currentStock: stock.available,
+					recAir: calc.recAir,
+					recSea: calc.recSea,
 					position,
 					variantPosition: variantPosition++
 				});
@@ -115,7 +138,8 @@ export const actions: Actions = {
 		redirect(303, `/dispatcher/stores/${params.storeId}/restock/${session.id}/0`);
 	},
 
-	delete: async ({ request, params }) => {
+	delete: async ({ request, params, locals }) => {
+		await getAuthorizedStore(locals.session, params.storeId);
 		const fd = await request.formData();
 		const sessionId = fd.get('sessionId')?.toString();
 		if (!sessionId) return fail(400);

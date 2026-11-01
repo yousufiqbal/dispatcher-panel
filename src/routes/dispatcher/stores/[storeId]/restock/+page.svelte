@@ -8,6 +8,7 @@
 	import PlusIcon from '@lucide/svelte/icons/plus';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 	import Trash2Icon from '@lucide/svelte/icons/trash-2';
+	import TableIcon from '@lucide/svelte/icons/table';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -35,7 +36,7 @@
 	<div class="card p-5 mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
 		<div>
 			<h2 class="text-sm font-semibold text-foreground">New restock session</h2>
-			<p class="text-xs text-muted-foreground mt-0.5">Fetches all active products and 90 days of sales data from Shopify</p>
+			<p class="text-xs text-muted-foreground mt-0.5">Fetches all active products and 90 days of sales, most urgent first. Stock is read live every time you open it.</p>
 		</div>
 		<form method="POST" action="?/start" use:enhance={() => {
 			starting = true;
@@ -71,10 +72,13 @@
 							</span>
 						</div>
 					</a>
+					<Button href="/dispatcher/stores/{storeId}/restock/{s.id}/table" variant="ghost" size="icon" class="ml-3 shrink-0 text-muted-foreground" title="Open in table view">
+						<TableIcon class="size-4" />
+					</Button>
 					<form
 						method="POST"
 						action="?/delete"
-						class="ml-3 shrink-0"
+						class="shrink-0"
 						bind:this={deleteForms[s.id]}
 						use:enhance={() => async ({ result, update }) => {
 							await update({ reset: false });

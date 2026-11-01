@@ -5,9 +5,9 @@
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import DownloadIcon from '@lucide/svelte/icons/download';
 	import CheckIcon from '@lucide/svelte/icons/check';
-	import EyeIcon from '@lucide/svelte/icons/eye';
-	import EyeOffIcon from '@lucide/svelte/icons/eye-off';
+	import TableIcon from '@lucide/svelte/icons/table';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
+	import type { LiveStock } from '$lib/restock-calc';
 
 	let { data } = $props();
 	const sessionId = $derived($page.params.sessionId);
@@ -51,29 +51,29 @@
 		await fetch('?/updateQty', { method: 'POST', body: fd, headers: { 'x-sveltekit-action': 'true' } });
 	}
 
-	// "Show current stock": live Shopify available per variant, fetched once
-	// on first toggle. Sessions can be days old, so the snapshot in
-	// item.currentStock may be stale by ordering time.
-	let showStock = $state(false);
-	let liveStock = $state<Record<string, number> | null>(null);
-	let stockLoading = $state(false);
+	// Live Shopify stock, streamed from the load after first paint.
+	let liveStock = $state<Record<string, LiveStock> | null>(null);
+	let stockLoading = $state(true);
 	let stockError = $state<string | null>(null);
-
-	async function toggleStock() {
-		showStock = !showStock;
-		if (!showStock || liveStock || stockLoading) return;
+	$effect(() => {
 		stockLoading = true;
-		stockError = null;
-		try {
-			const res = await fetch(`/dispatcher/stores/${storeId}/restock/${sessionId}/complete/stock`);
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			liveStock = await res.json();
-		} catch (e) {
-			stockError = e instanceof Error ? e.message : 'Failed to load';
-		} finally {
+		data.live.then((r) => {
+			liveStock = r.stock;
+			stockError = r.error;
 			stockLoading = false;
-		}
-	}
+		});
+	});
+
+	// One section per shipment, so the air and sea orders can be placed separately.
+	const sections = $derived(
+		[
+			{ key: 'air', label: '✈ Air', tone: 'text-blue-700' },
+			{ key: 'sea', label: '🚢 Sea', tone: 'text-teal-700' },
+			{ key: null, label: 'No shipment picked', tone: 'text-muted-foreground' }
+		]
+			.map((s) => ({ ...s, items: visibleList.filter((i) => (i.restockMode ?? null) === s.key) }))
+			.filter((s) => s.items.length > 0)
+	);
 
 	function thumbUrl(url: string | null | undefined): string {
 		if (!url) return '';
@@ -86,8 +86,11 @@
 	}
 
 	function exportCSV() {
-		const headers = ['Product', 'Variant', 'SKU', 'Restock Qty'];
-		const rows = data.restockList.map((i) => [i.productTitle, i.variantTitle ?? '', i.sku ?? '', qty[i.id] ?? i.actualRestock ?? 0]);
+		const headers = ['Product', 'Variant', 'SKU', 'Shipment', 'Restock Qty', 'Available', 'Incoming'];
+		const rows = data.restockList.map((i) => {
+			const s = liveStock?.[i.variantId];
+			return [i.productTitle, i.variantTitle ?? '', i.sku ?? '', i.restockMode ?? '', qty[i.id] ?? i.actualRestock ?? 0, s?.available ?? '', s?.incoming ?? ''];
+		});
 		const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
 		const blob = new Blob([csv], { type: 'text/csv' });
 		const url = URL.createObjectURL(blob);
@@ -115,24 +118,18 @@
 			</p>
 		</div>
 		<div class="flex items-center gap-2 shrink-0 flex-wrap">
-			<Button variant="outline" onclick={toggleStock} disabled={data.restockList.length === 0} class={showStock ? 'bg-accent' : ''}>
-				{#if stockLoading}
-					<Loader2Icon class="size-4 animate-spin" />
-				{:else if showStock}
-					<EyeOffIcon class="size-4" />
-				{:else}
-					<EyeIcon class="size-4" />
-				{/if}
-				{showStock ? 'Hide' : 'Show'} current stock
+			<Button variant="outline" href="/dispatcher/stores/{storeId}/restock/{sessionId}/table">
+				<TableIcon class="size-4" />
+				Edit in table
 			</Button>
-			<Button variant="outline" onclick={exportCSV} disabled={data.restockList.length === 0}>
+			<Button variant="outline" onclick={exportCSV} disabled={data.restockList.length === 0 || stockLoading}>
 				<DownloadIcon class="size-4" />
 				Export CSV
 			</Button>
 		</div>
 	</div>
 
-	{#if showStock && stockError}
+	{#if stockError}
 		<div class="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-900 mb-4">Couldn't load current stock: {stockError}</div>
 	{/if}
 
@@ -155,14 +152,22 @@
 			{/each}
 		</div>
 		</div>
+		{#if visibleList.length === 0}
+			<div class="card p-8 text-center text-sm text-muted-foreground">
+				{filter === 'todo' ? 'Nothing pending.' : 'Nothing completed yet.'}
+			</div>
+		{/if}
+		{#each sections as section (section.key)}
+			<h2 class="text-xs font-semibold uppercase tracking-wide mb-2 mt-4 first:mt-0 {section.tone}">
+				{section.label}
+				<span class="text-muted-foreground font-medium normal-case tracking-normal">
+					· {section.items.length} items · {section.items.reduce((s, i) => s + (qty[i.id] ?? 0), 0)} units
+				</span>
+			</h2>
 		<div class="card overflow-hidden divide-y divide-border">
-			{#if visibleList.length === 0}
-				<div class="p-8 text-center text-sm text-muted-foreground">
-					{filter === 'todo' ? 'Nothing pending.' : 'Nothing completed yet.'}
-				</div>
-			{/if}
-			{#each visibleList as item (item.id)}
+			{#each section.items as item (item.id)}
 				{@const isOrdered = ordered[item.id] ?? false}
+				{@const live = liveStock?.[item.variantId]}
 				<div class="flex items-center gap-3 px-4 py-3 transition-colors {isOrdered ? 'bg-green-50/60' : ''}">
 					{#if item.variantImageUrl ?? item.productImageUrl}
 						<img src={thumbUrl(item.variantImageUrl ?? item.productImageUrl)} alt="" class="size-11 object-cover rounded-lg border border-border bg-muted shrink-0" />
@@ -173,19 +178,26 @@
 						<div class="text-sm font-medium text-foreground truncate">{item.productTitle}</div>
 						{#if item.variantTitle}<div class="text-xs text-muted-foreground truncate">{item.variantTitle}</div>{/if}
 					</div>
-					{#if showStock}
-						{@const live = liveStock?.[item.variantId]}
-						<div class="shrink-0 text-right text-xs tabular-nums leading-tight">
-							<div class="text-muted-foreground">Stock</div>
-							{#if stockLoading}
-								<Loader2Icon class="size-3 animate-spin inline text-muted-foreground" />
-							{:else if live == null}
-								<span class="text-muted-foreground">—</span>
-							{:else}
-								<span class="font-semibold {live <= 0 ? 'text-red-600' : 'text-foreground'}">{live}</span>
-							{/if}
-						</div>
-					{/if}
+					<div class="shrink-0 text-right text-xs tabular-nums leading-tight w-12">
+						<div class="text-muted-foreground">Avail</div>
+						{#if stockLoading}
+							<Loader2Icon class="size-3 animate-spin inline text-muted-foreground" />
+						{:else if live == null}
+							<span class="text-muted-foreground">—</span>
+						{:else}
+							<span class="font-semibold {live.available <= 0 ? 'text-red-600' : 'text-foreground'}">{live.available}</span>
+						{/if}
+					</div>
+					<div class="shrink-0 text-right text-xs tabular-nums leading-tight w-14">
+						<div class="text-muted-foreground">Incoming</div>
+						{#if stockLoading}
+							<Loader2Icon class="size-3 animate-spin inline text-muted-foreground" />
+						{:else if live == null}
+							<span class="text-muted-foreground">—</span>
+						{:else}
+							<span class="font-semibold {live.incoming ? 'text-violet-700' : 'text-muted-foreground'}">{live.incoming}</span>
+						{/if}
+					</div>
 					<input
 						type="number"
 						min="0"
@@ -205,5 +217,6 @@
 				</div>
 			{/each}
 		</div>
+		{/each}
 	{/if}
 </div>

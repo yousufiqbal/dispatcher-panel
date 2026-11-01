@@ -1,12 +1,12 @@
 import { shopifyRequest } from './client';
 import type { ShopifyClient } from './client';
+import type { LiveStock } from '$lib/restock-calc';
 
 export interface RestockVariant {
 	id: number;
 	productId: number;
 	title: string;
 	sku: string;
-	inventoryQuantity: number;
 	imageUrl: string | null;
 }
 
@@ -36,7 +36,6 @@ const PRODUCTS_QUERY = `
 								id
 								title
 								sku
-								inventoryQuantity
 								image { url }
 							}
 						}
@@ -51,7 +50,6 @@ interface ProductsQueryVariantNode {
 	id: string;
 	title: string;
 	sku: string | null;
-	inventoryQuantity: number | null;
 	image: { url: string } | null;
 }
 
@@ -90,7 +88,6 @@ export async function fetchRestockProducts(client: ShopifyClient): Promise<Resto
 					productId,
 					title: v.title,
 					sku: v.sku ?? '',
-					inventoryQuantity: v.inventoryQuantity ?? 0,
 					imageUrl: v.image?.url ?? productImageUrl
 				}))
 			});
@@ -231,11 +228,54 @@ export async function fetchMonthlySales(client: ShopifyClient, start: Date, end:
 	return { netSales, unitsSold, qtyByVariant };
 }
 
-// How many units to reorder so stock covers `leadDays` transit + a further
-// `coverDays` of expected sales at the current 30-day daily velocity.
-export function calcRecommendation(sales30: number, currentStock: number, leadDays: number, coverDays = 30): number {
-	const dailyVelocity = sales30 / 30;
-	return Math.max(0, Math.ceil(dailyVelocity * (leadDays + coverDays) - currentStock));
+const LIVE_STOCK_QUERY = `
+	query LiveStock($ids: [ID!]!) {
+		nodes(ids: $ids) {
+			... on ProductVariant {
+				id
+				inventoryItem {
+					inventoryLevels(first: 10) {
+						edges { node { quantities(names: ["available", "committed", "incoming"]) { name quantity } } }
+					}
+				}
+			}
+		}
+	}
+`;
+
+interface LiveStockResponse {
+	nodes: ({
+		id: string;
+		inventoryItem: { inventoryLevels: { edges: { node: { quantities: { name: string; quantity: number }[] } }[] } } | null;
+	} | null)[];
+}
+
+// Live available / committed / incoming per variant, summed across locations,
+// keyed by bare numeric variant id. `incoming` is what Shopify purchase orders
+// and transfers have on the way. Restock reads this fresh on every view rather
+// than trusting the session-start snapshot, which goes stale as orders come in.
+// Deleted variants are absent from the result.
+export async function fetchLiveStock(client: ShopifyClient, variantIds: string[]): Promise<Map<string, LiveStock>> {
+	const chunks: string[][] = [];
+	for (let i = 0; i < variantIds.length; i += 250) {
+		chunks.push(variantIds.slice(i, i + 250).map((id) => (id.startsWith('gid://') ? id : `gid://shopify/ProductVariant/${id}`)));
+	}
+
+	const out = new Map<string, LiveStock>();
+	const results = await Promise.all(chunks.map((ids) => shopifyRequest<LiveStockResponse>(client, LIVE_STOCK_QUERY, { ids })));
+	for (const result of results) {
+		for (const node of result.nodes) {
+			if (!node?.id) continue;
+			const stock: LiveStock = { available: 0, committed: 0, incoming: 0 };
+			for (const { node: level } of node.inventoryItem?.inventoryLevels.edges ?? []) {
+				stock.available += qty(level.quantities, 'available');
+				stock.committed += qty(level.quantities, 'committed');
+				stock.incoming += qty(level.quantities, 'incoming');
+			}
+			out.set(String(gidToId(node.id)), stock);
+		}
+	}
+	return out;
 }
 
 export interface InventoryCountVariant {
@@ -558,26 +598,6 @@ export async function getVariantsForMutation(
 				locationName: level.location.name,
 				currentOnHand: qty(level.quantities, 'on_hand')
 			});
-		}
-	}
-	return out;
-}
-
-// Live `available` per variant (summed across locations). Bare numeric ids
-// accepted. Deleted variants are absent from the result.
-export async function getVariantsAvailable(client: ShopifyClient, variantIds: string[]): Promise<Map<string, number>> {
-	const gql = `
-		query VariantsAvailable($ids: [ID!]!) {
-			nodes(ids: $ids) { ... on ProductVariant { id inventoryQuantity } }
-		}
-	`;
-	const out = new Map<string, number>();
-	for (let i = 0; i < variantIds.length; i += 250) {
-		const chunk = variantIds.slice(i, i + 250).map((id) => (id.startsWith('gid://') ? id : `gid://shopify/ProductVariant/${id}`));
-		const result = await shopifyRequest<{ nodes: ({ id: string; inventoryQuantity: number | null } | null)[] }>(client, gql, { ids: chunk });
-		for (const node of result.nodes) {
-			if (!node) continue;
-			out.set(node.id.split('/').pop()!, node.inventoryQuantity ?? 0);
 		}
 	}
 	return out;
