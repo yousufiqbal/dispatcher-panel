@@ -5,21 +5,15 @@
 	import { page } from '$app/stores';
 	import { formatCurrency, formatDate } from '$lib/utils';
 	import { deliveryPill } from '$lib/delivery-status';
-	import { clickOutside } from '$lib/actions/clickOutside';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
-	import * as Select from '$lib/components/ui/select/index.js';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
-	import { Checkbox } from '$lib/components/ui/checkbox/index.js';
 	import Lightbox from '$lib/components/Lightbox.svelte';
 	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
 	import PhoneIcon from '@lucide/svelte/icons/phone';
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import CheckIcon2 from '@lucide/svelte/icons/check';
-	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
-	import MoreHorizontalIcon from '@lucide/svelte/icons/more-horizontal';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import ClockIcon from '@lucide/svelte/icons/clock';
@@ -29,35 +23,9 @@
 
 	let lightboxUrl = $state<string | null>(null);
 	let lightboxAlt = $state('');
-	let showCourierMenu = $state(false);
-	let showCancelDialog = $state(false);
 	let showConfirmDialog = $state(false);
 	let showUnconfirmDialog = $state(false);
-	let showFulfillDialog = $state(false);
-	let showRefundDialog = $state(false);
-	let showInvoiceDialog = $state(false);
-	let showMarkPaidDialog = $state(false);
-	let showDuplicateDialog = $state(false);
-	let showUnbookDialog = $state(false);
-	let showEditContactModal = $state(false);
 	let showEditShippingModal = $state(false);
-	let showDiscountModal = $state(false);
-	// Batch discount: one type + one value, applied in-modal to every ticked
-	// item. `batchApplied` is the staged result — nothing reaches Shopify until
-	// Save submits the form.
-	let batchDiscountType = $state<'PERCENTAGE' | 'FIXED_AMOUNT'>('PERCENTAGE');
-	let batchDiscountValue = $state('');
-	let batchChecked = $state<Record<string, boolean>>({});
-	let batchApplied = $state<Record<string, string>>({});
-	let batchError = $state('');
-
-	// Add/remove shipping
-	let showShippingLinesModal = $state(false);
-	let shippingRemovals = $state<Record<string, boolean>>({});
-	let newShippingTitle = $state('Shipping');
-	let newShippingAmount = $state('');
-	let savingShippingLines = $state(false);
-
 	// Phone/email copy feedback, same affordance as the orders list.
 	let copiedField = $state<string | null>(null);
 	function copyValue(value: string) {
@@ -66,13 +34,6 @@
 		setTimeout(() => copiedField === value && (copiedField = null), 1200);
 	}
 
-	// Cancel dialog: skipping the restock requires a written reason.
-	let cancelRestock = $state(true);
-	let cancelNoRestockReason = $state('');
-	let applyingDiscount = $state(false);
-	let editNote = $state(false);
-	let noteInput = $state('');
-	let tagsInputEl = $state<HTMLInputElement | null>(null);
 	let submitting = $state<string | null>(null);
 
 	const order = $derived(data.order);
@@ -86,7 +47,7 @@
 	const delivery = $derived(
 		deliveryPill(
 			order.fulfillments.find((f) => f.displayStatus)?.displayStatus,
-			!!data.booking || order.fulfillments.some((f) => f.trackingInfo.some((t) => t.number))
+			order.fulfillments.some((f) => f.trackingInfo.some((t) => t.number))
 		)
 	);
 	const isConfirmed = $derived(order.tags.includes('Confirmed'));
@@ -158,29 +119,12 @@
 		return { label: status.replace(/_/g, ' '), class: 'bg-zinc-100 text-zinc-700', icon: null };
 	}
 
-	function openEditNote() {
-		noteInput = order.note ?? '';
-		editNote = true;
-	}
-
-	let tagsInput = $state(order.tags.join(', '));
-
 	function statusClass(financial: string, fulfillment: string) {
 		if (financial === 'REFUNDED' || financial === 'VOIDED') return 'badge-cancelled';
 		if (fulfillment === 'FULFILLED') return 'badge-fulfilled';
 		if (financial === 'PENDING') return 'badge-pending';
 		return 'badge-partial';
 	}
-
-	// Cancel dialog
-	let cancelReason = $state('CUSTOMER');
-	const CANCEL_REASONS: Record<string, string> = {
-		CUSTOMER: 'Customer request',
-		FRAUD: 'Fraud',
-		INVENTORY: 'Inventory',
-		DECLINED: 'Payment declined',
-		OTHER: 'Other'
-	};
 
 	// --- Payment summary ---------------------------------------------------
 	const summaryCurrency = $derived(order.totalPriceSet.shopMoney.currencyCode);
@@ -197,117 +141,6 @@
 	const longDate = (iso: string) =>
 		new Date(iso).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
-	// --- Shipping lines ---------------------------------------------------
-	const shippingRemovalCount = $derived(Object.values(shippingRemovals).filter(Boolean).length);
-	const shippingChanged = $derived(shippingRemovalCount > 0 || newShippingAmount.trim() !== '');
-
-	function openShippingLines() {
-		shippingRemovals = {};
-		newShippingTitle = 'Shipping';
-		newShippingAmount = '';
-		showShippingLinesModal = true;
-	}
-
-	// --- Batch discount ---------------------------------------------------
-	const discountableItems = $derived(order.lineItems.nodes.filter((i) => i.currentQuantity > 0));
-	const orderCurrency = $derived(order.totalPriceSet.shopMoney.currencyCode);
-	const batchCheckedCount = $derived(discountableItems.filter((i) => batchChecked[i.id]).length);
-	const batchAppliedCount = $derived(discountableItems.filter((i) => batchApplied[i.id]).length);
-
-	function openBatchDiscount() {
-		batchDiscountType = 'PERCENTAGE';
-		batchDiscountValue = '';
-		batchApplied = {};
-		batchError = '';
-		// Everything is ticked to start — the common case is discounting the
-		// whole order, so unticking is the exception.
-		batchChecked = Object.fromEntries(discountableItems.map((i) => [i.id, true]));
-		showDiscountModal = true;
-	}
-
-	// What the line costs before any manual discount. Re-applying a batch
-	// discount replaces the previous manual one, so the preview has to measure
-	// against the undiscounted price — otherwise 10% on top of 10% would look
-	// like it compounds when it won't. Code/automatic discounts survive the
-	// replace, so they stay subtracted here.
-	function lineTotal(item: (typeof order.lineItems.nodes)[number]): number {
-		const gross = parseFloat(item.originalUnitPriceSet.shopMoney.amount) * item.currentQuantity;
-		const keptDiscounts = item.discountAllocations
-			.filter((d) => d.discountApplication?.__typename !== 'ManualDiscountApplication')
-			.reduce((sum, d) => sum + parseFloat(d.allocatedAmountSet.shopMoney.amount), 0);
-		return Math.max(0, gross - keptDiscounts);
-	}
-
-	// What the line costs after the staged discount — used for the preview and
-	// to keep a fixed amount from exceeding the line it's applied to.
-	function stagedTotal(item: (typeof order.lineItems.nodes)[number]): number {
-		const raw = batchApplied[item.id];
-		if (!raw) return lineTotal(item);
-		const v = parseFloat(raw);
-		if (!Number.isFinite(v)) return lineTotal(item);
-		const total = lineTotal(item);
-		return batchDiscountType === 'PERCENTAGE'
-			? Math.max(0, total * (1 - v / 100))
-			: Math.max(0, total - v);
-	}
-
-	function applyBatchDiscount() {
-		const v = parseFloat(batchDiscountValue);
-		if (!Number.isFinite(v) || v <= 0) {
-			batchError = 'Enter a discount greater than 0';
-			return;
-		}
-		if (batchDiscountType === 'PERCENTAGE' && v > 100) {
-			batchError = 'A percentage discount cannot exceed 100%';
-			return;
-		}
-		const targets = discountableItems.filter((i) => batchChecked[i.id]);
-		if (targets.length === 0) {
-			batchError = 'Tick at least one item';
-			return;
-		}
-		if (batchDiscountType === 'FIXED_AMOUNT') {
-			// A fixed amount is per line, so it has to fit the smallest line.
-			const tooSmall = targets.find((i) => v > lineTotal(i));
-			if (tooSmall) {
-				batchError = `${tooSmall.title} is only ${formatCurrency(lineTotal(tooSmall).toFixed(2), orderCurrency)} — reduce the amount or untick it`;
-				return;
-			}
-		}
-		batchError = '';
-		batchApplied = Object.fromEntries(targets.map((i) => [i.id, batchDiscountValue]));
-	}
-
-	function toggleBatchItem(id: string) {
-		batchChecked[id] = !batchChecked[id];
-		// Unticking drops any discount already staged for that line.
-		if (!batchChecked[id] && batchApplied[id]) {
-			const { [id]: _removed, ...rest } = batchApplied;
-			batchApplied = rest;
-		}
-	}
-
-	function toggleBatchAll() {
-		const next = batchCheckedCount < discountableItems.length;
-		batchChecked = Object.fromEntries(discountableItems.map((i) => [i.id, next]));
-		if (!next) batchApplied = {};
-	}
-
-	// Fulfill dialog
-	let trackingCompany = $state('');
-	const COURIER_OPTIONS: Record<string, string> = {
-		'': '— Select courier —',
-		PostEx: 'PostEx',
-		DEX: 'DEX',
-		TCS: 'TCS',
-		Leopards: 'Leopards Courier',
-		'M&P': 'M&P Courier',
-		Trax: 'Trax',
-		DHL: 'DHL',
-		FedEx: 'FedEx',
-		UPS: 'UPS',
-		Other: 'Other'
-	};
 </script>
 
 {#snippet spinner()}
@@ -318,35 +151,9 @@
 	<div class="card">
 		<div class="px-5 py-4 border-b border-border flex items-center justify-between">
 			<h2 class="font-semibold text-sm">Notes</h2>
-			{#if !isCancelled}
-				<button class="text-muted-foreground hover:text-foreground" title="Edit note" onclick={() => editNote ? (editNote = false) : openEditNote()}>
-					<PencilIcon class="size-3.5" />
-				</button>
-			{/if}
 		</div>
 		<div class="px-5 py-4">
-			{#if editNote}
-				<form method="POST" action="?/updateNote" use:enhance={() => { submitting = 'note'; return async ({ result, update }) => {
-					await update();
-					submitting = null;
-					if (result.type === 'redirect' || result.type === 'success') {
-						addToast('Note updated');
-						editNote = false;
-					} else {
-						addToast('Failed to update note', 'error');
-					}
-				}; }} class="space-y-2">
-					<textarea name="note" class="input min-h-20 text-sm" bind:value={noteInput}></textarea>
-					<div class="flex gap-2">
-						<Button type="submit" size="sm" disabled={submitting === 'note'}>
-							{#if submitting === 'note'}{@render spinner()}{/if}Save
-						</Button>
-						<Button type="button" variant="outline" size="sm" disabled={submitting === 'note'} onclick={() => editNote = false}>Cancel</Button>
-					</div>
-				</form>
-			{:else}
-				<p class="text-sm text-muted-foreground">{order.note || 'No notes from customer'}</p>
-			{/if}
+			<p class="text-sm text-muted-foreground">{order.note || 'No notes from customer'}</p>
 		</div>
 	</div>
 {/snippet}
@@ -406,20 +213,16 @@
 			</span>
 		{/if}
 
-		{#if !isCancelled}
-			<DropdownMenu.Root>
-				<DropdownMenu.Trigger>
-					{#snippet child({ props })}
-						<button {...props} class="ml-auto shrink-0 text-muted-foreground hover:text-foreground" title="More">
-							<MoreHorizontalIcon class="size-4" />
-						</button>
-					{/snippet}
-				</DropdownMenu.Trigger>
-				<DropdownMenu.Content align="end" class="w-52">
-					<DropdownMenu.Item onclick={() => showEditContactModal = true}>Edit contact information</DropdownMenu.Item>
-					<DropdownMenu.Item onclick={() => showEditShippingModal = true}>Edit shipping address</DropdownMenu.Item>
-				</DropdownMenu.Content>
-			</DropdownMenu.Root>
+		{#if !isCancelled && order.shippingAddress}
+			<button
+				type="button"
+				class="ml-auto shrink-0 inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+				title="Edit shipping address"
+				onclick={() => showEditShippingModal = true}
+			>
+				<PencilIcon class="size-3.5" />
+				<span class="hidden sm:inline">Edit address</span>
+			</button>
 		{/if}
 	</div>
 {/snippet}
@@ -428,29 +231,17 @@
 	<div class="card">
 		<div class="px-5 py-4 border-b border-border flex items-center justify-between">
 			<h2 class="font-semibold text-sm">Tags</h2>
-			{#if !isCancelled}
-				<button class="text-muted-foreground hover:text-foreground" title="Edit tags" onclick={() => tagsInputEl?.focus()}>
-					<PencilIcon class="size-3.5" />
-				</button>
-			{/if}
 		</div>
 		<div class="px-5 py-4">
-			<form method="POST" action="?/updateTags" use:enhance={() => { submitting = 'tags'; return async ({ result, update }) => {
-				await update();
-				submitting = null;
-				if (result.type === 'redirect' || result.type === 'success') addToast('Tags updated');
-				else addToast('Failed to update tags', 'error');
-			}; }}>
-				<Input
-					bind:ref={tagsInputEl}
-					name="tags"
-					bind:value={tagsInput}
-					placeholder="Add tags, comma-separated"
-					disabled={isCancelled}
-					onkeydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); (e.currentTarget as HTMLInputElement).form?.requestSubmit(); } }}
-					onblur={(e) => (e.currentTarget as HTMLInputElement).form?.requestSubmit()}
-				/>
-			</form>
+			{#if order.tags.length}
+				<div class="flex flex-wrap gap-1.5">
+					{#each order.tags as tag}
+						<span class="px-2 py-0.5 rounded-md bg-muted text-xs font-medium text-foreground">{tag}</span>
+					{/each}
+				</div>
+			{:else}
+				<p class="text-sm text-muted-foreground">No tags</p>
+			{/if}
 		</div>
 	</div>
 {/snippet}
@@ -493,78 +284,12 @@
 						<PhoneIcon class="size-4" />
 					</Button>
 				{/if}
-				{#if !isFulfilled}
-					<Button href="/dispatcher/stores/{storeId}/orders/{$page.params.orderId}/edit" variant="outline">Edit</Button>
-				{/if}
 				{#if !isFulfilled && !isConfirmed}
 					<Button onclick={() => showConfirmDialog = true}>Confirm Order</Button>
 				{/if}
-				{#if !isFulfilled && isConfirmed}
-					{#if data.couriers.length === 0}
-						<span class="text-xs text-muted-foreground self-center">No courier assigned to this store</span>
-					{:else if data.couriers.length === 1}
-						<Button href="/dispatcher/stores/{storeId}/orders/book/{data.couriers[0].id}?ids={$page.params.orderId}">
-							Book & Fulfill Order
-						</Button>
-					{:else}
-						<div class="relative" use:clickOutside={() => showCourierMenu = false}>
-							<Button onclick={() => showCourierMenu = !showCourierMenu}>
-								Book & Fulfill Order
-								<ChevronDownIcon class="size-4" />
-							</Button>
-							{#if showCourierMenu}
-								<div class="absolute right-0 top-full mt-1 w-48 bg-popover border border-border rounded-lg shadow-lg z-20 py-1">
-									{#each data.couriers as c}
-										<a
-											href="/dispatcher/stores/{storeId}/orders/book/{c.id}?ids={$page.params.orderId}"
-											class="block w-full text-left px-4 py-2 text-sm hover:bg-muted transition-colors"
-											onclick={() => showCourierMenu = false}
-										>{c.name}</a>
-									{/each}
-								</div>
-							{/if}
-						</div>
-					{/if}
+				{#if isConfirmed && !isFulfilled}
+					<Button variant="outline" onclick={() => showUnconfirmDialog = true}>Unconfirm Order</Button>
 				{/if}
-				<DropdownMenu.Root>
-					<DropdownMenu.Trigger>
-						{#snippet child({ props })}
-							<Button {...props} variant="outline" size="icon" title="More actions">
-								<MoreHorizontalIcon class="size-4" />
-							</Button>
-						{/snippet}
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Content align="end" class="w-44">
-						<!-- Fulfilling doesn't require the Confirmed tag — an unconfirmed
-						     order can be shipped straight out, so this stays available
-						     alongside the Confirm Order button. -->
-						{#if !isFulfilled}
-							<DropdownMenu.Item onclick={() => showFulfillDialog = true}>Fulfill Order</DropdownMenu.Item>
-						{/if}
-						{#if isConfirmed && !isFulfilled}
-							<DropdownMenu.Item onclick={() => showUnconfirmDialog = true}>Unconfirm Order</DropdownMenu.Item>
-						{/if}
-						{#if isFulfilled}
-							<DropdownMenu.Item variant="destructive" onclick={() => showUnbookDialog = true}>
-								{data.booking ? 'Unbook & Unfulfill' : 'Unfulfill'}
-							</DropdownMenu.Item>
-						{/if}
-						{#if order.displayFinancialStatus !== 'PENDING'}
-							<DropdownMenu.Item onclick={() => showRefundDialog = true}>Refund</DropdownMenu.Item>
-						{/if}
-						<DropdownMenu.Item onclick={() => showDuplicateDialog = true}>Duplicate Order</DropdownMenu.Item>
-						<!-- Both go through an order edit, which Shopify refuses on a
-						     fulfilled order — so don't offer them there. -->
-						{#if !isCancelled && !isFulfilled}
-							<DropdownMenu.Item onclick={openBatchDiscount}>Add Batch Discount</DropdownMenu.Item>
-							<DropdownMenu.Item onclick={openShippingLines}>Manage Shipping</DropdownMenu.Item>
-						{/if}
-						<DropdownMenu.Item onclick={() => window.open(`/dispatcher/stores/${storeId}/orders/${$page.params.orderId}/invoice`, '_blank')}>
-							Preview Invoice
-						</DropdownMenu.Item>
-						<DropdownMenu.Item variant="destructive" onclick={() => { cancelRestock = true; cancelNoRestockReason = ''; showCancelDialog = true; }}>Cancel Order</DropdownMenu.Item>
-					</DropdownMenu.Content>
-				</DropdownMenu.Root>
 			</div>
 		{/if}
 	</div>
@@ -743,22 +468,6 @@
 						{#if paymentPill.icon === 'clock'}<ClockIcon class="size-3.5" />{/if}
 						{paymentPill.label}
 					</span>
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger>
-							{#snippet child({ props })}
-								<button {...props} class="text-muted-foreground hover:text-foreground" title="More">
-									<MoreHorizontalIcon class="size-4" />
-								</button>
-							{/snippet}
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content align="end" class="w-44">
-							<DropdownMenu.Item onclick={() => showMarkPaidDialog = true}>Mark as paid</DropdownMenu.Item>
-							<DropdownMenu.Item onclick={() => showInvoiceDialog = true}>Resend invoice</DropdownMenu.Item>
-							{#if order.displayFinancialStatus !== 'PENDING'}
-								<DropdownMenu.Item onclick={() => showRefundDialog = true}>Refund</DropdownMenu.Item>
-							{/if}
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
 				</div>
 				<div class="text-sm divide-y divide-border">
 					{#if wasEdited}
@@ -813,10 +522,6 @@
 							</span>
 							<span class="text-right tabular-nums">{formatCurrency(Math.abs(balance).toFixed(2), summaryCurrency)}</span>
 						</div>
-						<div class="flex items-center justify-end gap-2 pt-1.5">
-							<Button type="button" variant="outline" size="sm" onclick={() => showInvoiceDialog = true}>Send invoice</Button>
-							<Button type="button" size="sm" onclick={() => showMarkPaidDialog = true}>Mark as paid</Button>
-						</div>
 					</div>
 				</div>
 			</div>
@@ -826,15 +531,15 @@
 		<!-- RIGHT COLUMN (desktop only): Tracking (if fulfilled), Notes, Tags -->
 		<div class="hidden lg:flex lg:col-start-3 flex-col gap-5">
 			{#if isFulfilled}
-				{@const fallbackTracking = order.fulfillments.flatMap((f) => f.trackingInfo).find((t) => t.number)}
+				{@const tracking = order.fulfillments.flatMap((f) => f.trackingInfo).find((t) => t.number)}
 				<div class="card">
 					<div class="px-5 py-4 border-b border-border">
 						<h2 class="font-semibold text-sm">Tracking</h2>
 					</div>
 					<div class="px-5 py-4 space-y-2 text-sm">
-						{#if data.booking}
-							<div class="font-medium text-foreground">{data.booking.courierName}</div>
-							<div class="text-muted-foreground font-mono">{data.booking.trackingId}</div>
+						{#if tracking}
+							<div class="font-medium text-foreground">{tracking.company ?? 'Unknown courier'}</div>
+							<div class="text-muted-foreground font-mono">{tracking.number}</div>
 							{#if delivery}
 								<div>
 									<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
@@ -843,28 +548,8 @@
 									</span>
 								</div>
 							{/if}
-							{#if data.booking.trackingUrl}
-								<a href={data.booking.trackingUrl} target="_blank" rel="noopener" class="text-primary text-xs hover:underline block mt-1">Track shipment →</a>
-							{/if}
-							<a
-								href="/dispatcher/stores/{storeId}/orders/labels?ids={$page.params.orderId}"
-								target="_blank"
-								rel="noopener"
-								class="text-primary text-xs hover:underline block mt-1"
-							>Print label →</a>
-						{:else if fallbackTracking}
-							<div class="font-medium text-foreground">{fallbackTracking.company ?? 'Unknown courier'}</div>
-							<div class="text-muted-foreground font-mono">{fallbackTracking.number}</div>
-							{#if delivery}
-								<div>
-									<span class="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full {delivery.class}">
-										<span class="size-1.5 rounded-full bg-current shrink-0"></span>
-										{delivery.label}
-									</span>
-								</div>
-							{/if}
-							{#if fallbackTracking.url}
-								<a href={fallbackTracking.url} target="_blank" rel="noopener" class="text-primary text-xs hover:underline block mt-1">Track shipment →</a>
+							{#if tracking.url}
+								<a href={tracking.url} target="_blank" rel="noopener" class="text-primary text-xs hover:underline block mt-1">Track shipment →</a>
 							{/if}
 						{:else}
 							<span class="text-muted-foreground">No tracking info</span>
@@ -877,36 +562,6 @@
 		</div>
 	</div>
 </div>
-
-<!-- Edit contact information dialog -->
-<Dialog.Root bind:open={showEditContactModal}>
-	<Dialog.Content class="sm:max-w-sm">
-		<Dialog.Header>
-			<Dialog.Title>Edit contact information</Dialog.Title>
-		</Dialog.Header>
-		<form method="POST" action="?/updateEmail" use:enhance={() => { submitting = 'contact'; return async ({ result, update }) => {
-			await update();
-			submitting = null;
-			if (result.type === 'redirect' || result.type === 'success') {
-				addToast('Contact information updated');
-				showEditContactModal = false;
-			} else {
-				addToast('Failed to update contact information', 'error');
-			}
-		}; }} class="space-y-4">
-			<div class="space-y-1.5">
-				<Label for="edit-contact-email">Email</Label>
-				<Input id="edit-contact-email" name="email" type="email" value={order.customer?.email ?? ''} />
-			</div>
-			<Dialog.Footer>
-				<Button type="button" variant="outline" disabled={submitting === 'contact'} onclick={() => showEditContactModal = false}>Cancel</Button>
-				<Button type="submit" disabled={submitting === 'contact'}>
-					{#if submitting === 'contact'}{@render spinner()}{/if}Save
-				</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
 
 <!-- Edit shipping address dialog -->
 <Dialog.Root bind:open={showEditShippingModal}>
@@ -974,356 +629,7 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<!-- Batch discount dialog -->
-<Dialog.Root bind:open={showDiscountModal}>
-	<Dialog.Content class="sm:max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden min-w-0">
-		<Dialog.Header>
-			<Dialog.Title>Add Batch Discount</Dialog.Title>
-			<Dialog.Description>Set one discount and apply it across the items you pick.</Dialog.Description>
-		</Dialog.Header>
-
-		<form method="POST" action="?/applyBatchDiscount" class="min-w-0" use:enhance={() => {
-			applyingDiscount = true;
-			return async ({ result, update }) => {
-				await update();
-				applyingDiscount = false;
-				if (result.type === 'redirect') {
-					addToast('Discount applied');
-					showDiscountModal = false;
-				} else {
-					addToast('Failed to apply discount', 'error');
-				}
-			};
-		}}>
-			<input type="hidden" name="discountType" value={batchDiscountType} />
-
-			<!-- Discount form -->
-			<div class="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
-				<div class="flex flex-wrap items-end gap-3">
-					<div class="space-y-1.5">
-						<span class="text-xs font-medium text-muted-foreground">Discount type</span>
-						<div class="inline-flex items-center rounded-lg border border-border bg-card p-0.5 text-xs">
-							<button
-								type="button"
-								onclick={() => { batchDiscountType = 'PERCENTAGE'; batchApplied = {}; batchError = ''; }}
-								class="px-3 py-1.5 rounded-md font-medium transition-colors {batchDiscountType === 'PERCENTAGE' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}"
-							>Percentage</button>
-							<button
-								type="button"
-								onclick={() => { batchDiscountType = 'FIXED_AMOUNT'; batchApplied = {}; batchError = ''; }}
-								class="px-3 py-1.5 rounded-md font-medium transition-colors {batchDiscountType === 'FIXED_AMOUNT' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}"
-							>Amount</button>
-						</div>
-					</div>
-
-					<div class="space-y-1.5">
-						<span class="text-xs font-medium text-muted-foreground">
-							{batchDiscountType === 'PERCENTAGE' ? 'Percent off' : `Amount off per item (${orderCurrency})`}
-						</span>
-						<div class="relative w-32">
-							<Input
-								type="number"
-								min="0"
-								max={batchDiscountType === 'PERCENTAGE' ? '100' : undefined}
-								step={batchDiscountType === 'PERCENTAGE' ? '1' : '0.01'}
-								placeholder="0"
-								class="pr-7 h-9 text-sm"
-								bind:value={batchDiscountValue}
-							/>
-							{#if batchDiscountType === 'PERCENTAGE'}
-								<span class="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-							{/if}
-						</div>
-					</div>
-
-					<Button type="button" variant="secondary" onclick={applyBatchDiscount} disabled={batchCheckedCount === 0}>
-						Apply to {batchCheckedCount} {batchCheckedCount === 1 ? 'item' : 'items'}
-					</Button>
-				</div>
-
-				{#if batchError}
-					<p class="text-xs text-destructive">{batchError}</p>
-				{:else if batchAppliedCount > 0}
-					<p class="text-xs text-muted-foreground">
-						Staged on {batchAppliedCount} {batchAppliedCount === 1 ? 'item' : 'items'} — nothing is saved until you press Save.
-					</p>
-				{/if}
-			</div>
-
-			<!-- Items -->
-			<div class="mt-4 space-y-2 min-w-0">
-				{#if discountableItems.length === 0}
-					<p class="text-sm text-muted-foreground py-4 text-center">No items on this order.</p>
-				{:else}
-					<div class="flex items-center justify-between">
-						<span class="text-xs font-medium text-muted-foreground">
-							{batchCheckedCount} of {discountableItems.length} selected
-						</span>
-						<button type="button" class="text-xs text-muted-foreground hover:text-foreground underline" onclick={toggleBatchAll}>
-							{batchCheckedCount < discountableItems.length ? 'Select all' : 'Clear all'}
-						</button>
-					</div>
-				{/if}
-
-				<!-- Loop the full (unfiltered) line item list, not just the active ones —
-				     orderEditBegin's calculated order mirrors this same full order, so a
-				     hidden input must still be emitted for removed (qty-0) items to keep
-				     array positions aligned when the server matches by index. -->
-				{#each order.lineItems.nodes as item}
-					{#if item.currentQuantity > 0}
-						{@const checked = batchChecked[item.id] ?? false}
-						{@const staged = batchApplied[item.id]}
-						{@const img = item.image?.url ?? item.variant?.image?.url}
-						<label class="flex items-center gap-3 min-w-0 border border-border rounded-lg px-3 py-2.5 {checked ? 'border-primary/40 bg-primary/5' : ''}">
-							<Checkbox {checked} onCheckedChange={() => toggleBatchItem(item.id)} />
-							<input type="hidden" name="lineItemId" value={item.id} />
-							<input type="hidden" name="value" value={staged ?? ''} />
-							{#if img}
-								<img src={img} alt={item.title} class="size-10 rounded-md object-cover border border-border shrink-0" />
-							{:else}
-								<div class="size-10 rounded-md bg-muted border border-border shrink-0"></div>
-							{/if}
-							<div class="min-w-0 flex-1">
-								<div class="text-sm font-medium text-foreground truncate">{item.title}</div>
-								<div class="text-xs text-muted-foreground truncate">
-									{item.currentQuantity} × {formatCurrency(item.discountedUnitPriceSet.shopMoney.amount, orderCurrency)}
-								</div>
-							</div>
-							<div class="text-right shrink-0 text-sm tabular-nums">
-								{#if staged}
-									<div class="text-xs text-muted-foreground line-through">{formatCurrency(lineTotal(item).toFixed(2), orderCurrency)}</div>
-									<div class="font-semibold text-green-700">{formatCurrency(stagedTotal(item).toFixed(2), orderCurrency)}</div>
-								{:else}
-									<div class="text-foreground">{formatCurrency(lineTotal(item).toFixed(2), orderCurrency)}</div>
-								{/if}
-							</div>
-						</label>
-					{:else}
-						<input type="hidden" name="lineItemId" value={item.id} />
-						<input type="hidden" name="value" value="" />
-					{/if}
-				{/each}
-			</div>
-
-			<Dialog.Footer class="mt-4">
-				<Button type="button" variant="outline" disabled={applyingDiscount} onclick={() => showDiscountModal = false}>Cancel</Button>
-				<Button type="submit" disabled={applyingDiscount || batchAppliedCount === 0}>
-					{#if applyingDiscount}{@render spinner()}{/if}
-					{applyingDiscount ? 'Saving…' : 'Save'}
-				</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
-
-<!-- Add / remove shipping dialog -->
-<Dialog.Root bind:open={showShippingLinesModal}>
-	<Dialog.Content class="sm:max-w-lg max-h-[85vh] overflow-y-auto overflow-x-hidden min-w-0">
-		<Dialog.Header>
-			<Dialog.Title>Manage Shipping</Dialog.Title>
-			<Dialog.Description>Change what this order charges for shipping.</Dialog.Description>
-		</Dialog.Header>
-
-		<form method="POST" action="?/updateShippingLines" class="min-w-0" use:enhance={() => {
-			savingShippingLines = true;
-			return async ({ result, update }) => {
-				await update();
-				savingShippingLines = false;
-				if (result.type === 'redirect') {
-					addToast('Shipping updated');
-					showShippingLinesModal = false;
-				} else {
-					addToast('Failed to update shipping', 'error');
-				}
-			};
-		}}>
-			<!-- Existing shipping -->
-			<div class="space-y-2 min-w-0">
-				<span class="text-xs font-medium text-muted-foreground">Current shipping</span>
-				{#if order.shippingLines.nodes.length === 0}
-					<p class="text-sm text-muted-foreground border border-dashed border-border rounded-lg px-3 py-4 text-center">
-						This order has no shipping charge.
-					</p>
-				{:else}
-					{#each order.shippingLines.nodes as line}
-						{@const marked = shippingRemovals[line.id] ?? false}
-						<div class="flex items-center gap-3 min-w-0 border border-border rounded-lg px-3 py-2.5 {marked ? 'border-destructive/40 bg-destructive/5' : ''}">
-							{#if marked}
-								<input type="hidden" name="removeShippingLineId" value={line.id} />
-							{/if}
-							<div class="min-w-0 flex-1">
-								<div class="text-sm font-medium text-foreground truncate {marked ? 'line-through text-muted-foreground' : ''}">{line.title}</div>
-								<div class="text-xs text-muted-foreground">
-									{formatCurrency(line.originalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}
-								</div>
-							</div>
-							<Button
-								type="button"
-								variant={marked ? 'outline' : 'destructive'}
-								size="sm"
-								class="shrink-0"
-								onclick={() => shippingRemovals[line.id] = !marked}
-							>
-								{marked ? 'Undo' : 'Remove'}
-							</Button>
-						</div>
-					{/each}
-				{/if}
-			</div>
-
-			<!-- Add shipping -->
-			<div class="mt-4 rounded-lg border border-border bg-muted/30 p-3 space-y-3">
-				<span class="text-xs font-medium text-muted-foreground">Add a shipping charge</span>
-				<div class="flex flex-wrap items-end gap-3">
-					<div class="space-y-1.5 flex-1 min-w-[10rem]">
-						<Label for="shipping-title" class="text-xs text-muted-foreground">Label</Label>
-						<Input id="shipping-title" name="shippingTitle" class="h-9 text-sm" placeholder="Shipping" bind:value={newShippingTitle} />
-					</div>
-					<div class="space-y-1.5 w-32">
-						<Label for="shipping-amount" class="text-xs text-muted-foreground">
-							Amount ({order.totalPriceSet.shopMoney.currencyCode})
-						</Label>
-						<Input
-							id="shipping-amount"
-							name="shippingAmount"
-							type="number"
-							min="0"
-							step="0.01"
-							placeholder="0.00"
-							class="h-9 text-sm"
-							bind:value={newShippingAmount}
-						/>
-					</div>
-				</div>
-				<p class="text-xs text-muted-foreground">Leave the amount blank to only remove shipping. Enter 0 for free shipping.</p>
-			</div>
-
-			<Dialog.Footer class="mt-4">
-				<Button type="button" variant="outline" disabled={savingShippingLines} onclick={() => showShippingLinesModal = false}>Cancel</Button>
-				<Button type="submit" disabled={savingShippingLines || !shippingChanged}>
-					{#if savingShippingLines}{@render spinner()}{/if}
-					{savingShippingLines ? 'Saving…' : 'Save'}
-				</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
-
-<!-- Cancel dialog -->
-<Dialog.Root bind:open={showCancelDialog}>
-	<Dialog.Content class="sm:max-w-md">
-		<Dialog.Header>
-			<Dialog.Title>Cancel {order.name}?</Dialog.Title>
-			<Dialog.Description>This cannot be undone.</Dialog.Description>
-		</Dialog.Header>
-		<form method="POST" action="?/cancel" use:enhance={() => { submitting = 'cancel'; return async ({ result, update }) => { await update(); submitting = null; showCancelDialog = false; if (result.type === 'redirect') addToast('Order cancelled'); else addToast('Failed to cancel order', 'error'); }; }} class="space-y-4">
-			<div class="space-y-1.5">
-				<Label for="reason">Reason</Label>
-				<Select.Root type="single" name="reason" bind:value={cancelReason}>
-					<Select.Trigger id="reason" class="w-full">{CANCEL_REASONS[cancelReason]}</Select.Trigger>
-					<Select.Content>
-						{#each Object.entries(CANCEL_REASONS) as [value, label]}
-							<Select.Item {value} {label}>{label}</Select.Item>
-						{/each}
-					</Select.Content>
-				</Select.Root>
-			</div>
-			<div class="space-y-1.5">
-				<label class="flex items-center gap-1.5 text-sm cursor-pointer">
-					<Checkbox checked={cancelRestock} onCheckedChange={() => cancelRestock = !cancelRestock} />
-					Restock inventory
-				</label>
-				{#if cancelRestock}
-					<input type="hidden" name="restock" value="true" />
-				{:else}
-					<!-- Stock that isn't returned to the shelf is a write-off, so the
-					     reason is required and goes into the activity log. -->
-					<div class="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 p-3">
-						<Label for="noRestockReason" class="text-xs font-medium text-amber-900">
-							Why is this inventory not being restocked? <span class="text-destructive">*</span>
-						</Label>
-						<Input
-							id="noRestockReason"
-							name="noRestockReason"
-							class="h-9 text-sm bg-card"
-							placeholder="e.g. items arrived damaged"
-							bind:value={cancelNoRestockReason}
-						/>
-						<p class="text-xs text-amber-900/80">Recorded against your name in the activity log.</p>
-					</div>
-				{/if}
-				<label class="flex items-center gap-1.5 text-sm cursor-pointer">
-					<Checkbox name="notify" value="true" checked />
-					Send a notification to the customer
-				</label>
-			</div>
-			{#if order.displayFinancialStatus !== 'PENDING'}
-				<label class="flex items-center gap-1.5 text-sm cursor-pointer">
-					<Checkbox name="refund" value="true" />
-					Refund payment
-				</label>
-			{/if}
-			<Dialog.Footer>
-				<Button type="button" variant="outline" disabled={submitting === 'cancel'} onclick={() => showCancelDialog = false}>Keep Order</Button>
-				<Button type="submit" variant="destructive" disabled={submitting === 'cancel' || (!cancelRestock && cancelNoRestockReason.trim().length < 3)}>
-					{#if submitting === 'cancel'}{@render spinner()}{/if}Cancel Order
-				</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
-
-<!-- Fulfill dialog -->
-<Dialog.Root bind:open={showFulfillDialog}>
-	<Dialog.Content class="sm:max-w-md">
-		<Dialog.Header>
-			<Dialog.Title>Fulfill {order.name}</Dialog.Title>
-		</Dialog.Header>
-		<form method="POST" action="?/fulfill" use:enhance={() => { submitting = 'fulfill'; return async ({ result, update }) => { await update(); submitting = null; showFulfillDialog = false; if (result.type === 'redirect') addToast('Order fulfilled'); else addToast('Failed to fulfill order', 'error'); }; }} class="space-y-4">
-			<div class="space-y-1.5">
-				<Label for="trackingCompany">Courier</Label>
-				<Select.Root type="single" name="trackingCompany" bind:value={trackingCompany}>
-					<Select.Trigger id="trackingCompany" class="w-full">{COURIER_OPTIONS[trackingCompany]}</Select.Trigger>
-					<Select.Content>
-						{#each Object.entries(COURIER_OPTIONS) as [value, label]}
-							<Select.Item {value} {label}>{label}</Select.Item>
-						{/each}
-					</Select.Content>
-				</Select.Root>
-			</div>
-			<div class="space-y-1.5">
-				<Label for="trackingNumber">Tracking Number</Label>
-				<Input id="trackingNumber" name="trackingNumber" class="font-mono" placeholder="Optional" />
-			</div>
-			<Dialog.Footer>
-				<Button type="button" variant="outline" disabled={submitting === 'fulfill'} onclick={() => showFulfillDialog = false}>Cancel</Button>
-				<Button type="submit" disabled={submitting === 'fulfill'}>
-					{#if submitting === 'fulfill'}{@render spinner()}{/if}Mark Fulfilled
-				</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
-
 <Lightbox bind:url={lightboxUrl} alt={lightboxAlt} items={lightboxItems} bind:index={lightboxIndex} />
-
-<!-- Duplicate order dialog -->
-<Dialog.Root bind:open={showDuplicateDialog}>
-	<Dialog.Content class="sm:max-w-md">
-		<Dialog.Header>
-			<Dialog.Title>Duplicate {order.name}?</Dialog.Title>
-			<Dialog.Description>Creates a new draft order with the same products, customer, and shipping address.</Dialog.Description>
-		</Dialog.Header>
-		<form method="POST" action="?/duplicateOrder" use:enhance={() => { submitting = 'duplicate'; return async ({ result, update }) => { await update(); submitting = null; showDuplicateDialog = false; if (result.type === 'failure') addToast((result.data as any)?.error || 'Failed to duplicate order', 'error'); }; }}>
-			<Dialog.Footer>
-				<Button type="button" variant="outline" disabled={submitting === 'duplicate'} onclick={() => showDuplicateDialog = false}>Cancel</Button>
-				<Button type="submit" disabled={submitting === 'duplicate'}>
-					{#if submitting === 'duplicate'}{@render spinner()}{/if}Duplicate
-				</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
 
 <!-- Confirm order dialog -->
 <Dialog.Root bind:open={showConfirmDialog}>
@@ -1355,123 +661,6 @@
 				<Button type="button" variant="outline" disabled={submitting === 'unconfirm'} onclick={() => showUnconfirmDialog = false}>Cancel</Button>
 				<Button type="submit" variant="destructive" disabled={submitting === 'unconfirm'}>
 					{#if submitting === 'unconfirm'}{@render spinner()}{/if}Unconfirm Order
-				</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
-
-<!-- Unbook / Unfulfill dialog -->
-<Dialog.Root bind:open={showUnbookDialog}>
-	<Dialog.Content class="sm:max-w-md">
-		<Dialog.Header>
-			<Dialog.Title>{data.booking ? 'Unbook & unfulfill' : 'Unfulfill'} {order.name}?</Dialog.Title>
-			<Dialog.Description>
-				{#if data.booking}
-					Cancels the shipment with the courier and reverts the order back to unfulfilled in Shopify.
-				{:else}
-					Reverts the order back to unfulfilled in Shopify. There's no local booking record for this order, so no courier is contacted.
-				{/if}
-			</Dialog.Description>
-		</Dialog.Header>
-		<form
-			method="POST"
-			action="?/unbook"
-			use:enhance={() => {
-				submitting = 'unbook';
-				return async ({ result, update }) => {
-					await update();
-					submitting = null;
-					showUnbookDialog = false;
-					if (result.type === 'success') {
-						const warning = (result.data as { warning?: string } | undefined)?.warning;
-						addToast(warning ?? (data.booking ? 'Booking cancelled' : 'Order unfulfilled'), warning ? 'error' : 'success');
-					} else {
-						addToast(data.booking ? 'Failed to cancel booking' : 'Failed to unfulfill order', 'error');
-					}
-				};
-			}}
-		>
-			<Dialog.Footer>
-				<Button type="button" variant="outline" disabled={submitting === 'unbook'} onclick={() => showUnbookDialog = false}>Never mind</Button>
-				<Button type="submit" variant="destructive" disabled={submitting === 'unbook'}>
-					{#if submitting === 'unbook'}{@render spinner()}{/if}{data.booking ? 'Unbook & Unfulfill' : 'Unfulfill'}
-				</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
-
-<!-- Mark as paid dialog -->
-<Dialog.Root bind:open={showMarkPaidDialog}>
-	<Dialog.Content class="sm:max-w-md">
-		<Dialog.Header>
-			<Dialog.Title>Mark as Paid?</Dialog.Title>
-			<Dialog.Description>This will record a manual payment of <strong>{formatCurrency(order.totalPriceSet.shopMoney.amount, order.totalPriceSet.shopMoney.currencyCode)}</strong> on {order.name}. This cannot be undone.</Dialog.Description>
-		</Dialog.Header>
-		<form method="POST" action="?/markAsPaid" use:enhance={() => { submitting = 'markAsPaid'; return async ({ result, update }) => { await update(); submitting = null; showMarkPaidDialog = false; if (result.type === 'success' || result.type === 'redirect') addToast('Order marked as paid'); else addToast('Failed to mark as paid', 'error'); }; }}>
-			<Dialog.Footer>
-				<Button type="button" variant="outline" disabled={submitting === 'markAsPaid'} onclick={() => showMarkPaidDialog = false}>Cancel</Button>
-				<Button type="submit" disabled={submitting === 'markAsPaid'}>
-					{#if submitting === 'markAsPaid'}{@render spinner()}{/if}Confirm
-				</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
-
-<!-- Invoice dialog -->
-<Dialog.Root bind:open={showInvoiceDialog}>
-	<Dialog.Content class="sm:max-w-md">
-		<Dialog.Header>
-			<Dialog.Title>Resend Invoice</Dialog.Title>
-			<Dialog.Description>Invoice will be sent to this email.</Dialog.Description>
-		</Dialog.Header>
-		<form method="POST" action="?/resendInvoice" use:enhance={() => { submitting = 'invoice'; return async ({ result, update }) => { await update(); submitting = null; showInvoiceDialog = false; if (result.type === 'success') addToast('Invoice sent'); else addToast(result.type === 'failure' && (result.data as any)?.error || 'Failed to send invoice', 'error'); }; }} class="space-y-4">
-			<div class="space-y-1.5">
-				<Label for="invoiceEmail">Email</Label>
-				<Input id="invoiceEmail" name="email" type="email" value={order.customer?.email ?? ''} required />
-			</div>
-			<Dialog.Footer>
-				<Button type="button" variant="outline" disabled={submitting === 'invoice'} onclick={() => showInvoiceDialog = false}>Cancel</Button>
-				<Button type="submit" disabled={submitting === 'invoice'}>
-					{#if submitting === 'invoice'}{@render spinner()}{/if}Send Invoice
-				</Button>
-			</Dialog.Footer>
-		</form>
-	</Dialog.Content>
-</Dialog.Root>
-
-<!-- Refund dialog -->
-<Dialog.Root bind:open={showRefundDialog}>
-	<Dialog.Content class="sm:max-w-lg">
-		<Dialog.Header>
-			<Dialog.Title>Refund Items</Dialog.Title>
-		</Dialog.Header>
-		<form method="POST" action="?/refund" use:enhance={() => { submitting = 'refund'; return async ({ result, update }) => { await update(); submitting = null; showRefundDialog = false; if (result.type === 'redirect') addToast('Refund submitted'); else addToast('Failed to submit refund', 'error'); }; }} class="space-y-4">
-			<div class="space-y-2">
-				{#each activeLineItems as item}
-					<div class="flex items-center gap-3 border border-border rounded-lg px-4 py-3">
-						<input type="hidden" name="lineItemId" value={item.id} />
-						<div class="flex-1 text-sm">
-							<div class="font-medium">{item.title}</div>
-							<div class="text-xs text-muted-foreground">Ordered: {item.currentQuantity}</div>
-						</div>
-						<div class="flex items-center gap-2">
-							<Label class="text-xs text-muted-foreground">Qty</Label>
-							<Input name="quantity" type="number" min="0" max={item.currentQuantity} value={item.currentQuantity} class="w-16 text-center h-8" />
-						</div>
-					</div>
-				{/each}
-			</div>
-			<div class="space-y-1.5">
-				<Label for="note">Note</Label>
-				<Input id="note" name="note" placeholder="Reason for refund" />
-			</div>
-			<Dialog.Footer>
-				<Button type="button" variant="outline" disabled={submitting === 'refund'} onclick={() => showRefundDialog = false}>Cancel</Button>
-				<Button type="submit" disabled={submitting === 'refund'}>
-					{#if submitting === 'refund'}{@render spinner()}{/if}Submit Refund
 				</Button>
 			</Dialog.Footer>
 		</form>

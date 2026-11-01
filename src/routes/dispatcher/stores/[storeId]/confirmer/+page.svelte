@@ -31,7 +31,7 @@
 		type EasyConfirmTab,
 		type EasyConfirmView
 	} from '$lib/easy-confirm';
-	import { TRACKER_WINDOWS } from '$lib/tracker';
+	import { ORDER_WINDOWS } from '$lib/order-windows';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -416,7 +416,7 @@
 			</div>
 			<span class="text-xs text-muted-foreground hidden sm:inline">Ordered within</span>
 			<div class="inline-flex items-center rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
-				{#each TRACKER_WINDOWS as d (d)}
+				{#each ORDER_WINDOWS as d (d)}
 					<button
 						type="button"
 						onclick={() => setDays(d)}
@@ -426,7 +426,7 @@
 					</button>
 				{/each}
 				<!-- A custom window from the URL shows as its own selected chip. -->
-				{#if !(TRACKER_WINDOWS as readonly number[]).includes(data.days)}
+				{#if !(ORDER_WINDOWS as readonly number[]).includes(data.days)}
 					<span class="px-2.5 py-1.5 rounded-md font-medium bg-card text-foreground shadow-sm">{data.days}d</span>
 				{/if}
 			</div>

@@ -75,14 +75,6 @@
 					</div>
 					<ChevronRightIcon class="size-4 text-muted-foreground shrink-0" />
 				</a>
-
-				<a href="/admin/couriers" class="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
-					<div>
-						<h2 class="text-base font-semibold">Couriers</h2>
-						<p class="text-sm text-muted-foreground">Manage courier accounts and which stores can use them</p>
-					</div>
-					<ChevronRightIcon class="size-4 text-muted-foreground shrink-0" />
-				</a>
 			</div>
 		</div>
 

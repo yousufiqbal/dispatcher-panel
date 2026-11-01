@@ -725,7 +725,7 @@
 		<Dialog.Header>
 			<Dialog.Title>Save {pending.length} weight{pending.length === 1 ? '' : 's'} to Shopify</Dialog.Title>
 			<Dialog.Description>
-				Updates the variant weight in Shopify (in grams). Takes effect immediately for shipping and courier bookings.
+				Updates the variant weight in Shopify (in grams). Takes effect immediately for shipping rates.
 			</Dialog.Description>
 		</Dialog.Header>
 
