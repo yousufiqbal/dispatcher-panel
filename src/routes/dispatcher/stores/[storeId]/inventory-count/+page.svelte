@@ -15,6 +15,7 @@
 	const storeId = $derived($page.params.storeId);
 
 	let starting = $state(false);
+	let collectionId = $state('');
 	let confirmDeleteId = $state<string | null>(null);
 	let deleteForms = $state<Record<string, HTMLFormElement>>({});
 
@@ -28,27 +29,49 @@
 <svelte:head><title>Inventory Audit — Pro Shipper</title></svelte:head>
 
 <div class="p-3 sm:p-6 max-w-3xl mx-auto">
-	<p class="text-sm text-muted-foreground mb-5">Counts produce a report only — nothing is written back to Shopify. Apply changes yourself in the Shopify admin.</p>
+	<p class="text-sm text-muted-foreground mb-5">Count shelves against Shopify. Nothing changes in Shopify until you review the report and click Apply.</p>
 
 	{#if form?.startError}
 		<div class="rounded-md bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive mb-4">{form.startError}</div>
 	{/if}
 
-	<div class="card p-5 mb-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-		<div>
-			<h2 class="text-sm font-semibold text-foreground">New count session</h2>
-			<p class="text-xs text-muted-foreground mt-0.5">Fetches the current active catalog + stock levels from Shopify</p>
-		</div>
-		<form method="POST" action="?/start" use:enhance={() => {
+	<form
+		method="POST"
+		action="?/start"
+		class="card p-5 mb-5 space-y-4"
+		use:enhance={() => {
 			starting = true;
 			return async ({ update }) => { await update(); starting = false; };
-		}}>
-			<Button type="submit" disabled={starting}>
+		}}
+	>
+		<div>
+			<h2 class="text-sm font-semibold text-foreground">New count session</h2>
+			<p class="text-xs text-muted-foreground mt-0.5">Pick what to count. Shopify stock is read live as each product is counted.</p>
+		</div>
+		<div class="flex flex-col sm:flex-row sm:items-center gap-3">
+			<select name="collectionId" bind:value={collectionId} class="h-9 rounded-lg border border-border bg-card px-2.5 text-sm sm:w-64">
+				<option value="">All active products</option>
+				{#await data.collections}
+					<option disabled>Loading collections…</option>
+				{:then list}
+					{#each list as c (c.id)}
+						<option value={c.id}>{c.title}</option>
+					{/each}
+				{/await}
+			</select>
+			{#await data.collections then list}
+				<input type="hidden" name="collectionTitle" value={list.find((c) => c.id === collectionId)?.title ?? ''} />
+			{/await}
+			<label class="flex items-center gap-2 text-sm text-foreground">
+				<input type="checkbox" name="inStockOnly" class="size-4 rounded border-border" />
+				Only items Shopify shows in stock
+			</label>
+			<Button type="submit" disabled={starting} class="sm:ml-auto">
 				{#if starting}<Loader2Icon class="size-4 animate-spin" />{:else}<PlusIcon class="size-4" />{/if}
 				{starting ? 'Fetching data…' : 'Start Session'}
 			</Button>
-		</form>
-	</div>
+		</div>
+	</form>
 
 	{#if data.sessions.length > 0}
 		<h2 class="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Previous Sessions</h2>
@@ -59,9 +82,10 @@
 						href="/dispatcher/stores/{storeId}/inventory-count/{s.id}/{s.completedAt ? 'complete' : s.progress.resumeIndex}"
 						class="flex items-center justify-between flex-1 min-w-0"
 					>
-						<div class="flex items-center gap-3">
+						<div class="flex items-center gap-3 min-w-0">
 							<span class="size-1.5 rounded-full shrink-0 {s.completedAt ? 'bg-green-500' : 'bg-amber-500'}"></span>
-							<span class="text-sm text-foreground">{formatDate(String(s.startedAt))}</span>
+							<span class="text-sm text-foreground shrink-0">{formatDate(String(s.startedAt))}</span>
+							<span class="text-xs text-muted-foreground truncate">{s.scopeLabel ?? 'All products'}</span>
 						</div>
 						<div class="flex items-center gap-2 shrink-0">
 							{#if !s.completedAt && s.progress.total > 0}

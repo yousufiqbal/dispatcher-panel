@@ -255,6 +255,9 @@ export const inventorySessions = sqliteTable('inventory_sessions', {
 		.$defaultFn(() => new Date()),
 	completedAt: integer('completed_at', { mode: 'timestamp' }),
 	totalProducts: integer('total_products').notNull().default(0),
+	// What the session covers, e.g. "Collection: Edge Tools · in stock only";
+	// null = whole active catalog.
+	scopeLabel: text('scope_label'),
 	// Set the first time counts are pushed to Shopify. From then on the
 	// session is frozen: no recounts, no delete — it's the audit record of what
 	// was adjusted and by whom.
@@ -276,12 +279,16 @@ export const inventoryItems = sqliteTable('inventory_items', {
 	sku: text('sku'),
 	productImageUrl: text('product_image_url'),
 	variantImageUrl: text('variant_image_url'),
+	// Shopify on_hand the count is diffed against. Seeded at session start,
+	// then replaced with live on_hand whenever the count is entered or changed,
+	// so orders shipped between session start and the count aren't counted as
+	// missing stock. Signed: an oversold variant can be negative.
 	currentStock: integer('current_stock').notNull().default(0),
 	newStock: integer('new_stock'),
 	skipped: integer('skipped', { mode: 'boolean' }).notNull().default(false),
 	position: integer('position').notNull().default(0),
 	variantPosition: integer('variant_position').notNull().default(0),
-	// Fields below exist only to reproduce Shopify's own "Export inventory" CSV
+	// Legacy: no longer written. Fields below existed only to reproduce Shopify's own "Export inventory" CSV
 	// template on the report page, so the admin can fill gaps and re-upload it
 	// straight into Shopify without reformatting.
 	handle: text('handle'),

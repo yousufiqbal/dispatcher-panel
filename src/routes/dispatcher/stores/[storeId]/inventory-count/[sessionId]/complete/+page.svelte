@@ -10,6 +10,8 @@
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 	import CheckIcon from '@lucide/svelte/icons/check';
 	import AlertCircleIcon from '@lucide/svelte/icons/circle-alert';
+	import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert';
+	import TableIcon from '@lucide/svelte/icons/table';
 
 	let { data } = $props();
 	const storeId = $derived($page.params.storeId);
@@ -78,6 +80,11 @@
 	const pendingCount = $derived(data.checkedItems.filter((i) => !i.appliedAt).length);
 	const appliedCount = $derived(data.checkedItems.filter((i) => i.appliedAt).length);
 	const failedCount = $derived(data.checkedItems.filter((i) => !i.appliedAt && i.applyError).length);
+	const bigPending = $derived(data.checkedItems.filter((i) => !i.appliedAt && i.big).length);
+
+	function formatScope(label: string | null): string {
+		return label ?? 'All active products';
+	}
 
 	function thumbUrl(url: string | null | undefined): string {
 		if (!url) return '';
@@ -97,10 +104,16 @@
 				</a>
 				<h1 class="text-xl font-bold text-foreground">Inventory Audit Report</h1>
 				<p class="text-sm text-muted-foreground mt-1">
-					<span class="font-medium text-foreground">{data.checkedItems.length}</span> {data.checkedItems.length === 1 ? 'variant' : 'variants'} differ from system stock
+					{formatScope(data.session.scopeLabel)}
 				</p>
 			</div>
 			<div class="flex items-center gap-2 shrink-0">
+				{#if !data.session.appliedAt}
+					<Button variant="outline" href="/dispatcher/stores/{storeId}/inventory-count/{sessionId}/table">
+						<TableIcon class="size-4" />
+						Edit in table
+					</Button>
+				{/if}
 				<Button type="button" disabled={applying || pendingCount === 0} onclick={openConfirm}>
 					{#if applying}
 						<Loader2Icon class="size-4 animate-spin" />
@@ -113,11 +126,26 @@
 			</div>
 		</div>
 
+		<div class="grid grid-cols-3 sm:grid-cols-5 gap-2 mb-5">
+			{#each [
+				{ label: 'Counted', value: `${data.summary.counted}/${data.summary.variants}` },
+				{ label: 'Matched', value: data.summary.matched },
+				{ label: 'Different', value: data.summary.different },
+				{ label: 'Not counted', value: data.summary.notCounted },
+				{ label: 'Accuracy', value: data.summary.accuracy === null ? '—' : `${data.summary.accuracy}%` }
+			] as stat (stat.label)}
+				<div class="card px-3 py-2.5">
+					<div class="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">{stat.label}</div>
+					<div class="text-lg font-semibold tabular-nums text-foreground">{stat.value}</div>
+				</div>
+			{/each}
+		</div>
+
 		<div class="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-900 mb-5">
 			{#if data.session.appliedAt}
 				Applied to Shopify on {new Date(data.session.appliedAt).toLocaleString()}. This session is locked — counts can't be edited and it can't be deleted.{#if pendingCount > 0} {pendingCount} {pendingCount === 1 ? 'variant' : 'variants'} failed and can be retried with Apply.{/if}
 			{:else}
-				Nothing changes in Shopify until you click "Apply to Shopify". It pushes each variant's counted <em>difference</em>, so orders fulfilled since the count are not undone.
+				Nothing changes in Shopify until you click "Apply to Shopify". Each count is compared with Shopify's on-hand <em>at the time it was counted</em>, and only that difference is pushed — so orders shipped before or after the count are never subtracted twice.
 			{/if}
 		</div>
 
@@ -175,6 +203,13 @@
 							{#if !item.appliedAt && item.applyError}
 								<div class="text-xs text-red-600 flex items-center gap-1 mt-0.5"><AlertCircleIcon class="size-3" />{item.applyError}</div>
 							{/if}
+							{#if item.big && !item.appliedAt}
+								<div class="text-xs text-amber-700 flex items-center gap-1 mt-0.5">
+									<TriangleAlertIcon class="size-3" />
+									Big difference — worth a recount
+									<a href="/dispatcher/stores/{storeId}/inventory-count/{sessionId}/{item.position}" class="underline font-medium ml-1">Recount</a>
+								</div>
+							{/if}
 						</div>
 						{#if item.appliedAt}
 							<span class="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 border border-green-200 rounded-full px-2 py-0.5 shrink-0" title="Applied {new Date(item.appliedAt).toLocaleString()}">
@@ -209,6 +244,12 @@
 				<div class="flex justify-between"><span class="text-muted-foreground">Variants</span><span class="font-medium tabular-nums">{pendingCount}</span></div>
 				<div class="flex justify-between"><span class="text-muted-foreground">Net units</span><span class="font-medium tabular-nums {netUnits > 0 ? 'text-green-700' : netUnits < 0 ? 'text-red-600' : ''}">{netUnits > 0 ? '+' : ''}{netUnits}</span></div>
 			</div>
+			{#if bigPending > 0}
+				<p class="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 flex items-start gap-1.5">
+					<TriangleAlertIcon class="size-3.5 shrink-0 mt-px" />
+					{bigPending} {bigPending === 1 ? 'change is' : 'changes are'} flagged as a big difference. Recount first if you're not sure.
+				</p>
+			{/if}
 			<p class="text-xs text-muted-foreground">This is recorded in the activity log under your name. Once applied, the session is locked and cannot be edited or deleted.</p>
 			<Dialog.Footer>
 				<Button variant="outline" onclick={() => confirmApply = false}>Cancel</Button>

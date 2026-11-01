@@ -2,6 +2,8 @@
 // start) and the browser (table view recomputes from streamed live stock).
 
 export interface LiveStock {
+	// Physical units at the location (available + committed + unavailable).
+	onHand: number;
 	available: number;
 	committed: number;
 	incoming: number;

@@ -3,8 +3,10 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
 import { inventoryItems } from '$lib/server/db/schema';
 import { eq, asc } from 'drizzle-orm';
+import { getInventorySession } from '$lib/server/inventory-session';
 
-export const GET: RequestHandler = async ({ params }) => {
+export const GET: RequestHandler = async ({ params, locals }) => {
+	await getInventorySession(locals.session, params.storeId, params.sessionId);
 	const rows = await db
 		.select({ position: inventoryItems.position, productTitle: inventoryItems.productTitle, newStock: inventoryItems.newStock, skipped: inventoryItems.skipped })
 		.from(inventoryItems)

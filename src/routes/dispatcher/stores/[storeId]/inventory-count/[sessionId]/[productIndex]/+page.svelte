@@ -18,7 +18,10 @@
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
 	import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
 	import EyeOffIcon from '@lucide/svelte/icons/eye-off';
+	import TableIcon from '@lucide/svelte/icons/table';
 	import Lightbox from '$lib/components/Lightbox.svelte';
+	import { addToast } from '$lib/toast.svelte';
+	import { isBigDifference } from '$lib/inventory-audit';
 
 	let { data } = $props();
 	const storeId = $derived($page.params.storeId);
@@ -31,19 +34,23 @@
 
 	// Mirrors each variant's input value in reactive state (the +/- buttons used
 	// to poke the DOM input directly) so we can show a live +N/-N delta badge
-	// against currentStock as the dispatcher types or taps +/-.
+	// against Shopify on-hand as the dispatcher types or taps +/-.
 	let stockInputs = $state<Record<string, string>>({});
 	$effect(() => {
 		const obj: Record<string, string> = {};
 		for (const v of data.variants) obj[v.id] = v.newStock != null ? String(v.newStock) : '';
 		stockInputs = obj;
 	});
-	function stockDelta(v: { id: string; currentStock: number }): number | null {
+	function stockDelta(v: { id: string; systemStock: number | null }): number | null {
 		const raw = stockInputs[v.id];
-		if (raw === undefined || raw === '') return null;
+		if (raw === undefined || raw === '' || v.systemStock === null) return null;
 		const n = parseInt(raw, 10);
 		if (isNaN(n)) return null;
-		return n - v.currentStock;
+		return n - v.systemStock;
+	}
+	function bigDiff(v: { id: string; systemStock: number | null }): boolean {
+		const d = stockDelta(v);
+		return d !== null && v.systemStock !== null && isBigDifference(v.systemStock, v.systemStock + d);
 	}
 
 	function markDoneLocal(index: number) {
@@ -110,22 +117,45 @@
 		toastTimer = setTimeout(() => (toast = false), 2200);
 	}
 
-	// `markDone` fills blank counts with the current system stock so the
-	// product counts as reviewed (unchanged = current) once you move forward.
-	function saveForm(markDone: boolean) {
-		if (!formEl) return;
+	const base = $derived(`/dispatcher/stores/${storeId}/inventory-count/${data.session.id}`);
+
+	// `markDone` records blank counts as "matches Shopify" (the server reads
+	// live on_hand at save time) so the product counts as reviewed once you
+	// move forward. Navigation doesn't wait for the save, so a failure is
+	// surfaced as a toast naming the product to revisit.
+	function saveForm(markDone: boolean): Promise<void> {
+		if (!formEl) return Promise.resolve();
 		const body = new FormData(formEl);
+		const title = data.productTitle;
 		if (markDone) {
 			for (const [key, value] of [...body.entries()]) {
-				if (key.startsWith('newStock_') && value === '') {
-					const variantId = key.replace('newStock_', '');
-					const v = data.variants.find((v) => v.id === variantId);
-					body.set(key, String(v?.currentStock ?? 0));
-				}
+				if (key.startsWith('newStock_') && value === '') body.set(key, 'match');
 			}
 			markDoneLocal(data.index);
 		}
-		fetch('?/save', { method: 'POST', body }).catch(() => {});
+		return fetch(`${base}/${data.index}?/save`, { method: 'POST', body, headers: { 'x-sveltekit-action': 'true' } })
+			.then(async (res) => {
+				const result = res.ok ? await res.json() : null;
+				if (result?.type !== 'success') throw new Error();
+			})
+			.catch(() => addToast(`Couldn't save "${title}" — go back and re-enter it`, 'error'));
+	}
+
+	// Leaving the count (to the table or report) waits for the save, otherwise
+	// the next page can load before this product's count is stored.
+	async function leaveTo(href: string) {
+		saving = true;
+		await saveForm(false);
+		saving = false;
+		goto(href);
+	}
+
+	async function finish() {
+		saving = true;
+		await saveForm(true);
+		await fetch(`${base}/${data.index}?/complete`, { method: 'POST', body: new FormData(), headers: { 'x-sveltekit-action': 'true' } });
+		saving = false;
+		goto(`${base}/complete`);
 	}
 
 	function navTo(targetIndex: number, markDone = false) {
@@ -244,14 +274,18 @@
 					</div>
 				{/if}
 			</div>
-			{#if data.session.completedAt}
-				<Button href="/dispatcher/stores/{storeId}/inventory-count/{data.session.id}/complete" size="sm">
-					Report
-					<ChevronRightIcon class="size-3.5" />
+			<div class="flex items-center gap-2">
+				<Button variant="outline" size="sm" disabled={saving} onclick={() => leaveTo(`${base}/table`)}>
+					<TableIcon class="size-3.5" />
+					<span class="hidden sm:inline">Table view</span>
 				</Button>
-			{:else}
-				<div class="text-xs text-muted-foreground hidden md:block">← → keys to navigate</div>
-			{/if}
+				{#if data.session.completedAt}
+					<Button size="sm" disabled={saving} onclick={() => leaveTo(`${base}/complete`)}>
+						Report
+						<ChevronRightIcon class="size-3.5" />
+					</Button>
+				{/if}
+			</div>
 		</div>
 	</div>
 
@@ -283,6 +317,11 @@
 					if (result.type === 'success') showToast();
 				};
 			}}>
+				{#if data.stockError}
+					<div class="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-900 mb-3">
+						Couldn't load live stock from Shopify: {data.stockError}. Counts still save — Shopify stock is read again when you move on.
+					</div>
+				{/if}
 				<div class="card overflow-hidden mb-4 divide-y divide-border">
 					{#each data.variants as v}
 						<div class="px-4 py-3 flex flex-wrap items-center gap-3 transition-colors hover:bg-yellow-50 focus-within:bg-yellow-50">
@@ -301,8 +340,11 @@
 							</div>
 
 							<div class="flex items-center gap-3 w-full sm:w-auto">
-								<div class="flex items-center justify-center rounded-lg px-3 py-1.5 min-w-[44px] shrink-0 {v.currentStock === 0 ? 'bg-red-600' : 'bg-foreground'}">
-									<span class="text-sm font-semibold tabular-nums text-background">{v.currentStock}</span>
+								<div
+									class="flex items-center justify-center rounded-lg px-3 py-1.5 min-w-[44px] shrink-0 {v.systemStock !== null && v.systemStock <= 0 ? 'bg-red-600' : 'bg-foreground'}"
+									title="On hand in Shopify{v.newStock != null ? ' when this was counted' : ' right now'}"
+								>
+									<span class="text-sm font-semibold tabular-nums text-background">{v.systemStock ?? '—'}</span>
 								</div>
 
 								<div class="flex items-center border border-border rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-ring/40">
@@ -310,7 +352,7 @@
 										type="button"
 										tabindex="-1"
 										onclick={() => {
-											const val = parseInt(stockInputs[v.id] !== '' ? stockInputs[v.id] : String(v.currentStock), 10);
+											const val = parseInt(stockInputs[v.id] !== '' ? stockInputs[v.id] : String(v.systemStock ?? 0), 10);
 											stockInputs[v.id] = String(Math.max(0, val - 1));
 										}}
 										class="px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-lg leading-none select-none border-r border-border"
@@ -321,22 +363,26 @@
 										value={stockInputs[v.id] ?? ''}
 										oninput={(e) => stockInputs[v.id] = e.currentTarget.value}
 										min="0"
-										placeholder={String(v.currentStock)}
+										placeholder={v.systemStock === null ? '' : String(v.systemStock)}
 										class="w-12 text-foreground py-1.5 text-center text-sm font-semibold bg-transparent focus:outline-none placeholder:text-muted-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
 									/>
 									<button
 										type="button"
 										tabindex="-1"
 										onclick={() => {
-											const val = parseInt(stockInputs[v.id] !== '' ? stockInputs[v.id] : String(v.currentStock), 10);
+											const val = parseInt(stockInputs[v.id] !== '' ? stockInputs[v.id] : String(v.systemStock ?? 0), 10);
 											stockInputs[v.id] = String(val + 1);
 										}}
 										class="px-3 py-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors text-lg leading-none select-none border-l border-border"
 									>+</button>
 								</div>
 
-								<span class="inline-flex items-center justify-center text-xs font-semibold tabular-nums shrink-0 w-10 h-6 rounded-md
-									{stockDelta(v) && stockDelta(v)! > 0 ? 'bg-green-100 text-green-700' : stockDelta(v) && stockDelta(v)! < 0 ? 'bg-red-100 text-red-700' : 'bg-muted text-muted-foreground/50'}">
+								<span
+									title={bigDiff(v) ? 'Big difference — worth a recount' : undefined}
+									class="inline-flex items-center justify-center text-xs font-semibold tabular-nums shrink-0 w-10 h-6 rounded-md
+									{stockDelta(v) && stockDelta(v)! > 0 ? 'bg-green-100 text-green-700' : stockDelta(v) && stockDelta(v)! < 0 ? 'bg-red-100 text-red-700' : 'bg-muted text-muted-foreground/50'}
+									{bigDiff(v) ? 'ring-2 ring-amber-400' : ''}"
+								>
 									{stockDelta(v) && stockDelta(v)! > 0 ? '+' : ''}{stockDelta(v) ? stockDelta(v) : '—'}
 								</span>
 							</div>
@@ -366,7 +412,7 @@
 							<ArrowRightIcon class="size-4" />
 						</Button>
 					{:else}
-						<Button bind:ref={completeBtnEl} type="submit" formaction="?/complete" disabled={saving} onclick={() => saveForm(true)} class="bg-green-600 hover:bg-green-700">
+						<Button bind:ref={completeBtnEl} type="button" disabled={saving} onclick={finish} class="bg-green-600 hover:bg-green-700">
 							{#if saving}<Loader2Icon class="size-4 animate-spin" />{:else}Complete<CheckIcon class="size-4" />{/if}
 						</Button>
 					{/if}

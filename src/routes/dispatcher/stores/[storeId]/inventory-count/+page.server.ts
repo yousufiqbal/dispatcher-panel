@@ -4,11 +4,19 @@ import { db } from '$lib/server/db';
 import { inventorySessions, inventoryItems } from '$lib/server/db/schema';
 import { eq, and, desc, inArray, asc } from 'drizzle-orm';
 import { getShopifyClient } from '$lib/server/shopify/client';
-import { fetchInventoryCountProducts } from '$lib/server/shopify/restock';
+import { fetchRestockProducts, fetchLiveStock } from '$lib/server/shopify/restock';
+import { listAllCollections } from '$lib/server/shopify/products';
 import { getAuthorizedStore } from '$lib/server/store-access';
 import { logAudit } from '$lib/server/audit';
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
+	// For the "count one collection" picker — streamed so the session list
+	// doesn't wait on Shopify.
+	const store = await getAuthorizedStore(locals.session, params.storeId);
+	const collections = listAllCollections(getShopifyClient(store))
+		.then((list) => list.map((c) => ({ id: c.id.split('/').pop()!, title: c.title })))
+		.catch(() => []);
+
 	const sessions = await db
 		.select()
 		.from(inventorySessions)
@@ -46,21 +54,34 @@ export const load: PageServerLoad = async ({ params }) => {
 	}
 
 	return {
-		sessions: sessions.map((s) => ({ ...s, progress: progress.get(s.id) ?? { done: 0, total: 0, resumeIndex: 0 } }))
+		sessions: sessions.map((s) => ({ ...s, progress: progress.get(s.id) ?? { done: 0, total: 0, resumeIndex: 0 } })),
+		collections
 	};
 };
 
 export const actions: Actions = {
-	start: async ({ params, locals }) => {
+	// Scope: whole active catalog, or one collection, optionally only variants
+	// Shopify thinks are in stock — so a cycle count can cover one shelf area
+	// instead of the full catalog every time.
+	start: async ({ request, params, locals }) => {
 		const store = await getAuthorizedStore(locals.session, params.storeId);
 		const client = getShopifyClient(store);
 
-		const [session] = await db.insert(inventorySessions).values({ storeId: params.storeId }).returning();
+		const fd = await request.formData();
+		const collectionId = fd.get('collectionId')?.toString().replace(/\D/g, '') || null;
+		const collectionTitle = fd.get('collectionTitle')?.toString() || null;
+		const inStockOnly = fd.get('inStockOnly') === 'on';
+		const scopeLabel = [collectionId ? `Collection: ${collectionTitle ?? collectionId}` : null, inStockOnly ? 'in stock only' : null]
+			.filter(Boolean)
+			.join(' · ') || null;
 
-		let products: Awaited<ReturnType<typeof fetchInventoryCountProducts>>['products'];
-		let locationName: string | null;
+		const [session] = await db.insert(inventorySessions).values({ storeId: params.storeId, scopeLabel }).returning();
+
+		let products: Awaited<ReturnType<typeof fetchRestockProducts>>;
+		let stock: Awaited<ReturnType<typeof fetchLiveStock>>;
 		try {
-			({ products, locationName } = await fetchInventoryCountProducts(client));
+			products = await fetchRestockProducts(client, collectionId ? `collection_id:${collectionId}` : undefined);
+			stock = await fetchLiveStock(client, products.flatMap((p) => p.variants.map((v) => String(v.id))));
 		} catch (e) {
 			await db.delete(inventorySessions).where(eq(inventorySessions.id, session.id));
 			return fail(422, { startError: e instanceof Error ? e.message : 'Failed to fetch products from Shopify' });
@@ -71,7 +92,9 @@ export const actions: Actions = {
 		let variantPosition = 0;
 
 		for (const product of products) {
-			for (const variant of product.variants) {
+			const variants = inStockOnly ? product.variants.filter((v) => (stock.get(String(v.id))?.onHand ?? 0) > 0) : product.variants;
+			if (variants.length === 0) continue;
+			for (const variant of variants) {
 				items.push({
 					sessionId: session.id,
 					productId: String(product.id),
@@ -81,26 +104,18 @@ export const actions: Actions = {
 					sku: variant.sku || null,
 					productImageUrl: product.imageUrl,
 					variantImageUrl: variant.imageUrl,
-					currentStock: Math.max(0, variant.onHand),
+					// Placeholder only — replaced with live on_hand when counted.
+					currentStock: stock.get(String(variant.id))?.onHand ?? 0,
 					position,
-					variantPosition: variantPosition++,
-					handle: product.handle,
-					option1Name: variant.option1Name,
-					option1Value: variant.option1Value,
-					option2Name: variant.option2Name,
-					option2Value: variant.option2Value,
-					option3Name: variant.option3Name,
-					option3Value: variant.option3Value,
-					hsCode: variant.hsCode,
-					countryOfOrigin: variant.countryOfOrigin,
-					locationName,
-					incoming: variant.incoming,
-					unavailable: Math.max(0, variant.onHand - variant.available - variant.committed - variant.incoming),
-					committed: variant.committed,
-					available: variant.available
+					variantPosition: variantPosition++
 				});
 			}
 			position++;
+		}
+
+		if (items.length === 0) {
+			await db.delete(inventorySessions).where(eq(inventorySessions.id, session.id));
+			return fail(422, { startError: 'No products match that scope.' });
 		}
 
 		for (let i = 0; i < items.length; i += 100) {
@@ -110,14 +125,15 @@ export const actions: Actions = {
 
 		if (locals.session) {
 			await logAudit(locals.session.userId, 'dispatcher', 'inventoryCount.session.start', {
-				targetType: 'inventorySession', targetId: session.id, storeId: params.storeId, metadata: { totalProducts: position }
+				targetType: 'inventorySession', targetId: session.id, storeId: params.storeId, metadata: { totalProducts: position, scope: scopeLabel }
 			});
 		}
 
 		redirect(303, `/dispatcher/stores/${params.storeId}/inventory-count/${session.id}/0`);
 	},
 
-	delete: async ({ request, params }) => {
+	delete: async ({ request, params, locals }) => {
+		await getAuthorizedStore(locals.session, params.storeId);
 		const fd = await request.formData();
 		const sessionId = fd.get('sessionId')?.toString();
 		if (!sessionId) return fail(400);

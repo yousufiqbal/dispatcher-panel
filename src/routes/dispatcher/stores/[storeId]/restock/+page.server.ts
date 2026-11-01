@@ -77,7 +77,7 @@ export const actions: Actions = {
 		}
 
 		const lead = { airDays: fullStore.airLeadDays, seaDays: fullStore.seaLeadDays };
-		const noStock = { available: 0, committed: 0, incoming: 0 };
+		const noStock = { onHand: 0, available: 0, committed: 0, incoming: 0 };
 
 		// Most urgent product first (shortest days-of-cover across its variants),
 		// so the walk-through front-loads what actually needs ordering. Products
