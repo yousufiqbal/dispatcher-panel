@@ -1,6 +1,6 @@
 <script lang="ts">
-	// Copy / call / WhatsApp buttons for a customer phone number. Shared by the
-	// Easy Confirm and Tracker pages.
+	// Copy / call / WhatsApp buttons for a customer phone number, used on the
+	// Easy Confirm page.
 	import { addToast } from '$lib/toast.svelte';
 	import CopyIcon from '@lucide/svelte/icons/copy';
 	import CheckIcon from '@lucide/svelte/icons/check';

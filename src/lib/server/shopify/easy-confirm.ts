@@ -176,7 +176,7 @@ function toRow(o: OrderNode, timeZone: string, fulfilled = false): EasyConfirmRo
  * it would leave just-confirmed orders stuck in the wrong tab.
  */
 export async function listEasyConfirmOrders(client: ShopifyClient, days: number): Promise<EasyConfirmRow[]> {
-	// Day precision, same format Tracker uses.
+	// Day precision is all the created_at filter needs.
 	const since = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
 	const window = ` created_at:>=${since}`;
 	const [unfulfilled, fulfilled] = await Promise.all([

@@ -19,23 +19,14 @@ export const ACTIVITY_TYPES: ActivityType[] = [
 	{ action: 'order.between', label: 'Moving an order to Between (with reason)', isView: false },
 	{ action: 'order.backToPending', label: 'Moving an order back to pending', isView: false },
 	{ action: 'order.bulkConfirm', label: 'Bulk-confirming orders', isView: false },
-	{ action: 'order.fulfill', label: 'Fulfilling an order', isView: false },
-	{ action: 'order.cancel', label: 'Cancelling an order', isView: false },
 	{ action: 'order.merge', label: 'Merging orders (others cancelled)', isView: false },
-	{ action: 'order.cancelNoRestock', label: 'Cancelling an order WITHOUT restocking inventory', isView: false },
-	{ action: 'order.refund', label: 'Refunding an order', isView: false },
-	{ action: 'order.markAsPaid', label: 'Marking an order as paid', isView: false },
 	{ action: 'order.updateShipping', label: 'Editing shipping address', isView: false },
-	{ action: 'order.duplicate', label: 'Duplicating an order', isView: false },
-	{ action: 'order.resendInvoice', label: 'Resending an invoice', isView: false },
-	{ action: 'order.courierBook', label: 'Booking a courier shipment', isView: false },
 	{ action: 'pricing.settings.update', label: 'Updating pricing rate settings', isView: false },
 	{ action: 'pricing.changes.apply', label: 'Applying pricing changes to Shopify', isView: false },
 	{ action: 'pricing.reviewMarks.resetAll', label: 'Resetting all pricing review ticks', isView: false },
 	{ action: 'inventory.count.apply', label: 'Applying inventory count to Shopify', isView: false },
 	{ action: 'weights.apply', label: 'Saving product weights to Shopify', isView: false },
 	{ action: 'dispatcher.totpReset', label: "Resetting a dispatcher's two-factor authentication", isView: false },
-	{ action: 'order.updateShippingLines', label: 'Adding or removing order shipping', isView: false }
 ];
 
 export function defaultEnabled(action: string): boolean {

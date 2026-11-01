@@ -131,64 +131,6 @@ export const trustedDevices = sqliteTable('trusted_devices', {
 	userAgent: text('user_agent')
 });
 
-export const couriers = sqliteTable('couriers', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	name: text('name').notNull(),
-	provider: text('provider', { enum: ['postex', 'dex'] }).notNull(),
-	enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
-	apiKey: text('api_key'),
-	defaultWeight: text('default_weight'),
-	defaultFragile: integer('default_fragile', { mode: 'boolean' }).notNull().default(false),
-	defaultNote: text('default_note'),
-	createdAt: integer('created_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date()),
-	updatedAt: integer('updated_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
-
-export const courierStoreAccess = sqliteTable(
-	'courier_store_access',
-	{
-		courierId: text('courier_id')
-			.notNull()
-			.references(() => couriers.id, { onDelete: 'cascade' }),
-		storeId: text('store_id')
-			.notNull()
-			.references(() => stores.id, { onDelete: 'cascade' }),
-		grantedAt: integer('granted_at', { mode: 'timestamp' })
-			.notNull()
-			.$defaultFn(() => new Date())
-	},
-	(table) => [primaryKey({ columns: [table.courierId, table.storeId] })]
-);
-
-export const courierBookings = sqliteTable('courier_bookings', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	storeId: text('store_id')
-		.notNull()
-		.references(() => stores.id, { onDelete: 'cascade' }),
-	orderId: text('order_id').notNull(),
-	orderName: text('order_name').notNull(),
-	courierId: text('courier_id').references(() => couriers.id, { onDelete: 'set null' }),
-	provider: text('provider', { enum: ['postex', 'dex'] }).notNull(),
-	trackingId: text('tracking_id').notNull(),
-	weight: text('weight'),
-	codAmount: text('cod_amount'),
-	fragile: integer('fragile', { mode: 'boolean' }).notNull().default(false),
-	note: text('note'),
-	status: text('status'),
-	statusUpdatedAt: integer('status_updated_at', { mode: 'timestamp' }),
-	createdAt: integer('created_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
-
 export const activityLogSettings = sqliteTable('activity_log_settings', {
 	action: text('action').primaryKey(),
 	enabled: integer('enabled', { mode: 'boolean' }).notNull()
