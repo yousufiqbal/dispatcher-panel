@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { page, navigating } from '$app/stores';
-	import { goto, invalidateAll, replaceState } from '$app/navigation';
+	import { page } from '$app/stores';
+	import { invalidateAll, replaceState } from '$app/navigation';
 	import { deserialize } from '$app/forms';
 	import { addToast } from '$lib/toast.svelte';
 	import { Button } from '$lib/components/ui/button/index.js';
@@ -15,7 +15,6 @@
 	import PencilIcon from '@lucide/svelte/icons/pencil';
 	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 	import Loader2Icon from '@lucide/svelte/icons/loader-2';
-	import PlusIcon from '@lucide/svelte/icons/plus';
 	import ContactActions from '$lib/components/ContactActions.svelte';
 	import {
 		PK_PROVINCES,
@@ -31,7 +30,6 @@
 		type EasyConfirmTab,
 		type EasyConfirmView
 	} from '$lib/easy-confirm';
-	import { ORDER_WINDOWS } from '$lib/order-windows';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -53,29 +51,6 @@
 	const readOnly = $derived(tab === 'fulfilled');
 	let search = $state('');
 	let pageIndex = $state(0);
-
-	// By order date. Kept in the URL (shallow) like the tab, so a refresh keeps
-	// it; the server returns newest-first, so "oldest" just reverses.
-	type Sort = 'latest' | 'oldest';
-	let sort = $state<Sort>($page.url.searchParams.get('sort') === 'oldest' ? 'oldest' : 'latest');
-
-	function setSort(next: Sort) {
-		if (next === sort) return;
-		sort = next;
-		pageIndex = 0;
-		const url = new URL($page.url);
-		if (next === 'latest') url.searchParams.delete('sort');
-		else url.searchParams.set('sort', next);
-		replaceState(url, {});
-	}
-
-	// Changing the window refetches (it changes what's loaded from Shopify).
-	function setDays(days: number) {
-		const url = new URL($page.url);
-		url.searchParams.set('days', String(days));
-		goto(url, { keepFocus: true, noScroll: true });
-	}
-	const loadingWindow = $derived(!!$navigating && $navigating.to?.url.pathname === $page.url.pathname);
 
 	function setTab(next: EasyConfirmView) {
 		if (next === tab) return;
@@ -129,10 +104,8 @@
 	}
 
 	const tabRows = $derived(rows.filter((r) => r.state === tab));
-	const filtered = $derived.by(() => {
-		const list = tabRows.filter((r) => matches(r, search));
-		return sort === 'oldest' ? list.reverse() : list;
-	});
+	// The server returns newest first.
+	const filtered = $derived(tabRows.filter((r) => matches(r, search)));
 	const pageCount = $derived(Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)));
 	const pageRows = $derived(filtered.slice(pageIndex * PAGE_SIZE, (pageIndex + 1) * PAGE_SIZE));
 
@@ -403,49 +376,15 @@
 			{/each}
 		</div>
 		<div class="ml-auto flex flex-wrap items-center gap-2">
-			<div class="inline-flex items-center rounded-lg border border-border bg-muted/40 p-0.5 text-xs" role="group" aria-label="Sort by order date">
-				{#each [['latest', 'Latest'], ['oldest', 'Oldest']] as [key, label] (key)}
-					<button
-						type="button"
-						onclick={() => setSort(key as Sort)}
-						class="px-2.5 py-1.5 rounded-md font-medium transition-colors {sort === key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
-					>
-						{label}
-					</button>
-				{/each}
-			</div>
-			<span class="text-xs text-muted-foreground hidden sm:inline">Ordered within</span>
-			<div class="inline-flex items-center rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
-				{#each ORDER_WINDOWS as d (d)}
-					<button
-						type="button"
-						onclick={() => setDays(d)}
-						class="px-2.5 py-1.5 rounded-md font-medium transition-colors {data.days === d ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}"
-					>
-						{d}d
-					</button>
-				{/each}
-				<!-- A custom window from the URL shows as its own selected chip. -->
-				{#if !(ORDER_WINDOWS as readonly number[]).includes(data.days)}
-					<span class="px-2.5 py-1.5 rounded-md font-medium bg-card text-foreground shadow-sm">{data.days}d</span>
-				{/if}
-			</div>
-			<Button variant="outline" size="sm" onclick={refresh} disabled={refreshing || loadingWindow}>
-				{#if loadingWindow}
-					<Loader2Icon class="size-3.5 animate-spin" />
-				{:else}
-					<RefreshCwIcon class="size-3.5 {refreshing ? 'animate-spin' : ''}" />
-				{/if}
+			<span class="text-xs text-muted-foreground">Last {data.days} days</span>
+			<Button variant="outline" size="sm" onclick={refresh} disabled={refreshing}>
+				<RefreshCwIcon class="size-3.5 {refreshing ? 'animate-spin' : ''}" />
 				Refresh
-			</Button>
-			<Button size="sm" href="/dispatcher/stores/{storeId}/orders/new">
-				<PlusIcon class="size-3.5" />
-				New Order
 			</Button>
 		</div>
 	</div>
 
-	<div class="card overflow-hidden {loadingWindow ? 'opacity-60' : ''}">
+	<div class="card overflow-hidden">
 		<!-- Search, or the bulk bar while rows are selected -->
 		<div class="px-3 py-2.5 border-b border-border min-h-[3.25rem] flex items-center">
 			{#if selectedRows.length > 0}

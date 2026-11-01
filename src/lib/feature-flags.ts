@@ -1,4 +1,4 @@
-/** Where a store opens: Confirmer (labelled "Orders"). */
+/** Where a store opens: the Confirmer page. */
 export function storeHome(storeId: string): string {
 	return `/dispatcher/stores/${storeId}/confirmer`;
 }

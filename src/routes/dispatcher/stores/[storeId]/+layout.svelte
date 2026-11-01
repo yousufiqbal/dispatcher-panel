@@ -17,7 +17,7 @@
 
 	const sectionLabels: Record<string, string> = {
 		orders: 'Orders',
-		confirmer: 'Orders',
+		confirmer: 'Confirmer',
 		customers: 'Customers',
 		products: 'Products',
 		restock: 'Restock',
