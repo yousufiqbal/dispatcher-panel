@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+	import { fly } from 'svelte/transition';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import Checkbox from '$lib/components/Checkbox.svelte';
@@ -677,28 +678,41 @@
 	     the list. Clears the sidebar on desktop and the bottom nav on mobile. -->
 	<div class="fixed inset-x-0 bottom-16 lg:bottom-0 lg:left-56 z-30 px-3 sm:px-6 pb-3 space-y-2 pointer-events-none">
 		{#if selected.size > 0}
+			<!-- Inverted (dark on a light page, light on a dark one) so the bulk
+			     bar reads as a floating tool, not another card in the list. -->
 			<form
-				class="pointer-events-auto card shadow-lg p-3 flex items-center gap-2"
+				transition:fly={{ y: 16, duration: 180 }}
+				class="pointer-events-auto mx-auto w-full max-w-xl rounded-2xl bg-foreground text-background shadow-2xl ring-1 ring-black/10 pl-3 pr-2 py-2 flex items-center gap-2.5"
 				onsubmit={(e) => {
 					e.preventDefault();
 					setSelected();
 				}}
 			>
-				<span class="text-sm font-medium truncate">Set <span class="tabular-nums">{selected.size}</span> selected to</span>
-				<div class="relative shrink-0">
+				<span class="inline-flex items-center justify-center min-w-7 h-7 px-2 rounded-full bg-background text-foreground text-xs font-bold tabular-nums shrink-0">
+					{selected.size}
+				</span>
+				<span class="text-sm font-medium truncate">selected · set weight to</span>
+				<div class="relative shrink-0 ml-auto">
 					<input
 						type="text"
 						inputmode="decimal"
 						bind:value={bulkValue}
 						placeholder="450"
-						class="h-8 w-24 rounded-md border bg-background pl-2.5 pr-6 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-ring
-							{bulkValue && bulkGrams === null ? 'border-destructive' : 'border-border'}"
+						class="h-8 w-24 rounded-lg border bg-background/10 pl-2.5 pr-6 text-right text-sm tabular-nums text-background placeholder:text-background/40 focus:outline-none focus:ring-2 focus:ring-background/50
+							{bulkValue && bulkGrams === null ? 'border-red-400' : 'border-background/20'}"
 						aria-label="Weight in grams for selected variants"
 					/>
-					<span class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">g</span>
+					<span class="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-background/60">g</span>
 				</div>
-				<Button type="submit" size="sm" disabled={bulkGrams === null}>Set</Button>
-				<Button type="button" size="icon-sm" variant="ghost" class="ml-auto" title="Clear selection" onclick={() => selected.clear()}>
+				<Button type="submit" size="sm" disabled={bulkGrams === null} class="bg-background text-foreground hover:bg-background/90 shrink-0">Set</Button>
+				<Button
+					type="button"
+					size="icon-sm"
+					variant="ghost"
+					class="shrink-0 text-background/70 hover:text-background hover:bg-background/10"
+					title="Clear selection"
+					onclick={() => selected.clear()}
+				>
 					<XIcon />
 				</Button>
 			</form>
