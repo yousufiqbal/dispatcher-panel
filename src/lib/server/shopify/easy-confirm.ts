@@ -38,7 +38,7 @@ const ORDERS_QUERY = `
 				phone
 				email
 				currentTotalPriceSet { shopMoney { amount currencyCode } }
-				customer { id displayName defaultEmailAddress { emailAddress } defaultPhoneNumber { phoneNumber } }
+				customer { id displayName numberOfOrders defaultEmailAddress { emailAddress } defaultPhoneNumber { phoneNumber } }
 				shippingAddress { name firstName lastName company address1 address2 city province provinceCode zip country countryCodeV2 phone }
 				billingAddress { phone }
 				customAttributes { key value }
@@ -67,6 +67,8 @@ interface OrderNode {
 	customer: {
 		id: string;
 		displayName: string;
+		// UnsignedInt64 — arrives as a string.
+		numberOfOrders: string | number;
 		defaultEmailAddress: { emailAddress: string } | null;
 		defaultPhoneNumber: { phoneNumber: string } | null;
 	} | null;
@@ -129,6 +131,7 @@ function toRow(o: OrderNode, timeZone: string, fulfilled = false): EasyConfirmRo
 		date: formatOrderDate(o.createdAt, timeZone),
 		customer: o.customer?.displayName || a?.name || 'No customer',
 		customerId: o.customer?.id ?? null,
+		customerOrders: Number(o.customer?.numberOfOrders ?? 0),
 		email: o.email || o.customer?.defaultEmailAddress?.emailAddress || '',
 		phone,
 		phoneDigits: toInternationalDigits(phone, a?.countryCodeV2),

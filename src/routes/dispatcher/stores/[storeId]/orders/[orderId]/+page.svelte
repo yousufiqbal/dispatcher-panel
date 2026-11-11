@@ -167,7 +167,8 @@
 				href="/dispatcher/stores/{storeId}/customers/{order.customer.id.split('/').pop()}"
 				class="font-semibold text-sm text-foreground hover:text-primary hover:underline"
 			>{order.customer.displayName}</a>
-			{#if order.customer.numberOfOrders > 0}
+			<!-- Same rule as Confirmer: only repeat customers (2+ orders) get a count. -->
+			{#if Number(order.customer.numberOfOrders) >= 2}
 				<span class="text-muted-foreground -ml-3">({order.customer.numberOfOrders})</span>
 			{/if}
 		{:else}

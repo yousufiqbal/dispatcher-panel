@@ -470,7 +470,9 @@
 								</td>
 							{/if}
 							<td class="px-3 py-2 whitespace-nowrap text-muted-foreground">{r.date}</td>
-							<td class="px-3 py-2 whitespace-nowrap">{r.customer}</td>
+							<td class="px-3 py-2 whitespace-nowrap">
+								{r.customer}{#if r.customerOrders >= 2}<span class="ml-1 text-muted-foreground tabular-nums" title="{r.customerOrders} orders with this store">({r.customerOrders})</span>{/if}
+							</td>
 							<td class="px-3 py-2 whitespace-nowrap font-mono text-xs">
 								{#if r.phone}{r.phone}{:else}<span class="text-muted-foreground font-sans">No phone</span>{/if}
 							</td>

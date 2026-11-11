@@ -71,6 +71,9 @@ export interface EasyConfirmRow {
 	customer: string;
 	/** Shopify customer GID; null for guest checkouts. Merging requires a match. */
 	customerId: string | null;
+	/** Customer's lifetime Shopify order count, this order included; 0 for guests.
+	 *  Shown after the name only from 2 up, so repeat customers stand out. */
+	customerOrders: number;
 	email: string;
 	phone: string;
 	/** International digits without "+", for tel: and WhatsApp links. */
