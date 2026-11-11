@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, primaryKey } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core';
 
 export const admin = sqliteTable('admin', {
 	id: text('id')
@@ -130,6 +130,31 @@ export const trustedDevices = sqliteTable('trusted_devices', {
 	ipAddress: text('ip_address'),
 	userAgent: text('user_agent')
 });
+
+// Follow-up notes dispatchers leave on a shipped order from the Tracker
+// ("called, will receive tomorrow"). Append-only: the newest one is shown on
+// the row, the rest are history. Author name is copied in so the note still
+// reads right if the dispatcher is later renamed or removed.
+export const orderNotes = sqliteTable(
+	'order_notes',
+	{
+		id: text('id')
+			.primaryKey()
+			.$defaultFn(() => crypto.randomUUID()),
+		storeId: text('store_id')
+			.notNull()
+			.references(() => stores.id, { onDelete: 'cascade' }),
+		// Bare numeric Shopify order id (legacyResourceId).
+		orderId: text('order_id').notNull(),
+		note: text('note').notNull(),
+		authorId: text('author_id').notNull(),
+		authorName: text('author_name').notNull(),
+		createdAt: integer('created_at', { mode: 'timestamp' })
+			.notNull()
+			.$defaultFn(() => new Date())
+	},
+	(table) => [index('order_notes_store_order_idx').on(table.storeId, table.orderId)]
+);
 
 export const activityLogSettings = sqliteTable('activity_log_settings', {
 	action: text('action').primaryKey(),
