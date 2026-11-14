@@ -27,7 +27,7 @@ Turso database, all built from this repo — a push to `main` deploys every stor
    `.env.example`:
    - `DATABASE_URL`, `DATABASE_AUTH_TOKEN` — the new database
    - `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_ACCESS_TOKEN` — from step 1
-   - `SESSION_SECRET`, `ENCRYPTION_KEY` — fresh random values (don't reuse another store's)
+   - `ENCRYPTION_KEY` — a fresh random value (don't reuse another store's)
 5. **Deploy**, open `/login`, create the owner account and set up 2FA. The store row is
    created automatically on first use.
 6. Add the rest of the team from **Team**, and set restock lead times on the **Restock** page.
