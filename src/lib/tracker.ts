@@ -63,7 +63,7 @@ export interface TrackerRow {
 	dispatchedAt: string;
 	/** "Today at 4:17 pm" etc., formatted on the server in the shop timezone. */
 	dispatchedLabel: string;
-	/** Business days (Mon–Fri) fully passed since the dispatch day. */
+	/** Business days (Mon–Sat) fully passed since the dispatch day. */
 	businessDays: number;
 	stage: TrackerStage;
 	late: boolean;
@@ -75,19 +75,20 @@ function dayKey(date: Date, timeZone: string): string {
 }
 
 /**
- * Business days (Mon–Fri) that have *fully passed* since the dispatch day, in
+ * Business days (Mon–Sat) that have *fully passed* since the dispatch day, in
  * the shop's timezone. The dispatch day itself and today (still in progress)
- * don't count. Public holidays aren't known, so they count as business days.
+ * don't count. Saturday counts because Pakistani couriers deliver then (it's
+ * one of the busiest delivery days); only Sunday is skipped. Public holidays
+ * aren't known, so they count as business days.
  *
- * Example: dispatched Monday → next Monday is 4 (Tue–Fri), next Tuesday is 5.
+ * Example: dispatched Monday → next Saturday is 4 (Tue–Fri), next Monday is 5.
  */
 export function businessDaysSince(dispatchedIso: string, timeZone: string, now: Date = new Date()): number {
 	const start = Date.parse(dayKey(new Date(dispatchedIso), timeZone)); // UTC midnight of dispatch day
 	const today = Date.parse(dayKey(now, timeZone));
 	let count = 0;
 	for (let t = start + 86_400_000; t < today; t += 86_400_000) {
-		const dow = new Date(t).getUTCDay();
-		if (dow !== 0 && dow !== 6) count++;
+		if (new Date(t).getUTCDay() !== 0) count++;
 	}
 	return count;
 }

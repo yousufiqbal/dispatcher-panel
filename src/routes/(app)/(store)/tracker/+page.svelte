@@ -174,7 +174,7 @@
 		</p>
 	{:else if tab === 'late'}
 		<p class="text-xs text-muted-foreground">
-			Not delivered {LATE_AFTER_BUSINESS_DAYS}+ business days after dispatch (Saturdays and Sundays don't count). Includes orders that are also in transit or attempted.
+			Not delivered {LATE_AFTER_BUSINESS_DAYS}+ business days after dispatch (Sundays don't count). Includes orders that are also in transit or attempted.
 		</p>
 	{/if}
 
