@@ -10,13 +10,14 @@
 
 	let { data }: { data: PageData } = $props();
 
+	let name = $state('');
 	let email = $state('');
 	let password = $state('');
 	let confirmPassword = $state('');
 	let loading = $state(false);
 	let error = $state('');
 	let step = $state<'credentials' | 'register' | 'totp' | 'totp-setup'>(
-		data.pending ?? (data.hasAdmin ? 'credentials' : 'register')
+		data.pending ?? (data.hasAccount ? 'credentials' : 'register')
 	);
 	let totpCode = $state('');
 	let qrDataUrl = $state('');
@@ -32,8 +33,8 @@
 	});
 
 	async function handleRegister() {
-		if (!email || !password) {
-			error = 'Email and password are required';
+		if (!name.trim() || !email || !password) {
+			error = 'Name, email and password are required';
 			return;
 		}
 		if (password !== confirmPassword) {
@@ -43,17 +44,21 @@
 		loading = true;
 		error = '';
 		try {
-			const res = await fetch('/api/auth/register-admin', {
+			const res = await fetch('/api/auth/register-owner', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ email, password })
+				body: JSON.stringify({ name, email, password })
 			});
 			const resData = await res.json();
 			if (!res.ok) {
 				error = resData.error ?? 'Registration failed';
 				return;
 			}
-			goto('/admin');
+			// The owner enrols in 2FA straight away, like every account.
+			totpCode = '';
+			setupStep = 'scan';
+			step = 'totp-setup';
+			await loadTotpSetup();
 		} catch {
 			error = 'Network error. Please try again.';
 		} finally {
@@ -200,8 +205,8 @@
 		<div class="card">
 			{#if step === 'register'}
 				<div class="card-header">
-					<h2 class="text-lg font-semibold">Set up the admin account</h2>
-					<p class="text-sm text-muted-foreground">No admin account exists yet — create one to get started</p>
+					<h2 class="text-lg font-semibold">Set up the owner account</h2>
+					<p class="text-sm text-muted-foreground">First run — create your account. You'll add the rest of your team from inside the panel.</p>
 				</div>
 				<div class="card-content">
 					<form onsubmit={(e) => { e.preventDefault(); handleRegister(); }} class="space-y-4">
@@ -210,6 +215,11 @@
 								{error}
 							</div>
 						{/if}
+
+						<div class="space-y-1.5">
+							<Label for="reg-name">Your name</Label>
+							<Input id="reg-name" type="text" placeholder="e.g. Yousuf Iqbal" bind:value={name} required autocomplete="name" />
+						</div>
 
 						<div class="space-y-1.5">
 							<Label for="reg-email">Email</Label>
@@ -253,7 +263,7 @@
 								<Loader2Icon class="animate-spin size-4" />
 								Creating account...
 							{:else}
-								Create admin account
+								Create owner account
 							{/if}
 						</Button>
 					</form>

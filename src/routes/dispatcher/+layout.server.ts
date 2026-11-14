@@ -44,9 +44,8 @@ export const load: LayoutServerLoad = async ({ locals }) => {
 		Promise.all(access.map((a) => (a.iconUrl ? Promise.resolve(a.iconUrl) : getCachedShopLogo(a.storeId, a).catch(() => null))))
 	]);
 
-	const dispatcherUser = session.user as { role: 'dispatcher'; id: string; email: string; name: string; isActive: boolean };
 	return {
-		dispatcher: dispatcherUser,
+		dispatcher: session.user,
 		assignedStores: access.map((a, i) => ({
 			id: a.storeId,
 			name: a.name,

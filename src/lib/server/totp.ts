@@ -1,5 +1,5 @@
 import { db } from '$lib/server/db';
-import { admin, dispatchers } from '$lib/server/db/schema';
+import { dispatchers } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { TOTP } from 'otpauth';
 import type { SessionData } from '$lib/server/session';
@@ -14,14 +14,9 @@ export interface TotpAccount {
 	redirect: string;
 }
 
-// Admins and dispatchers both carry TOTP columns, on separate tables. This
-// keeps the endpoints table-agnostic so the same enrol/verify flow serves
-// either role. Accounting has no 2FA yet and is rejected.
+// Every account (owner included) is a dispatcher, so 2FA always lives on the
+// dispatchers table.
 export async function loadTotpAccount(session: SessionData): Promise<TotpAccount | null> {
-	if (session.role === 'admin') {
-		const a = await db.query.admin.findFirst({ where: eq(admin.id, session.userId) });
-		return a ? { id: a.id, email: a.email, totpSecret: a.totpSecret, totpEnabled: a.totpEnabled, redirect: '/admin' } : null;
-	}
 	if (session.role === 'dispatcher') {
 		const d = await db.query.dispatchers.findFirst({ where: eq(dispatchers.id, session.userId) });
 		if (!d || !d.isActive) return null;
@@ -31,19 +26,13 @@ export async function loadTotpAccount(session: SessionData): Promise<TotpAccount
 }
 
 export async function saveTotpSecret(role: SessionData['role'], userId: string, secret: string): Promise<void> {
-	if (role === 'admin') {
-		await db.update(admin).set({ totpSecret: secret, totpEnabled: false }).where(eq(admin.id, userId));
-	} else if (role === 'dispatcher') {
-		await db.update(dispatchers).set({ totpSecret: secret, totpEnabled: false }).where(eq(dispatchers.id, userId));
-	}
+	if (role !== 'dispatcher') return;
+	await db.update(dispatchers).set({ totpSecret: secret, totpEnabled: false }).where(eq(dispatchers.id, userId));
 }
 
 export async function enableTotp(role: SessionData['role'], userId: string): Promise<void> {
-	if (role === 'admin') {
-		await db.update(admin).set({ totpEnabled: true }).where(eq(admin.id, userId));
-	} else if (role === 'dispatcher') {
-		await db.update(dispatchers).set({ totpEnabled: true }).where(eq(dispatchers.id, userId));
-	}
+	if (role !== 'dispatcher') return;
+	await db.update(dispatchers).set({ totpEnabled: true }).where(eq(dispatchers.id, userId));
 }
 
 // `window: 1` accepts the neighbouring 30s steps, covering ordinary clock drift.

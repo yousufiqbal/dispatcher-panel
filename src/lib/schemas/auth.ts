@@ -12,11 +12,13 @@ export const TotpSchema = v.object({
 	remember: v.optional(v.boolean(), false)
 });
 
-export const RegisterAdminSchema = v.object({
+// First-run setup on a fresh install: creates the owner account.
+export const RegisterOwnerSchema = v.object({
+	name: v.pipe(v.string(), v.trim(), v.minLength(2, 'Name must be at least 2 characters')),
 	email: v.pipe(v.string(), v.email('Invalid email')),
 	password: v.pipe(v.string(), v.minLength(10, 'Password must be at least 10 characters'))
 });
 
 export type LoginInput = v.InferOutput<typeof LoginSchema>;
 export type TotpInput = v.InferOutput<typeof TotpSchema>;
-export type RegisterAdminInput = v.InferOutput<typeof RegisterAdminSchema>;
+export type RegisterOwnerInput = v.InferOutput<typeof RegisterOwnerSchema>;

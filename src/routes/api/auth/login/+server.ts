@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
-import { admin, dispatchers } from '$lib/server/db/schema';
+import { dispatchers } from '$lib/server/db/schema';
 import { eq } from 'drizzle-orm';
 import { verify } from 'argon2';
 import { createSession, setSessionCookie } from '$lib/server/session';
@@ -9,7 +9,6 @@ import { isDeviceTrusted } from '$lib/server/trusted-device';
 import { safeParse } from 'valibot';
 import { LoginSchema } from '$lib/schemas/auth';
 
-const ADMIN_TTL_MS = 2 * 60 * 60 * 1000;
 const STAFF_TTL_MS = 8 * 60 * 60 * 1000;
 
 export const POST: RequestHandler = async ({ request, cookies, getClientAddress }) => {
@@ -23,20 +22,6 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 	const ip = getClientAddress();
 	const ua = request.headers.get('user-agent') ?? undefined;
 
-	// Check admin first
-	const adminUser = await db.query.admin.findFirst({ where: eq(admin.email, email) });
-	if (adminUser) {
-		const valid = await verify(adminUser.passwordHash, password).catch(() => false);
-		if (!valid) return json({ error: 'Invalid credentials' }, { status: 401 });
-
-		// TOTP temporarily disabled — sessions are pre-verified
-		const sessionId = await createSession(adminUser.id, 'admin', true, ip, ua);
-		setSessionCookie(cookies, sessionId, new Date(Date.now() + ADMIN_TTL_MS));
-
-		return json({ role: 'admin', redirect: '/admin' });
-	}
-
-	// Check dispatcher
 	const dispatcher = await db.query.dispatchers.findFirst({
 		where: eq(dispatchers.email, email)
 	});

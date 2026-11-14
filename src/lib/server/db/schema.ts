@@ -1,21 +1,5 @@
 import { sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core';
 
-export const admin = sqliteTable('admin', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	email: text('email').notNull().unique(),
-	passwordHash: text('password_hash').notNull(),
-	totpSecret: text('totp_secret'),
-	totpEnabled: integer('totp_enabled', { mode: 'boolean' }).notNull().default(false),
-	createdAt: integer('created_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date()),
-	updatedAt: integer('updated_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
-
 export const dispatchers = sqliteTable('dispatchers', {
 	id: text('id')
 		.primaryKey()
@@ -24,6 +8,9 @@ export const dispatchers = sqliteTable('dispatchers', {
 	passwordHash: text('password_hash').notNull(),
 	name: text('name').notNull(),
 	isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+	// The one account that also manages the team, activity log and settings.
+	// Created by the first-run setup on /login; there is no separate admin.
+	isOwner: integer('is_owner', { mode: 'boolean' }).notNull().default(false),
 	// 2FA is mandatory for dispatchers: a dispatcher without totpEnabled is
 	// forced through enrolment on their next sign-in.
 	totpSecret: text('totp_secret'),

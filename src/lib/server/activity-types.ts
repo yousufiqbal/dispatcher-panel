@@ -24,7 +24,17 @@ export const ACTIVITY_TYPES: ActivityType[] = [
 	{ action: 'inventory.count.apply', label: 'Applying inventory count to Shopify', isView: false },
 	{ action: 'weights.apply', label: 'Saving product weights to Shopify', isView: false },
 	{ action: 'dispatcher.totpReset', label: "Resetting a dispatcher's two-factor authentication", isView: false },
+	{ action: 'team.create', label: 'Adding a team member', isView: false },
+	{ action: 'team.update', label: "Editing a team member's details", isView: false },
+	{ action: 'team.disable', label: 'Disabling a team member', isView: false },
+	{ action: 'team.enable', label: 'Re-enabling a team member', isView: false },
+	{ action: 'settings.update', label: 'Changing panel settings', isView: false },
 ];
+
+/** Human label for an action key, falling back to the key itself. */
+export function activityLabel(action: string): string {
+	return ACTIVITY_TYPES.find((t) => t.action === action)?.label ?? action;
+}
 
 export function defaultEnabled(action: string): boolean {
 	return !ACTIVITY_TYPES.find((t) => t.action === action)?.isView;

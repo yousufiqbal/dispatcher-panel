@@ -2,7 +2,7 @@ import type { PageServerLoad } from './$types';
 import { db } from '$lib/server/db';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const existingAdmin = await db.query.admin.findFirst();
+	const anyAccount = await db.query.dispatchers.findFirst({ columns: { id: true } });
 	const session = locals.session;
 
 	// A dispatcher whose session exists but isn't TOTP-verified is mid-sign-in
@@ -13,5 +13,5 @@ export const load: PageServerLoad = async ({ locals }) => {
 		pending = session.user.role === 'dispatcher' && session.user.totpEnabled ? 'totp' : 'totp-setup';
 	}
 
-	return { hasAdmin: !!existingAdmin, pending };
+	return { hasAccount: !!anyAccount, pending };
 };
