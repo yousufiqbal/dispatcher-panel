@@ -1,7 +1,21 @@
 import { shopifyRequest } from './client';
 import type { ShopifyClient } from './client';
-import { weightToGrams } from '$lib/pricing';
 import { listProducts, type ProductNode } from './products';
+
+// Shopify reports variant weight in the unit the merchant picked; the panel
+// works in grams throughout.
+function weightToGrams(value: number, unit: string): number {
+	switch (unit) {
+		case 'KILOGRAMS':
+			return value * 1000;
+		case 'OUNCES':
+			return value * 28.3495;
+		case 'POUNDS':
+			return value * 453.592;
+		default:
+			return value; // GRAMS
+	}
+}
 
 export interface WeightVariant {
 	id: string;

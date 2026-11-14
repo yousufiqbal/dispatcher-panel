@@ -1,8 +1,5 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { db } from '$lib/server/db';
-import { variantPricing } from '$lib/server/db/schema';
-import { and, eq, inArray } from 'drizzle-orm';
 import { getAuthorizedStore } from '$lib/server/store-access';
 import { getShopifyClient } from '$lib/server/shopify/client';
 import { applyProductWeights, fetchLiveWeights } from '$lib/server/shopify/weights';
@@ -53,15 +50,7 @@ export const POST: RequestHandler = async ({ params, locals, request }) => {
 		})
 	);
 
-	// Shopify is the source of truth for weight: drop any staged weight on the
-	// admin Pricing tool for these variants so it reads the new live value
-	// instead of pushing its stale copy back over it.
 	if (res.applied.length > 0) {
-		await db
-			.update(variantPricing)
-			.set({ weightGramsOverride: null })
-			.where(and(eq(variantPricing.storeId, params.storeId), inArray(variantPricing.variantId, res.applied)));
-
 		const changeById = new Map(products.flatMap((p) => p.changes.map((c) => [c.variantId, c])));
 		await logAudit(locals.session!.userId, 'dispatcher', 'weights.apply', {
 			targetType: 'store',
