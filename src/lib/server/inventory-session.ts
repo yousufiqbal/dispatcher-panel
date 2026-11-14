@@ -17,7 +17,7 @@ export async function getInventorySession(
 	sessionId: string,
 	opts: { unlocked?: boolean } = {}
 ) {
-	const store = await getAuthorizedStore(session, storeId);
+	const store = await getAuthorizedStore(session);
 	const [auditSession] = await db
 		.select()
 		.from(inventorySessions)

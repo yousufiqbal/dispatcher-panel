@@ -28,7 +28,7 @@ export const ACTIVITY_TYPES: ActivityType[] = [
 	{ action: 'team.update', label: "Editing a team member's details", isView: false },
 	{ action: 'team.disable', label: 'Disabling a team member', isView: false },
 	{ action: 'team.enable', label: 'Re-enabling a team member', isView: false },
-	{ action: 'settings.update', label: 'Changing panel settings', isView: false },
+	{ action: 'restock.leadTimes', label: 'Changing restock lead times', isView: false },
 ];
 
 /** Human label for an action key, falling back to the key itself. */

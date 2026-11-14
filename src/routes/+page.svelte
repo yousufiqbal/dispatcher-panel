@@ -8,7 +8,7 @@
 		if (data.session?.role === 'dispatcher' && data.session.totpVerified) {
 			// An unverified dispatcher session hasn't cleared 2FA yet — /login
 			// picks the code step back up rather than bouncing them in.
-			goto('/dispatcher');
+			goto('/confirmer');
 		} else {
 			goto('/login');
 		}

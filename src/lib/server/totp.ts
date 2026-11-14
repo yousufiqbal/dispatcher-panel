@@ -20,7 +20,7 @@ export async function loadTotpAccount(session: SessionData): Promise<TotpAccount
 	if (session.role === 'dispatcher') {
 		const d = await db.query.dispatchers.findFirst({ where: eq(dispatchers.id, session.userId) });
 		if (!d || !d.isActive) return null;
-		return { id: d.id, email: d.email, totpSecret: d.totpSecret, totpEnabled: d.totpEnabled, redirect: '/dispatcher' };
+		return { id: d.id, email: d.email, totpSecret: d.totpSecret, totpEnabled: d.totpEnabled, redirect: '/confirmer' };
 	}
 	return null;
 }

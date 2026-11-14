@@ -7,8 +7,8 @@ import type { Cookies } from '@sveltejs/kit';
 export const SESSION_COOKIE = 'dp_session';
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
 
-// Every account is a dispatcher; the owner additionally manages the team,
-// activity log and settings.
+// Every account is a dispatcher; the owner additionally manages the team and
+// sees the activity log.
 export type SessionUser = {
 	role: 'dispatcher';
 	id: string;

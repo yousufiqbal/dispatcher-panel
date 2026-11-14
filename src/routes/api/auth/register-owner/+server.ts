@@ -1,8 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db';
-import { dispatchers, dispatcherStoreAccess, stores } from '$lib/server/db/schema';
-import { eq } from 'drizzle-orm';
+import { dispatchers } from '$lib/server/db/schema';
 import { hash } from 'argon2';
 import { safeParse } from 'valibot';
 import { RegisterOwnerSchema } from '$lib/schemas/auth';
@@ -31,11 +30,6 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 		.insert(dispatchers)
 		.values({ name, email, passwordHash, isOwner: true })
 		.returning({ id: dispatchers.id });
-
-	const activeStores = await db.select({ id: stores.id }).from(stores).where(eq(stores.isActive, true));
-	if (activeStores.length > 0) {
-		await db.insert(dispatcherStoreAccess).values(activeStores.map((s) => ({ dispatcherId: owner.id, storeId: s.id })));
-	}
 
 	// Signed in but not verified: 2FA enrolment is mandatory before the panel opens.
 	const sessionId = await createSession(owner.id, 'dispatcher', false, getClientAddress(), request.headers.get('user-agent') ?? undefined);

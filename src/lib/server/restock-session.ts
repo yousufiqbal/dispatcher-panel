@@ -9,7 +9,7 @@ import type { SessionData } from './session';
 // +server routes don't run the store layout's access check, so each one must
 // confirm the dispatcher can see this store and that the session belongs to it.
 export async function getRestockSession(session: SessionData | null, storeId: string, sessionId: string) {
-	const store = await getAuthorizedStore(session, storeId);
+	const store = await getAuthorizedStore(session);
 	const [[restockSession], [lead]] = await Promise.all([
 		db
 			.select()

@@ -1,42 +1,43 @@
-# sv
+# Dispatcher Panel
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli)
+SvelteKit panel for running one Shopify store's daily dispatch work: confirming
+orders, tracking shipped parcels, products, restock planning, inventory audits
+and variant weights. Payments, fulfilment, refunds and order edits stay in the
+Shopify admin.
 
-## Creating a project
+**One store per deployment.** Each store gets its own Vercel project and its own
+Turso database, all built from this repo — a push to `main` deploys every store.
 
-If you're seeing this, you've probably already done this step. Congrats!
+## Accounts
 
-```sh
-# create a new project
-npx sv create my-app
-```
+- Every account signs in with email + password + 2FA (authenticator app).
+- The **owner** also sees **Team** (add, edit, disable people, reset 2FA) and
+  **Activity** (what everyone did). There is no separate admin panel.
+- The owner account is created by the first visit to `/login` on an empty database.
 
-To recreate this project with the same configuration:
+## Setting up a new store
 
-```sh
-# recreate this project
-npx sv@0.15.3 create --template minimal --types ts --add tailwindcss="plugins:none" drizzle="database:postgresql+postgresql:postgres.js+docker:no" prettier eslint --no-download-check --no-install .
-```
+1. **Shopify app** — in the store's admin, create a custom app with the scopes
+   listed in `src/lib/shopify-scopes.ts`, install it and copy the Admin API
+   access token (`shpat_…`).
+2. **Database** — create a new Turso database and an auth token for it.
+3. **Create the tables** — with `DATABASE_URL` / `DATABASE_AUTH_TOKEN` pointing at the
+   new database, run `npm run db:push`.
+4. **Vercel project** — import this repo as a new project and set every variable from
+   `.env.example`:
+   - `DATABASE_URL`, `DATABASE_AUTH_TOKEN` — the new database
+   - `SHOPIFY_STORE_DOMAIN`, `SHOPIFY_ACCESS_TOKEN` — from step 1
+   - `SESSION_SECRET`, `ENCRYPTION_KEY` — fresh random values (don't reuse another store's)
+5. **Deploy**, open `/login`, create the owner account and set up 2FA. The store row is
+   created automatically on first use.
+6. Add the rest of the team from **Team**, and set restock lead times on the **Restock** page.
 
 ## Developing
 
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
 ```sh
+npm install
+cp .env.example .env   # then fill it in
 npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
 ```
 
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+`npm run check` type-checks; `npm run build` builds for Vercel.

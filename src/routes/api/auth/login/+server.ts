@@ -40,7 +40,7 @@ export const POST: RequestHandler = async ({ request, cookies, getClientAddress 
 		const sessionId = await createSession(dispatcher.id, 'dispatcher', trusted, ip, ua);
 		setSessionCookie(cookies, sessionId, new Date(Date.now() + STAFF_TTL_MS));
 
-		if (trusted) return json({ role: 'dispatcher', redirect: '/dispatcher' });
+		if (trusted) return json({ role: 'dispatcher', redirect: '/confirmer' });
 		return json({ role: 'dispatcher', next: dispatcher.totpEnabled ? 'totp' : 'totp-setup' });
 	}
 

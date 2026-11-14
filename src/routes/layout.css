@@ -1,4 +1,6 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
+@import '@fontsource-variable/inter';
 
 @keyframes loading-bar {
 	0% { transform: translateX(-100%); }
@@ -10,35 +12,114 @@
 	to { opacity: 1; transform: translateX(0); }
 }
 
-@theme {
-	--font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-	--color-background: oklch(0.985 0 0);
-	--color-foreground: oklch(0.145 0 0);
-	--color-card: oklch(1 0 0);
-	--color-card-foreground: oklch(0.145 0 0);
-	--color-popover: oklch(1 0 0);
-	--color-popover-foreground: oklch(0.145 0 0);
-	--color-border: oklch(0.922 0 0);
-	--color-input: oklch(0.922 0 0);
-	--color-primary: oklch(0.21 0.034 264.665);
-	--color-primary-foreground: oklch(0.985 0 0);
-	--color-secondary: oklch(0.967 0 0);
-	--color-secondary-foreground: oklch(0.21 0.034 264.665);
-	--color-muted: oklch(0.967 0 0);
-	--color-muted-foreground: oklch(0.556 0 0);
-	--color-accent: oklch(0.967 0 0);
-	--color-accent-foreground: oklch(0.21 0.034 264.665);
-	--color-destructive: oklch(0.577 0.245 27.325);
-	--color-destructive-foreground: oklch(0.985 0 0);
-	--color-success: oklch(0.527 0.154 150.069);
-	--color-warning: oklch(0.769 0.188 70.08);
-	--color-ring: oklch(0.708 0 0);
-	--radius: 0.625rem;
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Sigma Leather design tokens — shared with the accounting app so both panels
+ * look the same. Status colors: success = done/delivered, warning = pending,
+ * danger = returned/cancel, info = in progress, muted = inactive.
+ */
+:root {
+	--radius: 0.5rem;
+	--background: oklch(0.99 0.002 75);
+	--foreground: oklch(0.2 0.01 60);
+	--card: oklch(1 0 0);
+	--card-foreground: oklch(0.2 0.01 60);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.2 0.01 60);
+	--primary: oklch(0.42 0.07 50);
+	--primary-foreground: oklch(0.98 0.005 75);
+	--secondary: oklch(0.96 0.005 75);
+	--secondary-foreground: oklch(0.25 0.01 60);
+	--muted: oklch(0.96 0.005 75);
+	--muted-foreground: oklch(0.5 0.01 60);
+	--accent: oklch(0.95 0.01 70);
+	--accent-foreground: oklch(0.25 0.01 60);
+	--destructive: oklch(0.55 0.2 27);
+	--destructive-foreground: oklch(0.98 0.005 75);
+	--border: oklch(0.91 0.006 70);
+	--input: oklch(0.91 0.006 70);
+	--ring: oklch(0.6 0.05 50);
+
+	--success: oklch(0.52 0.13 150);
+	--success-soft: oklch(0.95 0.04 150);
+	--danger: oklch(0.55 0.2 27);
+	--danger-soft: oklch(0.95 0.03 27);
+	--warning: oklch(0.6 0.13 75);
+	--warning-soft: oklch(0.96 0.05 85);
+	--info: oklch(0.52 0.13 250);
+	--info-soft: oklch(0.95 0.03 250);
+}
+
+.dark {
+	--background: oklch(0.17 0.006 60);
+	--foreground: oklch(0.96 0.004 75);
+	--card: oklch(0.21 0.007 60);
+	--card-foreground: oklch(0.96 0.004 75);
+	--popover: oklch(0.21 0.007 60);
+	--popover-foreground: oklch(0.96 0.004 75);
+	--primary: oklch(0.72 0.08 60);
+	--primary-foreground: oklch(0.18 0.01 60);
+	--secondary: oklch(0.26 0.008 60);
+	--secondary-foreground: oklch(0.96 0.004 75);
+	--muted: oklch(0.26 0.008 60);
+	--muted-foreground: oklch(0.7 0.01 70);
+	--accent: oklch(0.28 0.01 60);
+	--accent-foreground: oklch(0.96 0.004 75);
+	--destructive: oklch(0.68 0.19 25);
+	--destructive-foreground: oklch(0.18 0.01 60);
+	--border: oklch(1 0 0 / 10%);
+	--input: oklch(1 0 0 / 14%);
+	--ring: oklch(0.55 0.04 60);
+
+	--success: oklch(0.74 0.15 150);
+	--success-soft: oklch(0.3 0.06 150);
+	--danger: oklch(0.7 0.18 25);
+	--danger-soft: oklch(0.3 0.07 25);
+	--warning: oklch(0.8 0.14 80);
+	--warning-soft: oklch(0.32 0.06 80);
+	--info: oklch(0.72 0.13 250);
+	--info-soft: oklch(0.3 0.06 250);
+}
+
+@theme inline {
+	--font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-success: var(--success);
+	--color-success-soft: var(--success-soft);
+	--color-danger: var(--danger);
+	--color-danger-soft: var(--danger-soft);
+	--color-warning: var(--warning);
+	--color-warning-soft: var(--warning-soft);
+	--color-info: var(--info);
+	--color-info-soft: var(--info-soft);
 }
 
 @layer base {
 	* {
-		@apply border-border;
+		@apply border-border outline-ring/50;
 		box-sizing: border-box;
 	}
 
@@ -110,23 +191,23 @@
 	}
 
 	.badge-pending {
-		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-amber-100 text-amber-800;
+		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-warning-soft text-warning;
 	}
 
 	.badge-fulfilled {
-		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-green-100 text-green-800;
+		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-success-soft text-success;
 	}
 
 	.badge-cancelled {
-		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-zinc-100 text-zinc-600;
+		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-muted text-muted-foreground;
 	}
 
 	.badge-returned {
-		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-red-100 text-red-700;
+		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-danger-soft text-danger;
 	}
 
 	.badge-partial {
-		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-blue-100 text-blue-800;
+		@apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold transition-colors bg-info-soft text-info;
 	}
 
 	.sidebar {

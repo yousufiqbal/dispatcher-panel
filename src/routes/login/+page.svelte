@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button/index.js';
 	import { Input } from '$lib/components/ui/input/index.js';
 	import { Label } from '$lib/components/ui/label/index.js';
@@ -98,7 +97,7 @@
 				step = 'totp';
 				return;
 			}
-			goto(data.redirect ?? '/dispatcher');
+			goto(data.redirect ?? '/confirmer');
 		} catch {
 			error = 'Network error. Please try again.';
 		} finally {
@@ -133,7 +132,7 @@
 				totpCode = '';
 				return;
 			}
-			goto(data.redirect ?? '/dispatcher');
+			goto(data.redirect ?? '/confirmer');
 		} catch {
 			error = 'Network error';
 		} finally {
@@ -157,7 +156,7 @@
 				totpCode = '';
 				return;
 			}
-			goto(data.redirect ?? '/dispatcher');
+			goto(data.redirect ?? '/confirmer');
 		} catch {
 			error = 'Network error';
 		} finally {
@@ -191,7 +190,7 @@
 	<title>Sign In — Pro Shipper</title>
 </svelte:head>
 
-<div class="min-h-screen bg-zinc-50 flex items-center justify-center p-4">
+<div class="min-h-screen bg-background flex items-center justify-center p-4">
 	<div class="w-full max-w-md">
 		<!-- Logo / Branding -->
 		<div class="text-center mb-8">

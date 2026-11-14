@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, primaryKey, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, index } from 'drizzle-orm/sqlite-core';
 
 export const dispatchers = sqliteTable('dispatchers', {
 	id: text('id')
@@ -8,7 +8,7 @@ export const dispatchers = sqliteTable('dispatchers', {
 	passwordHash: text('password_hash').notNull(),
 	name: text('name').notNull(),
 	isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
-	// The one account that also manages the team, activity log and settings.
+	// The one account that also manages the team and sees the activity log.
 	// Created by the first-run setup on /login; there is no separate admin.
 	isOwner: integer('is_owner', { mode: 'boolean' }).notNull().default(false),
 	// 2FA is mandatory for dispatchers: a dispatcher without totpEnabled is
@@ -43,37 +43,6 @@ export const stores = sqliteTable('stores', {
 		.notNull()
 		.$defaultFn(() => new Date()),
 	updatedAt: integer('updated_at', { mode: 'timestamp' })
-		.notNull()
-		.$defaultFn(() => new Date())
-});
-
-export const dispatcherStoreAccess = sqliteTable(
-	'dispatcher_store_access',
-	{
-		dispatcherId: text('dispatcher_id')
-			.notNull()
-			.references(() => dispatchers.id, { onDelete: 'cascade' }),
-		storeId: text('store_id')
-			.notNull()
-			.references(() => stores.id, { onDelete: 'cascade' }),
-		grantedAt: integer('granted_at', { mode: 'timestamp' })
-			.notNull()
-			.$defaultFn(() => new Date())
-	},
-	(table) => [primaryKey({ columns: [table.dispatcherId, table.storeId] })]
-);
-
-export const dispatcherPushSubscriptions = sqliteTable('dispatcher_push_subscriptions', {
-	id: text('id')
-		.primaryKey()
-		.$defaultFn(() => crypto.randomUUID()),
-	dispatcherId: text('dispatcher_id')
-		.notNull()
-		.references(() => dispatchers.id, { onDelete: 'cascade' }),
-	endpoint: text('endpoint').notNull().unique(),
-	p256dh: text('p256dh').notNull(),
-	auth: text('auth').notNull(),
-	createdAt: integer('created_at', { mode: 'timestamp' })
 		.notNull()
 		.$defaultFn(() => new Date())
 });

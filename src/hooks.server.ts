@@ -1,6 +1,7 @@
 import type { Handle } from '@sveltejs/kit';
 import { error, json } from '@sveltejs/kit';
 import { loadSession, SESSION_COOKIE } from '$lib/server/session';
+import { getStore, type StoreRecord } from '$lib/server/store';
 import { isDbConnectionError } from '$lib/server/db-errors';
 
 const DB_DOWN_MESSAGE = 'Cannot reach the database right now. Check your internet connection and try again.';
@@ -15,6 +16,10 @@ export const handle: Handle = async ({ event, resolve }) => {
 		} else {
 			event.locals.session = null;
 		}
+
+		// Null only on a fresh install before the owner connects Shopify; the
+		// (app) layout sends them to Settings, so store pages never see null.
+		event.locals.store = (await getStore()) as StoreRecord;
 
 		return await resolve(event);
 	} catch (err) {

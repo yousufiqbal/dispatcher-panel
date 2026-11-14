@@ -54,15 +54,11 @@
 		if (query.trim()) runSearch();
 	}
 
-	const storeId = $derived($page.params.storeId as string | undefined);
-
 	// Default the scope to whichever section (Orders/Products/Customers) the
 	// dispatcher is currently viewing — still freely changeable from the dropdown,
 	// it just re-syncs on the next navigation into one of those sections.
 	const routeScope = $derived.by((): Scope | null => {
-		const segments = $page.url.pathname.split('/').filter(Boolean);
-		const idx = storeId ? segments.indexOf(storeId) : -1;
-		const section = idx >= 0 ? segments[idx + 1] : undefined;
+		const section = $page.url.pathname.split('/').filter(Boolean)[0];
 		return section === 'orders' || section === 'products' || section === 'customers' ? section : null;
 	});
 
@@ -84,7 +80,7 @@
 
 	async function runSearch() {
 		const q = query.trim();
-		if (!q || !storeId) {
+		if (!q) {
 			results = [];
 			open = false;
 			return;
@@ -92,7 +88,7 @@
 		const thisRequest = ++requestId;
 		loading = true;
 		try {
-			const res = await fetch(`/api/dispatcher/stores/${storeId}/search?q=${encodeURIComponent(q)}&scope=${scope}`);
+			const res = await fetch(`/api/dispatcher/search?q=${encodeURIComponent(q)}&scope=${scope}`);
 			if (thisRequest !== requestId) return; // a newer request superseded this one
 			const data = await res.json();
 			results = data.results ?? [];
@@ -151,17 +147,8 @@
 		document.addEventListener('mousedown', onDocClick);
 		return () => document.removeEventListener('mousedown', onDocClick);
 	});
-
-	// Reset on store switch so stale results from a different store never show.
-	$effect(() => {
-		storeId;
-		query = '';
-		results = [];
-		open = false;
-	});
 </script>
 
-{#if storeId}
 	<div bind:this={containerEl} class="relative w-full max-w-md md:max-w-xl">
 		<div class="flex items-center border border-input bg-background shadow-xs overflow-hidden focus-within:ring-[3px] focus-within:ring-ring/50 focus-within:border-ring">
 			<DropdownMenu.Root>
@@ -252,4 +239,3 @@
 			</div>
 		{/if}
 	</div>
-{/if}
