@@ -1,8 +1,8 @@
 # Dispatcher Panel
 
 SvelteKit panel for running one Shopify store's daily dispatch work: confirming
-orders, tracking shipped parcels, products, restock planning, inventory audits
-and variant weights. Payments, fulfilment, refunds and order edits stay in the
+orders, tracking shipped parcels, products, inventory audits and variant
+weights (restock planning lives in the accounting panel). Payments, fulfilment, refunds and order edits stay in the
 Shopify admin.
 
 **One store per deployment.** Each store gets its own Vercel project and its own
@@ -30,7 +30,7 @@ Turso database, all built from this repo — a push to `main` deploys every stor
    - `ENCRYPTION_KEY` — a fresh random value (don't reuse another store's)
 5. **Deploy**, open `/login`, create the owner account and set up 2FA. The store row is
    created automatically on first use.
-6. Add the rest of the team from **Team**, and set restock lead times on the **Restock** page.
+6. Add the rest of the team from **Team**.
 
 ## Developing
 
