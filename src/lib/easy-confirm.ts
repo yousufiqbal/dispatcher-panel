@@ -108,7 +108,7 @@ export const PK_PROVINCES = [
 
 /**
  * Converts a phone number into international digits (no "+"), which is what
- * both `tel:` and `whatsapp://send?phone=` expect.
+ * both `tel:` and WhatsApp Web (`web.whatsapp.com/send?phone=`) expect.
  * Pakistani local formats are handled: 0300-1234567, 300 1234567, 92300...
  */
 export function toInternationalDigits(raw: string | null | undefined, countryCode?: string | null): string | null {
